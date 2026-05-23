@@ -1,0 +1,17 @@
+FROM golang:1.25-alpine AS base
+
+RUN apk add --no-cache git curl nodejs npm
+
+# Go tools (versions épinglées pour cohérence local/CI)
+RUN go install mvdan.cc/gofumpt@latest \
+ && go install golang.org/x/tools/cmd/goimports@latest \
+ && go install gotest.tools/gotestsum@latest \
+ && go install go.uber.org/mock/mockgen@latest
+
+
+WORKDIR /app
+
+COPY go.mod ./
+RUN go mod download
+
+CMD ["sh"]
