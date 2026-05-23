@@ -1,0 +1,64 @@
+services:
+  go:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    command: gotestsum ./...
+
+  lint:
+    image: golangci/golangci-lint:latest
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    command: golangci-lint run ./...
+
+  build-cli:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    command: go build -o dist/reqlet ./cli/...
+
+  node:
+    image: node:22-alpine
+    volumes:
+      - ./node-runner:/app
+      - node-runner-modules:/app/node_modules
+    working_dir: /app
+
+  frontend:
+    image: node:22-alpine
+    volumes:
+      - ./gui/frontend:/app
+      - frontend-modules:/app/node_modules
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host
+
+volumes:
+  go-cache:
+  go-mod-cache:
+  node-runner-modules:
+  frontend-modules:
