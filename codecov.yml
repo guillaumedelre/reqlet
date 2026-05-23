@@ -1,0 +1,30 @@
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+
+  status:
+    project:
+      default:
+        # Seuil global du projet
+        target: 80%
+        # Tolérance : échec si la couverture descend de plus de 1%
+        threshold: 1%
+        paths:
+          - "engine/"
+    patch:
+      default:
+        # Chaque PR doit couvrir ≥ 80% des lignes modifiées
+        target: 80%
+        threshold: 1%
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false
+
+ignore:
+  - "**/*_test.go"
+  - "gui/frontend/**"
+  - "node-runner/**"
+  - "docs/**"

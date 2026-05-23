@@ -1,0 +1,53 @@
+# Go
+dist/
+*.exe
+*.test
+*.prof
+coverage.out
+coverage.html
+
+# Node
+node_modules/
+npm-debug.log*
+.npm
+
+# Node SEA build output
+node-runner/*.blob
+
+# Frontend build output
+gui/frontend/dist/
+node-runner/dist/
+
+# Wails generated bindings
+gui/frontend/wailsjs/
+
+# Build artifacts
+build/
+
+# SQLite user data
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+._*
+Thumbs.db
+ehthumbs.db
+
+# Secrets
+.env
+.env.local
+.env.*.local
+
+# Internal project files
+CLAUDE.md
+DRAFT-ROADMAP.md
+SPEC-POSTMAN.md
