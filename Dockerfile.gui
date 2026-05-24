@@ -16,11 +16,8 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 # Build frontend before embedding
-# Copy only package.json — the lock file is not used here because it was
-# generated on a different OS and does not include Linux native bindings
-# (e.g. lightningcss). npm resolves the correct platform deps from scratch.
-COPY gui/frontend/package.json ./gui/frontend/
-RUN cd gui/frontend && npm install
+COPY gui/frontend/package*.json ./gui/frontend/
+RUN cd gui/frontend && npm ci
 
 COPY gui/frontend ./gui/frontend
 RUN cd gui/frontend && npm run build
