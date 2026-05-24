@@ -103,6 +103,87 @@ const COMPLETIONS = [
   "X-Auth-Token",
 ]
 
+describe("KeyValueEditor — row operations", () => {
+  it("adds a new empty row when clicking + Add", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[item("key", "val")]} onChange={onChange} />)
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    expect(onChange).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "key", value: "val" }),
+        expect.objectContaining({ key: "", value: "" }),
+      ]),
+    )
+  })
+
+  it("removes a row when clicking ×", () => {
+    const onChange = vi.fn()
+    render(
+      <KeyValueEditor
+        items={[item("keep", "this"), item("remove", "me")]}
+        onChange={onChange}
+      />,
+    )
+    fireEvent.click(screen.getAllByTitle("Remove")[1])
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ key: "keep" })])
+  })
+
+  it("toggles enabled state via checkbox", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[item("key", "val")]} onChange={onChange} />)
+    fireEvent.click(screen.getByRole("checkbox"))
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ enabled: false })])
+  })
+
+  it("shows TYPE column when allowFileType is true", () => {
+    render(<KeyValueEditor items={[item("key", "val")]} onChange={() => {}} allowFileType />)
+    expect(screen.getByText("TYPE")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Text" })).toBeInTheDocument()
+  })
+
+  it("toggles item type from Text to File", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[item("key", "")]} onChange={onChange} allowFileType />)
+    fireEvent.click(screen.getByRole("button", { name: "Text" }))
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ type: "file", value: "" })])
+  })
+
+  it("does not show + Add or × when readOnlyKeys is true", () => {
+    render(<KeyValueEditor items={[item("key", "val")]} onChange={() => {}} readOnlyKeys />)
+    expect(screen.queryByRole("button", { name: "+ Add" })).not.toBeInTheDocument()
+    expect(screen.queryByTitle("Remove")).not.toBeInTheDocument()
+  })
+
+  it("parses bulk text back to items when exiting bulk mode", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[]} onChange={onChange} allowBulkEdit defaultBulkMode />)
+    fireEvent.change(screen.getByPlaceholderText(/key: value/), {
+      target: { value: "Authorization: Bearer tok\nContent-Type: application/json" },
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Key-Value Edit" }))
+    expect(onChange).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "Authorization", value: "Bearer tok" }),
+        expect.objectContaining({ key: "Content-Type", value: "application/json" }),
+      ]),
+    )
+  })
+
+  it("updates the key field when typing", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[item("old", "val")]} onChange={onChange} />)
+    fireEvent.change(screen.getAllByPlaceholderText("Key")[0], { target: { value: "new" } })
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ key: "new" })])
+  })
+
+  it("updates the value field when typing", () => {
+    const onChange = vi.fn()
+    render(<KeyValueEditor items={[item("key", "old")]} onChange={onChange} />)
+    fireEvent.change(screen.getAllByPlaceholderText("Value")[0], { target: { value: "new" } })
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ value: "new" })])
+  })
+})
+
 describe("KeyValueEditor — autocomplete", () => {
   it("shows no dropdown without keyAutocomplete prop", () => {
     render(

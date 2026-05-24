@@ -35,6 +35,93 @@ function goToSubTab(name: string) {
   fireEvent.click(screen.getByRole("button", { name }))
 }
 
+describe("RequestPane — URL bar", () => {
+  it("typing in the URL input updates the store", () => {
+    render(<RequestPane />)
+    fireEvent.change(screen.getByPlaceholderText("Enter URL"), {
+      target: { value: "https://api.example.com/users" },
+    })
+    expect(useTabsStore.getState().tabs[0].url).toBe("https://api.example.com/users")
+  })
+
+  it("parses query params from a pasted URL into the params table", () => {
+    render(<RequestPane />)
+    fireEvent.change(screen.getByPlaceholderText("Enter URL"), {
+      target: { value: "https://api.example.com?page=1&limit=10" },
+    })
+    const params = useTabsStore.getState().tabs[0].params
+    expect(params.some((p) => p.key === "page" && p.value === "1")).toBe(true)
+    expect(params.some((p) => p.key === "limit" && p.value === "10")).toBe(true)
+  })
+
+  it("changes the HTTP method via the dropdown", () => {
+    render(<RequestPane />)
+    fireEvent.click(screen.getByRole("button", { name: /^GET/ }))
+    fireEvent.click(screen.getByRole("button", { name: "POST" }))
+    expect(useTabsStore.getState().tabs[0].method).toBe("POST")
+  })
+})
+
+describe("RequestPane — Body tab", () => {
+  it("shows 'no body' message for bodyType none", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    expect(screen.getByText("This request has no body.")).toBeInTheDocument()
+  })
+
+  it("switching body type to raw shows textarea", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "raw" }))
+    expect(useTabsStore.getState().tabs[0].bodyType).toBe("raw")
+    expect(screen.getByPlaceholderText(/Enter JSON body/)).toBeInTheDocument()
+  })
+
+  it("typing in raw body textarea updates the store", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "raw" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.change(screen.getByPlaceholderText(/Enter JSON body/), {
+      target: { value: '{"key":"value"}' },
+    })
+    expect(useTabsStore.getState().tabs[0].bodyRaw).toBe('{"key":"value"}')
+  })
+
+  it("switching raw content type updates the store", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "JSON" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "XML" }))
+    expect(useTabsStore.getState().tabs[0].bodyRawContentType).toBe("XML")
+  })
+
+  it("switching body type to form-data shows key-value editor", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "form-data" }))
+    expect(useTabsStore.getState().tabs[0].bodyType).toBe("form-data")
+    expect(screen.getByRole("button", { name: "+ Add" })).toBeInTheDocument()
+  })
+
+  it("switching body type to urlencoded shows key-value editor", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "x-www-form-urlencoded" }))
+    expect(useTabsStore.getState().tabs[0].bodyType).toBe("urlencoded")
+    expect(screen.getByRole("button", { name: "+ Add" })).toBeInTheDocument()
+  })
+})
+
 describe("RequestPane — Code tab", () => {
   it("Code tab is present in the sub-tab bar", () => {
     render(<RequestPane />)
