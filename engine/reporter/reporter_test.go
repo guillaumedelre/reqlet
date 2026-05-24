@@ -63,8 +63,10 @@ func runJSON(t *testing.T, result *runner.RunResult) string {
 // ── JUnit output format ───────────────────────────────────────────────────────
 
 func TestJUnit_Output_ValidXML(t *testing.T) {
-	result := makeRun("MyCollection",
-		makeIter(0,
+	result := makeRun(
+		"MyCollection",
+		makeIter(
+			0,
 			makeResult("Get Users", []sandbox.TestResult{
 				{Name: "Status 200", Passed: true},
 			}, makeResponse(200, "200 OK", nil, 100*time.Millisecond)),
@@ -83,8 +85,10 @@ func TestJUnit_Output_ValidXML(t *testing.T) {
 }
 
 func TestJUnit_Output_RootElement(t *testing.T) {
-	result := makeRun("API Suite",
-		makeIter(0,
+	result := makeRun(
+		"API Suite",
+		makeIter(
+			0,
 			makeResult("GET /ping", []sandbox.TestResult{
 				{Name: "Status 200", Passed: true},
 				{Name: "Latency OK", Passed: true},
@@ -99,8 +103,10 @@ func TestJUnit_Output_RootElement(t *testing.T) {
 }
 
 func TestJUnit_Output_Testsuite(t *testing.T) {
-	result := makeRun("Suite",
-		makeIter(0,
+	result := makeRun(
+		"Suite",
+		makeIter(
+			0,
 			makeResult("R1", []sandbox.TestResult{{Name: "T1", Passed: true}},
 				makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
 		),
@@ -112,8 +118,10 @@ func TestJUnit_Output_Testsuite(t *testing.T) {
 }
 
 func TestJUnit_Output_Testcase(t *testing.T) {
-	result := makeRun("Col",
-		makeIter(0,
+	result := makeRun(
+		"Col",
+		makeIter(
+			0,
 			makeResult("Create User", []sandbox.TestResult{
 				{Name: "Returns 201", Passed: true},
 			}, makeResponse(201, "201 Created", nil, 55*time.Millisecond)),
@@ -129,8 +137,10 @@ func TestJUnit_Output_Testcase(t *testing.T) {
 }
 
 func TestJUnit_Output_Failure(t *testing.T) {
-	result := makeRun("Col",
-		makeIter(0,
+	result := makeRun(
+		"Col",
+		makeIter(
+			0,
 			makeResult("POST /users", []sandbox.TestResult{
 				{Name: "Status 201", Passed: false, Error: "expected 201 but got 422"},
 			}, makeResponse(422, "422 Unprocessable Entity", nil, 30*time.Millisecond)),
@@ -146,8 +156,10 @@ func TestJUnit_Output_Failure(t *testing.T) {
 }
 
 func TestJUnit_Output_HTTPError(t *testing.T) {
-	result := makeRun("Col",
-		makeIter(0,
+	result := makeRun(
+		"Col",
+		makeIter(
+			0,
 			runner.RequestResult{Name: "GET /down", Error: errors.New("connection refused")},
 		),
 	)
@@ -158,8 +170,10 @@ func TestJUnit_Output_HTTPError(t *testing.T) {
 }
 
 func TestJUnit_Output_SkippedExcluded(t *testing.T) {
-	result := makeRun("Col",
-		makeIter(0,
+	result := makeRun(
+		"Col",
+		makeIter(
+			0,
 			runner.RequestResult{Name: "Skipped", Skipped: true},
 			makeResult("Normal", []sandbox.TestResult{{Name: "OK", Passed: true}},
 				makeResponse(200, "200 OK", nil, 5*time.Millisecond)),
@@ -175,7 +189,8 @@ func TestJUnit_Output_MultipleIterations(t *testing.T) {
 	tests := []sandbox.TestResult{{Name: "OK", Passed: true}}
 	resp := makeResponse(200, "200 OK", nil, 10*time.Millisecond)
 
-	result := makeRun("Multi",
+	result := makeRun(
+		"Multi",
 		makeIter(0, makeResult("Req", tests, resp)),
 		makeIter(1, makeResult("Req", tests, resp)),
 	)
@@ -188,8 +203,10 @@ func TestJUnit_Output_MultipleIterations(t *testing.T) {
 }
 
 func TestJUnit_Output_TimeAttribute(t *testing.T) {
-	result := makeRun("Col",
-		makeIter(0,
+	result := makeRun(
+		"Col",
+		makeIter(
+			0,
 			makeResult("R", []sandbox.TestResult{{Name: "T", Passed: true}},
 				makeResponse(200, "200 OK", nil, 500*time.Millisecond)),
 		),
@@ -205,8 +222,10 @@ func TestJUnit_Output_TimeAttribute(t *testing.T) {
 // ── JUnit internal helpers ────────────────────────────────────────────────────
 
 func TestJUnit_AllPassed(t *testing.T) {
-	result := makeRun("MyCollection",
-		makeIter(0,
+	result := makeRun(
+		"MyCollection",
+		makeIter(
+			0,
 			makeResult("Get Users", []sandbox.TestResult{
 				{Name: "Status 200", Passed: true},
 				{Name: "Body not empty", Passed: true},
@@ -249,8 +268,10 @@ func TestJUnit_NoRequests(t *testing.T) {
 // ── JSON output format ────────────────────────────────────────────────────────
 
 func TestJSON_Output_ValidJSON(t *testing.T) {
-	result := makeRun("API",
-		makeIter(0,
+	result := makeRun(
+		"API",
+		makeIter(
+			0,
 			makeResult("GET /users", []sandbox.TestResult{
 				{Name: "Status 200", Passed: true},
 			}, makeResponse(200, "200 OK", []byte("[]"), 80*time.Millisecond)),
@@ -264,8 +285,10 @@ func TestJSON_Output_ValidJSON(t *testing.T) {
 }
 
 func TestJSON_Output_CollectionField(t *testing.T) {
-	result := makeRun("My API Tests",
-		makeIter(0,
+	result := makeRun(
+		"My API Tests",
+		makeIter(
+			0,
 			makeResult("R", []sandbox.TestResult{{Name: "OK", Passed: true}},
 				makeResponse(200, "200 OK", nil, 5*time.Millisecond)),
 		),
@@ -277,8 +300,10 @@ func TestJSON_Output_CollectionField(t *testing.T) {
 }
 
 func TestJSON_Output_Stats(t *testing.T) {
-	result := makeRun("API",
-		makeIter(0,
+	result := makeRun(
+		"API",
+		makeIter(
+			0,
 			makeResult("R1", []sandbox.TestResult{
 				{Name: "Status 200", Passed: true},
 				{Name: "Body OK", Passed: false, Error: "body was empty"},
@@ -299,12 +324,15 @@ func TestJSON_Output_Stats(t *testing.T) {
 }
 
 func TestJSON_Output_IterationsAndRequests(t *testing.T) {
-	result := makeRun("API",
-		makeIter(0,
+	result := makeRun(
+		"API",
+		makeIter(
+			0,
 			makeResult("GET /users", []sandbox.TestResult{{Name: "OK", Passed: true}},
 				makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
 		),
-		makeIter(1,
+		makeIter(
+			1,
 			makeResult("GET /users", []sandbox.TestResult{{Name: "OK", Passed: true}},
 				makeResponse(200, "200 OK", nil, 8*time.Millisecond)),
 		),
@@ -327,8 +355,10 @@ func TestJSON_Output_IterationsAndRequests(t *testing.T) {
 }
 
 func TestJSON_Output_HTTPError(t *testing.T) {
-	result := makeRun("API",
-		makeIter(0,
+	result := makeRun(
+		"API",
+		makeIter(
+			0,
 			runner.RequestResult{Name: "Broken", Error: errors.New("connection refused")},
 		),
 	)
@@ -343,8 +373,10 @@ func TestJSON_Output_HTTPError(t *testing.T) {
 }
 
 func TestJSON_Output_FailedTestError(t *testing.T) {
-	result := makeRun("API",
-		makeIter(0,
+	result := makeRun(
+		"API",
+		makeIter(
+			0,
 			makeResult("POST /users", []sandbox.TestResult{
 				{Name: "Status 201", Passed: false, Error: "expected 201 but got 422"},
 			}, makeResponse(422, "422 Unprocessable Entity", nil, 20*time.Millisecond)),
@@ -460,7 +492,8 @@ func TestCLI_Color_Summary_Bold(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewCLI(&buf, false, false)
 	r.OnStart("My Collection")
-	r.OnDone(makeRun("My Collection", makeIter(0,
+	r.OnDone(makeRun("My Collection", makeIter(
+		0,
 		makeResult("R", []sandbox.TestResult{{Name: "T", Passed: true}},
 			makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
 	)))
@@ -474,7 +507,8 @@ func TestCLI_Color_Summary_RedOnFailure(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewCLI(&buf, false, false)
 	r.OnStart("Col")
-	r.OnDone(makeRun("Col", makeIter(0,
+	r.OnDone(makeRun("Col", makeIter(
+		0,
 		makeResult("R", []sandbox.TestResult{
 			{Name: "T", Passed: false, Error: "fail"},
 		}, makeResponse(500, "500 Internal Server Error", nil, 5*time.Millisecond)),
@@ -496,8 +530,10 @@ func TestCLI_OnDone_Summary(t *testing.T) {
 	var buf bytes.Buffer
 	r := NewCLI(&buf, true, false)
 	r.OnStart("Col")
-	r.OnDone(makeRun("Col",
-		makeIter(0,
+	r.OnDone(makeRun(
+		"Col",
+		makeIter(
+			0,
 			makeResult("R1", []sandbox.TestResult{{Name: "T1", Passed: true}},
 				makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
 			makeResult("R2", []sandbox.TestResult{{Name: "T2", Passed: false, Error: "fail"}},
