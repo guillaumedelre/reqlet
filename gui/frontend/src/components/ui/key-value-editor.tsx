@@ -12,6 +12,15 @@ interface Props {
   allowBulkEdit?: boolean
   defaultBulkMode?: boolean
   onBulkModeChange?: (v: boolean) => void
+  keyAutocomplete?: string[]
+}
+
+function filterSuggestions(list: string[], query: string): string[] {
+  if (!query.trim()) return []
+  const q = query.toLowerCase()
+  const startsWith = list.filter((h) => h.toLowerCase().startsWith(q))
+  const contains = list.filter((h) => !h.toLowerCase().startsWith(q) && h.toLowerCase().includes(q))
+  return [...startsWith, ...contains].slice(0, 10)
 }
 
 function itemsToText(items: KeyValueItem[]): string {
@@ -50,9 +59,20 @@ export function KeyValueEditor({
   allowBulkEdit = false,
   defaultBulkMode = false,
   onBulkModeChange,
+  keyAutocomplete,
 }: Props) {
   const [isBulkMode, setIsBulkMode] = useState(defaultBulkMode)
   const [bulkText, setBulkText] = useState(() => (defaultBulkMode ? itemsToText(items) : ""))
+  const [autocompleteItemId, setAutocompleteItemId] = useState<string | null>(null)
+  const [highlightedIdx, setHighlightedIdx] = useState(0)
+
+  const openSuggestions =
+    autocompleteItemId && keyAutocomplete
+      ? filterSuggestions(
+          keyAutocomplete,
+          items.find((i) => i.id === autocompleteItemId)?.key ?? "",
+        )
+      : []
 
   function toggleMode() {
     if (isBulkMode) {
@@ -202,18 +222,98 @@ export function KeyValueEditor({
                   style={{ cursor: "pointer", justifySelf: "center" }}
                 />
               )}
-              <input
-                value={item.key}
-                readOnly={readOnlyKeys}
-                onChange={
-                  readOnlyKeys ? undefined : (e) => updateRow(item.id, { key: e.target.value })
-                }
-                placeholder={keyPlaceholder}
-                style={{
-                  ...inputStyle(item.enabled),
-                  cursor: readOnlyKeys ? "default" : undefined,
-                }}
-              />
+              {keyAutocomplete && !readOnlyKeys ? (
+                <div style={{ position: "relative", minWidth: 0, display: "flex" }}>
+                  <input
+                    value={item.key}
+                    onChange={(e) => {
+                      updateRow(item.id, { key: e.target.value })
+                      setAutocompleteItemId(item.id)
+                      setHighlightedIdx(0)
+                    }}
+                    onFocus={() => {
+                      if (item.key) {
+                        setAutocompleteItemId(item.id)
+                        setHighlightedIdx(0)
+                      }
+                    }}
+                    onBlur={() => setTimeout(() => setAutocompleteItemId(null), 150)}
+                    onKeyDown={(e) => {
+                      if (e.key === "ArrowDown") {
+                        e.preventDefault()
+                        setAutocompleteItemId(item.id)
+                        setHighlightedIdx((i) => Math.min(i + 1, openSuggestions.length - 1))
+                      } else if (e.key === "ArrowUp") {
+                        e.preventDefault()
+                        setHighlightedIdx((i) => Math.max(i - 1, 0))
+                      } else if (
+                        e.key === "Enter" &&
+                        autocompleteItemId === item.id &&
+                        openSuggestions[highlightedIdx]
+                      ) {
+                        e.preventDefault()
+                        updateRow(item.id, { key: openSuggestions[highlightedIdx] })
+                        setAutocompleteItemId(null)
+                      } else if (e.key === "Escape") {
+                        setAutocompleteItemId(null)
+                      }
+                    }}
+                    placeholder={keyPlaceholder}
+                    style={inputStyle(item.enabled)}
+                  />
+                  {autocompleteItemId === item.id && openSuggestions.length > 0 && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: "calc(100% + 2px)",
+                        left: 0,
+                        right: 0,
+                        zIndex: 200,
+                        background: "var(--bg)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 4,
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        overflow: "hidden",
+                        maxHeight: 200,
+                        overflowY: "auto",
+                      }}
+                    >
+                      {openSuggestions.map((s, i) => (
+                        <div
+                          key={s}
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            updateRow(item.id, { key: s })
+                            setAutocompleteItemId(null)
+                          }}
+                          style={{
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            background: i === highlightedIdx ? "var(--accent)" : "transparent",
+                            color: i === highlightedIdx ? "#fff" : "var(--fg)",
+                          }}
+                        >
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <input
+                  value={item.key}
+                  readOnly={readOnlyKeys}
+                  onChange={
+                    readOnlyKeys ? undefined : (e) => updateRow(item.id, { key: e.target.value })
+                  }
+                  placeholder={keyPlaceholder}
+                  style={{
+                    ...inputStyle(item.enabled),
+                    cursor: readOnlyKeys ? "default" : undefined,
+                  }}
+                />
+              )}
               {allowFileType && (
                 <button
                   onClick={() => toggleType(item.id, item.type)}

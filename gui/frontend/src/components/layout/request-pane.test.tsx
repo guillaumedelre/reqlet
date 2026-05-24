@@ -35,6 +35,183 @@ function goToSubTab(name: string) {
   fireEvent.click(screen.getByRole("button", { name }))
 }
 
+describe("RequestPane — Code tab", () => {
+  it("Code tab is present in the sub-tab bar", () => {
+    render(<RequestPane />)
+    expect(screen.getByRole("button", { name: "Code" })).toBeInTheDocument()
+  })
+
+  it("navigating to Code tab shows language buttons and Copy", () => {
+    render(<RequestPane />)
+    goToSubTab("Code")
+    expect(screen.getByRole("button", { name: "cURL" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Python" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "JavaScript" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Go" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+  })
+
+  it("shows cURL snippet by default", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://api.example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Code")
+    expect(screen.getByText(/curl -X GET/)).toBeInTheDocument()
+  })
+
+  it("switching to Python updates the snippet", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://api.example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Code")
+    fireEvent.click(screen.getByRole("button", { name: "Python" }))
+    expect(screen.getByText(/import requests/)).toBeInTheDocument()
+  })
+
+  it("switching to Go updates the snippet", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://api.example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Code")
+    fireEvent.click(screen.getByRole("button", { name: "Go" }))
+    expect(screen.getByText(/package main/)).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — auto-generated headers", () => {
+  it("shows Content-Type for raw JSON body", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "JSON" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.getByText("Content-Type")).toBeInTheDocument()
+    expect(screen.getByText("application/json")).toBeInTheDocument()
+  })
+
+  it("shows application/xml for raw XML body", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "XML" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.getByText("application/xml")).toBeInTheDocument()
+  })
+
+  it("shows urlencoded Content-Type for urlencoded body", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "urlencoded" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.getByText("application/x-www-form-urlencoded")).toBeInTheDocument()
+  })
+
+  it("shows multipart/form-data Content-Type for form-data body", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "form-data" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.getByText(/multipart\/form-data/)).toBeInTheDocument()
+  })
+
+  it("shows no auto-generated section for bodyType none", () => {
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
+    expect(screen.queryByText("Content-Type")).not.toBeInTheDocument()
+  })
+
+  it("shows no auto-generated section for bodyType binary", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "binary" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Settings tab", () => {
+  it("shows all three setting controls", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByText("Follow Redirects")).toBeInTheDocument()
+    expect(screen.getByText("SSL Certificate Verification")).toBeInTheDocument()
+    expect(screen.getByText("Request Timeout")).toBeInTheDocument()
+  })
+
+  it("clicking Follow Redirects row toggles the store value", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, followRedirects: true }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Follow Redirects"))
+    expect(useTabsStore.getState().tabs[0].followRedirects).toBe(false)
+  })
+
+  it("clicking SSL Verification row toggles the store value", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, sslVerification: true }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("SSL Certificate Verification"))
+    expect(useTabsStore.getState().tabs[0].sslVerification).toBe(false)
+  })
+
+  it("timeout input filters non-numeric characters and updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    const input = screen.getByDisplayValue("0")
+    fireEvent.change(input, { target: { value: "3000" } })
+    expect(useTabsStore.getState().tabs[0].timeout).toBe(3000)
+  })
+
+  it("timeout input ignores non-numeric characters", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    const input = screen.getByDisplayValue("0")
+    fireEvent.change(input, { target: { value: "abc" } })
+    expect(useTabsStore.getState().tabs[0].timeout).toBe(0)
+  })
+})
+
 describe("RequestPane — bulk edit state preservation across sub-tabs", () => {
   it("Params starts in key-value mode", () => {
     render(<RequestPane />)

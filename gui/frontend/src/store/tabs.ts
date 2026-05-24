@@ -2,7 +2,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts" | "Settings"
+export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts" | "Settings" | "Code"
 export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
 export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
 

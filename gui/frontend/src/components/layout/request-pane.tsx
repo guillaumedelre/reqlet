@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
 import { generateCode, type CodeLanguage } from "@/lib/code-generators"
+import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
 import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
 import {
@@ -11,10 +12,43 @@ import {
   type KeyValueItem,
   type RawContentType,
   type RequestSubTab,
+  type Tab,
 } from "@/store/tabs"
 
+const RAW_CONTENT_TYPE_MAP: Record<RawContentType, string> = {
+  JSON: "application/json",
+  XML: "application/xml",
+  Text: "text/plain",
+  HTML: "text/html",
+  JavaScript: "application/javascript",
+}
+
+function computeAutoHeaders(
+  bodyType: BodyType,
+  bodyRawContentType: RawContentType,
+): Array<{ key: string; value: string }> {
+  if (bodyType === "raw") {
+    return [{ key: "Content-Type", value: RAW_CONTENT_TYPE_MAP[bodyRawContentType] }]
+  }
+  if (bodyType === "urlencoded") {
+    return [{ key: "Content-Type", value: "application/x-www-form-urlencoded" }]
+  }
+  if (bodyType === "form-data") {
+    return [{ key: "Content-Type", value: "multipart/form-data; boundary=<generated>" }]
+  }
+  return []
+}
+
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-const REQUEST_TABS: RequestSubTab[] = ["Params", "Auth", "Headers", "Body", "Scripts", "Settings"]
+const REQUEST_TABS: RequestSubTab[] = [
+  "Params",
+  "Auth",
+  "Headers",
+  "Body",
+  "Scripts",
+  "Settings",
+  "Code",
+]
 const CODE_LANGUAGES: CodeLanguage[] = ["cURL", "Python", "JavaScript", "Go"]
 const BODY_TYPES: BodyType[] = ["none", "form-data", "urlencoded", "raw", "binary", "GraphQL"]
 const RAW_CONTENT_TYPES: RawContentType[] = ["JSON", "XML", "Text", "HTML", "JavaScript"]
@@ -272,6 +306,113 @@ function BodyEditor({
   )
 }
 
+function CodePanel({ tab }: { tab: Tab }) {
+  const [codeLang, setCodeLang] = useState<CodeLanguage>("cURL")
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(generateCode(tab, codeLang))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+        }}
+      >
+        {CODE_LANGUAGES.map((lang) => (
+          <button
+            key={lang}
+            onClick={() => setCodeLang(lang)}
+            style={{
+              fontSize: 11,
+              border: "none",
+              background: codeLang === lang ? "var(--bg)" : "transparent",
+              color: codeLang === lang ? "var(--fg)" : "var(--fg-muted)",
+              cursor: "pointer",
+              padding: "4px 8px",
+              borderRadius: 3,
+            }}
+          >
+            {lang}
+          </button>
+        ))}
+        <button
+          onClick={handleCopy}
+          style={{
+            marginLeft: "auto",
+            fontSize: 11,
+            border: "1px solid var(--border)",
+            borderRadius: 3,
+            background: "transparent",
+            color: copied ? "var(--accent)" : "var(--fg-muted)",
+            cursor: "pointer",
+            padding: "2px 8px",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <pre
+        style={{
+          flex: 1,
+          margin: 0,
+          padding: "10px 12px",
+          fontSize: 11,
+          fontFamily: "monospace",
+          lineHeight: 1.6,
+          overflowY: "auto",
+          background: "var(--bg-panel)",
+          color: "var(--fg)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+        }}
+      >
+        {generateCode(tab, codeLang)}
+      </pre>
+    </div>
+  )
+}
+
+function SettingsCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <div
+      style={{
+        width: 15,
+        height: 15,
+        borderRadius: 3,
+        border: checked ? "none" : "1.5px solid var(--border)",
+        background: checked ? "var(--accent)" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        pointerEvents: "none",
+      }}
+    >
+      {checked && (
+        <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
+          <path
+            d="M1 3.5L3.5 6L9 1"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </div>
+  )
+}
+
 function SubTabContent({
   subTab,
   params,
@@ -337,6 +478,8 @@ function SubTabContent({
   onSslVerificationChange: (v: boolean) => void
   onTimeoutChange: (v: number) => void
 }) {
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+
   if (subTab === "Params") {
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
@@ -368,6 +511,7 @@ function SubTabContent({
     )
   }
   if (subTab === "Headers") {
+    const autoHeaders = computeAutoHeaders(bodyType, bodyRawContentType)
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
         <KeyValueEditor
@@ -377,7 +521,56 @@ function SubTabContent({
           allowBulkEdit
           defaultBulkMode={headersBulkMode}
           onBulkModeChange={onHeadersBulkModeChange}
+          keyAutocomplete={HTTP_HEADER_NAMES}
         />
+        {autoHeaders.length > 0 && (
+          <>
+            <div
+              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
+            >
+              Auto-generated
+            </div>
+            {autoHeaders.map((h) => (
+              <div
+                key={h.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "20px 1fr 1fr 20px",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 8px",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <span />
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontStyle: "italic",
+                    color: "var(--fg-muted)",
+                    padding: "2px 6px",
+                  }}
+                >
+                  {h.key}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontStyle: "italic",
+                    color: "var(--fg-muted)",
+                    padding: "2px 6px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {h.value}
+                </span>
+                <span />
+              </div>
+            ))}
+          </>
+        )}
       </div>
     )
   }
@@ -402,64 +595,81 @@ function SubTabContent({
     )
   }
   if (subTab === "Settings") {
-    const rowStyle: React.CSSProperties = {
+    const boolRow = (id: string): React.CSSProperties => ({
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
-      padding: "8px 12px",
+      padding: "10px 12px",
+      borderBottom: "1px solid var(--border)",
+      cursor: "pointer",
+      userSelect: "none",
+      background: hoveredRow === id ? "var(--bg-sidebar)" : "transparent",
+      transition: "background 80ms",
+    })
+    const plainRowStyle: React.CSSProperties = {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px 12px",
       borderBottom: "1px solid var(--border)",
     }
     const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
     const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
-        <div style={rowStyle}>
+        <div
+          style={boolRow("redirects")}
+          onClick={() => onFollowRedirectsChange(!followRedirects)}
+          onMouseEnter={() => setHoveredRow("redirects")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
           <div>
             <div style={labelStyle}>Follow Redirects</div>
             <div style={descStyle}>Automatically follow 3xx HTTP redirects</div>
           </div>
-          <input
-            type="checkbox"
-            checked={followRedirects}
-            onChange={(e) => onFollowRedirectsChange(e.target.checked)}
-            style={{ cursor: "pointer" }}
-          />
+          <SettingsCheckbox checked={followRedirects} />
         </div>
-        <div style={rowStyle}>
+        <div
+          style={boolRow("ssl")}
+          onClick={() => onSslVerificationChange(!sslVerification)}
+          onMouseEnter={() => setHoveredRow("ssl")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
           <div>
             <div style={labelStyle}>SSL Certificate Verification</div>
             <div style={descStyle}>Reject requests with invalid or self-signed certificates</div>
           </div>
-          <input
-            type="checkbox"
-            checked={sslVerification}
-            onChange={(e) => onSslVerificationChange(e.target.checked)}
-            style={{ cursor: "pointer" }}
-          />
+          <SettingsCheckbox checked={sslVerification} />
         </div>
-        <div style={rowStyle}>
+        <div style={plainRowStyle}>
           <div>
-            <div style={labelStyle}>Request Timeout (ms)</div>
-            <div style={descStyle}>Maximum wait time in milliseconds — 0 means no timeout</div>
+            <div style={labelStyle}>Request Timeout</div>
+            <div style={descStyle}>Maximum wait time — 0 means no timeout</div>
           </div>
-          <input
-            type="number"
-            min={0}
-            step={500}
-            value={timeout}
-            onChange={(e) => onTimeoutChange(Math.max(0, Number(e.target.value)))}
-            style={{
-              width: 80,
-              padding: "2px 6px",
-              fontSize: 11,
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              background: "var(--bg)",
-              color: "var(--fg)",
-              outline: "none",
-              textAlign: "right",
-            }}
-          />
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={String(timeout)}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\D/g, "")
+                onTimeoutChange(raw === "" ? 0 : parseInt(raw, 10))
+              }}
+              style={{
+                width: 72,
+                padding: "3px 8px",
+                fontSize: 11,
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                outline: "none",
+                textAlign: "right",
+              }}
+            />
+            <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
+          </div>
         </div>
       </div>
     )
@@ -483,9 +693,6 @@ export function RequestPane() {
     urlencoded: false,
   }
   const [bulkModeMap, setBulkModeMap] = useState<Record<string, BulkModes>>({})
-  const [showCode, setShowCode] = useState(false)
-  const [codeLang, setCodeLang] = useState<CodeLanguage>("cURL")
-  const [copied, setCopied] = useState(false)
   const tabId = tab?.id ?? ""
   const bulkModes: BulkModes = bulkModeMap[tabId] ?? defaultBulkModes
 
@@ -575,12 +782,6 @@ export function RequestPane() {
     updateTab(tab!.id, { timeout })
   }
 
-  function handleCopy() {
-    navigator.clipboard.writeText(generateCode(tab!, codeLang))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
   const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
   const hasBody =
@@ -632,23 +833,6 @@ export function RequestPane() {
           placeholder="Enter URL"
         />
         <button
-          onClick={() => setShowCode((v) => !v)}
-          title="Generate code"
-          style={{
-            padding: "3px 8px",
-            fontSize: 11,
-            fontWeight: 600,
-            borderRadius: 4,
-            border: "1px solid var(--border)",
-            background: showCode ? "var(--bg-sidebar)" : "var(--bg)",
-            color: showCode ? "var(--fg)" : "var(--fg-muted)",
-            cursor: "pointer",
-            fontFamily: "monospace",
-          }}
-        >
-          {"</>"}
-        </button>
-        <button
           style={{
             padding: "3px 14px",
             fontSize: 11,
@@ -693,69 +877,8 @@ export function RequestPane() {
         ))}
       </div>
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {showCode ? (
-          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 4,
-                padding: "4px 8px",
-                borderBottom: "1px solid var(--border)",
-                flexShrink: 0,
-              }}
-            >
-              {CODE_LANGUAGES.map((lang) => (
-                <button
-                  key={lang}
-                  onClick={() => setCodeLang(lang)}
-                  style={{
-                    fontSize: 11,
-                    border: "none",
-                    background: codeLang === lang ? "var(--bg)" : "transparent",
-                    color: codeLang === lang ? "var(--fg)" : "var(--fg-muted)",
-                    cursor: "pointer",
-                    padding: "4px 8px",
-                    borderRadius: 3,
-                  }}
-                >
-                  {lang}
-                </button>
-              ))}
-              <button
-                onClick={handleCopy}
-                style={{
-                  marginLeft: "auto",
-                  fontSize: 11,
-                  border: "1px solid var(--border)",
-                  borderRadius: 3,
-                  background: "transparent",
-                  color: copied ? "var(--accent)" : "var(--fg-muted)",
-                  cursor: "pointer",
-                  padding: "2px 8px",
-                }}
-              >
-                {copied ? "Copied!" : "Copy"}
-              </button>
-            </div>
-            <pre
-              style={{
-                flex: 1,
-                margin: 0,
-                padding: "10px 12px",
-                fontSize: 11,
-                fontFamily: "monospace",
-                lineHeight: 1.6,
-                overflowY: "auto",
-                background: "var(--bg-panel)",
-                color: "var(--fg)",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
-              }}
-            >
-              {generateCode(tab, codeLang)}
-            </pre>
-          </div>
+        {tab.activeSubTab === "Code" ? (
+          <CodePanel tab={tab} />
         ) : (
           <SubTabContent
             key={tab.id}

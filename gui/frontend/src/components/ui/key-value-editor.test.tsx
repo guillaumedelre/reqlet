@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import { useState } from "react"
 import { describe, expect, it, vi } from "vitest"
 
 import type { KeyValueItem } from "@/store/tabs"
@@ -82,5 +83,119 @@ describe("KeyValueEditor — bulk edit mode", () => {
   it("does not show the toggle button when allowBulkEdit is false", () => {
     render(<KeyValueEditor items={[]} onChange={() => {}} />)
     expect(screen.queryByRole("button", { name: "Bulk Edit" })).not.toBeInTheDocument()
+  })
+})
+
+// Stateful wrapper needed because autocomplete depends on items prop being updated
+function AutocompleteEditor({ completions }: { completions: string[] }) {
+  const [items, setItems] = useState<KeyValueItem[]>([
+    { id: "row-1", key: "", value: "", enabled: true },
+  ])
+  return <KeyValueEditor items={items} onChange={setItems} keyAutocomplete={completions} />
+}
+
+const COMPLETIONS = [
+  "Authorization",
+  "Accept",
+  "Accept-Encoding",
+  "Content-Type",
+  "Content-Length",
+  "X-Auth-Token",
+]
+
+describe("KeyValueEditor — autocomplete", () => {
+  it("shows no dropdown without keyAutocomplete prop", () => {
+    render(
+      <KeyValueEditor
+        items={[{ id: "r", key: "", value: "", enabled: true }]}
+        onChange={() => {}}
+      />,
+    )
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    expect(screen.queryByText("Authorization")).not.toBeInTheDocument()
+  })
+
+  it("shows no suggestions for an empty input", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.focus(input)
+    expect(screen.queryByText("Authorization")).not.toBeInTheDocument()
+  })
+
+  it("shows filtered suggestions when typing", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    expect(screen.getByText("Authorization")).toBeInTheDocument()
+    expect(screen.getByText("X-Auth-Token")).toBeInTheDocument()
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument()
+  })
+
+  it("prioritizes starts-with matches over contains matches", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    const items = screen.getAllByRole("generic").filter((el) => {
+      const text = el.textContent
+      return text === "Authorization" || text === "X-Auth-Token"
+    })
+    // Authorization (starts-with) must appear before X-Auth-Token (contains)
+    expect(items[0].textContent).toBe("Authorization")
+    expect(items[1].textContent).toBe("X-Auth-Token")
+  })
+
+  it("limits suggestions to 10", () => {
+    const long = Array.from({ length: 15 }, (_, i) => `Accept-Custom-${i}`)
+    render(<AutocompleteEditor completions={long} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "acc" } })
+    const suggestions = screen.getAllByText(/Accept-Custom-/)
+    expect(suggestions).toHaveLength(10)
+  })
+
+  it("Enter selects the first suggestion", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect((input as HTMLInputElement).value).toBe("Authorization")
+  })
+
+  it("ArrowDown then Enter selects the second suggestion", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "acc" } })
+    // suggestions: ["Accept", "Accept-Encoding"]
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect((input as HTMLInputElement).value).toBe("Accept-Encoding")
+  })
+
+  it("Escape closes the dropdown without changing the key", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    expect(screen.getByText("Authorization")).toBeInTheDocument()
+    fireEvent.keyDown(input, { key: "Escape" })
+    expect(screen.queryByText("Authorization")).not.toBeInTheDocument()
+    expect((input as HTMLInputElement).value).toBe("auth")
+  })
+
+  it("dropdown closes after a suggestion is selected", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect(screen.queryByText("X-Auth-Token")).not.toBeInTheDocument()
+  })
+
+  it("shows no suggestions when input matches nothing in the list", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "zzznomatch" } })
+    expect(screen.queryByRole("listitem")).not.toBeInTheDocument()
+    // None of our completions should appear
+    COMPLETIONS.forEach((c) => expect(screen.queryByText(c)).not.toBeInTheDocument())
   })
 })
