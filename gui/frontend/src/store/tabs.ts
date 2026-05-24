@@ -4,10 +4,19 @@ import { persist } from "zustand/middleware"
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
 export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts"
 
+export interface KeyValueItem {
+  id: string
+  key: string
+  value: string
+  enabled: boolean
+}
+
 export interface Tab {
   id: string
   method: HttpMethod
   url: string
+  params: KeyValueItem[]
+  headers: KeyValueItem[]
   dirty: boolean
   activeSubTab: RequestSubTab
 }
@@ -17,6 +26,8 @@ function newTab(patch?: Partial<Tab>): Tab {
     id: crypto.randomUUID(),
     method: "GET",
     url: "",
+    params: [],
+    headers: [],
     dirty: false,
     activeSubTab: "Params",
     ...patch,
@@ -29,13 +40,12 @@ interface TabsState {
   closedTabHistory: Tab[]
   openTab: () => void
   closeTab: (id: string) => void
+  closeOthers: (id: string) => void
+  closeToRight: (id: string) => void
   activateTab: (id: string) => void
   duplicateTab: (id: string) => void
   reopenLastTab: () => void
-  updateTab: (
-    id: string,
-    patch: Partial<Pick<Tab, "method" | "url" | "dirty" | "activeSubTab">>,
-  ) => void
+  updateTab: (id: string, patch: Partial<Omit<Tab, "id">>) => void
 }
 
 const initial = newTab()
@@ -68,6 +78,28 @@ export const useTabsStore = create<TabsState>()(
           if (activeTabId === id) {
             activeTabId = (remaining[idx] ?? remaining[idx - 1]).id
           }
+          return { tabs: remaining, activeTabId, closedTabHistory: history }
+        }),
+
+      closeOthers: (id) =>
+        set((s) => {
+          const tab = s.tabs.find((t) => t.id === id)
+          if (!tab) return s
+          const closing = s.tabs.filter((t) => t.id !== id)
+          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
+          return { tabs: [tab], activeTabId: id, closedTabHistory: history }
+        }),
+
+      closeToRight: (id) =>
+        set((s) => {
+          const idx = s.tabs.findIndex((t) => t.id === id)
+          if (idx === -1 || idx === s.tabs.length - 1) return s
+          const closing = s.tabs.slice(idx + 1)
+          const remaining = s.tabs.slice(0, idx + 1)
+          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
+          const activeTabId = remaining.find((t) => t.id === s.activeTabId)
+            ? s.activeTabId
+            : remaining[remaining.length - 1].id
           return { tabs: remaining, activeTabId, closedTabHistory: history }
         }),
 

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
 
+import { KeyValueEditor } from "@/components/ui/key-value-editor"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
-import { useTabsStore, type HttpMethod, type RequestSubTab } from "@/store/tabs"
+import { assembleUrl, mergeParams, parseUrl } from "@/lib/url"
+import { useTabsStore, type HttpMethod, type KeyValueItem, type RequestSubTab } from "@/store/tabs"
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
 const REQUEST_TABS: RequestSubTab[] = ["Params", "Auth", "Headers", "Body", "Scripts"]
@@ -90,6 +92,32 @@ function MethodSelect({
   )
 }
 
+function SubTabContent({
+  subTab,
+  params,
+  headers,
+  onParamsChange,
+  onHeadersChange,
+}: {
+  subTab: RequestSubTab
+  params: KeyValueItem[]
+  headers: KeyValueItem[]
+  onParamsChange: (items: KeyValueItem[]) => void
+  onHeadersChange: (items: KeyValueItem[]) => void
+}) {
+  if (subTab === "Params") {
+    return <KeyValueEditor items={params} onChange={onParamsChange} />
+  }
+  if (subTab === "Headers") {
+    return <KeyValueEditor items={headers} onChange={onHeadersChange} />
+  }
+  return (
+    <div style={{ padding: 12 }}>
+      <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>{subTab} — coming soon.</p>
+    </div>
+  )
+}
+
 export function RequestPane() {
   const { tabs, activeTabId, updateTab } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
@@ -110,12 +138,33 @@ export function RequestPane() {
     )
   }
 
+  const displayUrl = assembleUrl(tab.url, tab.params)
+
   function setMethod(method: HttpMethod) {
     updateTab(tab!.id, { method, dirty: !!tab!.url })
   }
 
-  function setUrl(url: string) {
-    updateTab(tab!.id, { url, dirty: !!url })
+  function handleUrlChange(raw: string) {
+    const { base, params: parsed } = parseUrl(raw)
+    const params = mergeParams(tab!.params, parsed)
+    updateTab(tab!.id, { url: base, params, dirty: !!raw })
+  }
+
+  function handleParamsChange(params: KeyValueItem[]) {
+    updateTab(tab!.id, { params, dirty: !!tab!.url || params.some((p) => !!p.key) })
+  }
+
+  function handleHeadersChange(headers: KeyValueItem[]) {
+    updateTab(tab!.id, { headers, dirty: !!tab!.url || headers.some((h) => !!h.key) })
+  }
+
+  const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
+  const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
+
+  function subTabLabel(t: RequestSubTab): string {
+    if (t === "Params" && enabledParamsCount > 0) return `Params (${enabledParamsCount})`
+    if (t === "Headers" && enabledHeadersCount > 0) return `Headers (${enabledHeadersCount})`
+    return t
   }
 
   return (
@@ -139,8 +188,8 @@ export function RequestPane() {
       >
         <MethodSelect value={tab.method} onChange={setMethod} />
         <input
-          value={tab.url}
-          onChange={(e) => setUrl(e.target.value)}
+          value={displayUrl}
+          onChange={(e) => handleUrlChange(e.target.value)}
           style={{
             flex: 1,
             padding: "3px 8px",
@@ -190,14 +239,21 @@ export function RequestPane() {
               borderBottom:
                 tab.activeSubTab === t ? "2px solid var(--accent)" : "2px solid transparent",
               marginBottom: -1,
+              whiteSpace: "nowrap",
             }}
           >
-            {t}
+            {subTabLabel(t)}
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, overflowY: "auto", padding: 12 }}>
-        <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>{tab.activeSubTab} — coming soon.</p>
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        <SubTabContent
+          subTab={tab.activeSubTab}
+          params={tab.params}
+          headers={tab.headers}
+          onParamsChange={handleParamsChange}
+          onHeadersChange={handleHeadersChange}
+        />
       </div>
     </div>
   )

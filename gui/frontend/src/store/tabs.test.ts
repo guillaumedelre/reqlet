@@ -14,10 +14,12 @@ describe("openTab", () => {
     expect(activeTabId).toBe(tabs[1].id)
   })
 
-  it("new tab has default method GET and empty url", () => {
+  it("new tab has default method GET, empty url, empty params and headers", () => {
     const { tabs } = useTabsStore.getState()
     expect(tabs[0].method).toBe("GET")
     expect(tabs[0].url).toBe("")
+    expect(tabs[0].params).toEqual([])
+    expect(tabs[0].headers).toEqual([])
     expect(tabs[0].dirty).toBe(false)
   })
 })
@@ -26,7 +28,6 @@ describe("closeTab", () => {
   it("removes the tab and keeps the active one when active is not closed", () => {
     useTabsStore.getState().openTab()
     const { tabs } = useTabsStore.getState()
-    // activeTabId is tabs[1] (last opened)
     useTabsStore.getState().closeTab(tabs[0].id)
     const state = useTabsStore.getState()
     expect(state.tabs).toHaveLength(1)
@@ -36,7 +37,6 @@ describe("closeTab", () => {
   it("activates adjacent tab when closing the active one", () => {
     useTabsStore.getState().openTab()
     const { tabs } = useTabsStore.getState()
-    // active is tabs[1], close it → should activate tabs[0]
     useTabsStore.getState().closeTab(tabs[1].id)
     const state = useTabsStore.getState()
     expect(state.tabs).toHaveLength(1)
@@ -55,14 +55,62 @@ describe("closeTab", () => {
     const { tabs } = useTabsStore.getState()
     const id = tabs[0].id
     useTabsStore.getState().closeTab(id)
-    const state = useTabsStore.getState()
-    expect(state.closedTabHistory[0].id).toBe(id)
+    expect(useTabsStore.getState().closedTabHistory[0].id).toBe(id)
   })
 
   it("ignores unknown id", () => {
     const before = useTabsStore.getState().tabs.length
     useTabsStore.getState().closeTab("nonexistent")
     expect(useTabsStore.getState().tabs).toHaveLength(before)
+  })
+})
+
+describe("closeOthers", () => {
+  it("keeps only the target tab and pushes the rest to history", () => {
+    useTabsStore.getState().openTab()
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().closeOthers(tabs[1].id)
+    const state = useTabsStore.getState()
+    expect(state.tabs).toHaveLength(1)
+    expect(state.tabs[0].id).toBe(tabs[1].id)
+    expect(state.activeTabId).toBe(tabs[1].id)
+    expect(state.closedTabHistory).toHaveLength(2)
+  })
+
+  it("ignores unknown id", () => {
+    const before = useTabsStore.getState().tabs.length
+    useTabsStore.getState().closeOthers("nonexistent")
+    expect(useTabsStore.getState().tabs).toHaveLength(before)
+  })
+})
+
+describe("closeToRight", () => {
+  it("closes all tabs to the right of the target", () => {
+    useTabsStore.getState().openTab()
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().closeToRight(tabs[0].id)
+    const state = useTabsStore.getState()
+    expect(state.tabs).toHaveLength(1)
+    expect(state.tabs[0].id).toBe(tabs[0].id)
+    expect(state.closedTabHistory).toHaveLength(2)
+  })
+
+  it("does nothing when target is the last tab", () => {
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().closeToRight(tabs[1].id)
+    expect(useTabsStore.getState().tabs).toHaveLength(2)
+  })
+
+  it("updates activeTabId when active tab is closed", () => {
+    useTabsStore.getState().openTab()
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    // active is tabs[2]; close to the right of tabs[0] → tabs[1] and tabs[2] are closed
+    useTabsStore.getState().closeToRight(tabs[0].id)
+    expect(useTabsStore.getState().activeTabId).toBe(tabs[0].id)
   })
 })
 
@@ -109,16 +157,24 @@ describe("reopenLastTab", () => {
 })
 
 describe("updateTab", () => {
-  it("updates method and url on the correct tab", () => {
+  it("updates method, url, params and headers on the correct tab", () => {
     useTabsStore.getState().openTab()
     const { tabs } = useTabsStore.getState()
+    const param = { id: "p1", key: "page", value: "1", enabled: true }
+    const header = { id: "h1", key: "Authorization", value: "Bearer token", enabled: true }
     useTabsStore
       .getState()
-      .updateTab(tabs[0].id, { method: "POST", url: "https://api.example.com" })
+      .updateTab(tabs[0].id, {
+        method: "POST",
+        url: "https://api.example.com",
+        params: [param],
+        headers: [header],
+      })
     const state = useTabsStore.getState()
     expect(state.tabs[0].method).toBe("POST")
     expect(state.tabs[0].url).toBe("https://api.example.com")
-    // other tab untouched
+    expect(state.tabs[0].params).toEqual([param])
+    expect(state.tabs[0].headers).toEqual([header])
     expect(state.tabs[1].method).toBe("GET")
   })
 
