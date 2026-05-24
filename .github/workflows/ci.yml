@@ -31,6 +31,16 @@ jobs:
             golangci/golangci-lint:latest \
             golangci-lint run ./...
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: node-runner/package-lock.json
+
+      - name: Install node-runner dependencies
+        run: npm ci
+        working-directory: node-runner
+
       - name: Test
         run: |
           go install gotest.tools/gotestsum@latest
