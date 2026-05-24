@@ -51,6 +51,24 @@ func (r *Resolver) Get(key string) (string, bool) {
 // maxResolveDepth caps recursive variable expansion to break circular references.
 const maxResolveDepth = 10
 
+// Snapshot returns a shallow copy of all variables in the given scope.
+func (r *Resolver) Snapshot(scope Scope) map[string]string {
+	out := make(map[string]string, len(r.scopes[scope]))
+	for k, v := range r.scopes[scope] {
+		out[k] = v
+	}
+	return out
+}
+
+// ReplaceScope replaces the entire content of a scope with values.
+func (r *Resolver) ReplaceScope(scope Scope, values map[string]string) {
+	m := make(map[string]string, len(values))
+	for k, v := range values {
+		m[k] = v
+	}
+	r.scopes[scope] = m
+}
+
 // Resolve replaces every {{key}} in s with its value, recursively expanding
 // variable values that themselves contain {{...}} references. Unknown variables
 // are left unchanged. Dynamic variables ({{$name}}) are evaluated on each call.
