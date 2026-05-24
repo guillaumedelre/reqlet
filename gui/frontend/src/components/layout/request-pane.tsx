@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
-import { assembleUrl, mergeParams, parseUrl } from "@/lib/url"
+import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
 import { useTabsStore, type HttpMethod, type KeyValueItem, type RequestSubTab } from "@/store/tabs"
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
@@ -92,21 +92,54 @@ function MethodSelect({
   )
 }
 
+const sectionLabelStyle: React.CSSProperties = {
+  padding: "5px 8px 3px",
+  fontSize: 10,
+  fontWeight: 600,
+  color: "var(--fg-muted)",
+  letterSpacing: "0.06em",
+  textTransform: "uppercase",
+}
+
 function SubTabContent({
   subTab,
   params,
   headers,
+  pathVars,
   onParamsChange,
   onHeadersChange,
+  onPathVarsChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
   headers: KeyValueItem[]
+  pathVars: KeyValueItem[]
   onParamsChange: (items: KeyValueItem[]) => void
   onHeadersChange: (items: KeyValueItem[]) => void
+  onPathVarsChange: (items: KeyValueItem[]) => void
 }) {
   if (subTab === "Params") {
-    return <KeyValueEditor items={params} onChange={onParamsChange} />
+    return (
+      <div>
+        {pathVars.length > 0 && (
+          <>
+            <div style={sectionLabelStyle}>Path Variables</div>
+            <KeyValueEditor
+              items={pathVars}
+              onChange={onPathVarsChange}
+              valuePlaceholder="Value"
+              readOnlyKeys
+            />
+            <div
+              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
+            >
+              Query Params
+            </div>
+          </>
+        )}
+        <KeyValueEditor items={params} onChange={onParamsChange} />
+      </div>
+    )
   }
   if (subTab === "Headers") {
     return <KeyValueEditor items={headers} onChange={onHeadersChange} />
@@ -147,7 +180,8 @@ export function RequestPane() {
   function handleUrlChange(raw: string) {
     const { base, params: parsed } = parseUrl(raw)
     const params = mergeParams(tab!.params, parsed)
-    updateTab(tab!.id, { url: base, params, dirty: !!raw })
+    const pathVars = mergePathVars(tab!.pathVars, extractPathVarNames(base))
+    updateTab(tab!.id, { url: base, params, pathVars, dirty: !!raw })
   }
 
   function handleParamsChange(params: KeyValueItem[]) {
@@ -156,6 +190,10 @@ export function RequestPane() {
 
   function handleHeadersChange(headers: KeyValueItem[]) {
     updateTab(tab!.id, { headers, dirty: !!tab!.url || headers.some((h) => !!h.key) })
+  }
+
+  function handlePathVarsChange(pathVars: KeyValueItem[]) {
+    updateTab(tab!.id, { pathVars })
   }
 
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
@@ -251,8 +289,10 @@ export function RequestPane() {
           subTab={tab.activeSubTab}
           params={tab.params}
           headers={tab.headers}
+          pathVars={tab.pathVars}
           onParamsChange={handleParamsChange}
           onHeadersChange={handleHeadersChange}
+          onPathVarsChange={handlePathVarsChange}
         />
       </div>
     </div>

@@ -17,6 +17,7 @@ export interface Tab {
   url: string
   params: KeyValueItem[]
   headers: KeyValueItem[]
+  pathVars: KeyValueItem[]
   dirty: boolean
   activeSubTab: RequestSubTab
 }
@@ -28,6 +29,7 @@ function newTab(patch?: Partial<Tab>): Tab {
     url: "",
     params: [],
     headers: [],
+    pathVars: [],
     dirty: false,
     activeSubTab: "Params",
     ...patch,
@@ -45,6 +47,7 @@ interface TabsState {
   activateTab: (id: string) => void
   duplicateTab: (id: string) => void
   reopenLastTab: () => void
+  reorderTabs: (fromId: string, toId: string) => void
   updateTab: (id: string, patch: Partial<Omit<Tab, "id">>) => void
 }
 
@@ -122,6 +125,17 @@ export const useTabsStore = create<TabsState>()(
           return { tabs: [...s.tabs, tab], activeTabId: tab.id, closedTabHistory: rest }
         }),
 
+      reorderTabs: (fromId, toId) =>
+        set((s) => {
+          const fromIdx = s.tabs.findIndex((t) => t.id === fromId)
+          const toIdx = s.tabs.findIndex((t) => t.id === toId)
+          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return s
+          const tabs = [...s.tabs]
+          const [moved] = tabs.splice(fromIdx, 1)
+          tabs.splice(toIdx, 0, moved)
+          return { tabs }
+        }),
+
       updateTab: (id, patch) =>
         set((s) => ({
           tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
@@ -129,7 +143,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 2,
+      version: 3,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -137,6 +151,7 @@ export const useTabsStore = create<TabsState>()(
           tabs: (s.tabs ?? []).map((t: unknown) => ({
             params: [],
             headers: [],
+            pathVars: [],
             ...(t as object),
           })),
         }

@@ -36,6 +36,32 @@ export function parseUrl(raw: string): {
   return { base, params }
 }
 
+export function extractPathVarNames(url: string): string[] {
+  const path = url.split("?")[0]
+  const seen = new Set<string>()
+  const names: string[] = []
+  for (const [, name] of path.matchAll(/:([a-zA-Z_][a-zA-Z0-9_]*)/g)) {
+    if (!seen.has(name)) {
+      seen.add(name)
+      names.push(name)
+    }
+  }
+  for (const [, name] of path.matchAll(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g)) {
+    if (!seen.has(name)) {
+      seen.add(name)
+      names.push(name)
+    }
+  }
+  return names
+}
+
+export function mergePathVars(existing: KeyValueItem[], names: string[]): KeyValueItem[] {
+  const byKey = new Map(existing.map((v) => [v.key, v]))
+  return names.map(
+    (name) => byKey.get(name) ?? { id: crypto.randomUUID(), key: name, value: "", enabled: true },
+  )
+}
+
 // Merge URL-parsed params into existing list.
 // Enabled items are reconciled with the URL; disabled items are preserved as-is.
 export function mergeParams(
