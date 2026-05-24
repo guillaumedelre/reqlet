@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -568,6 +570,96 @@ func TestMulti_Empty(t *testing.T) {
 	m.OnStart("X")
 	m.OnRequest(0, runner.RequestResult{Name: "R"})
 	m.OnDone(makeRun("X", makeIter(0)))
+}
+
+func TestMulti_OnRequest_FansOut(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	m := NewMulti(NewCLI(&buf1, true, false), NewCLI(&buf2, true, false))
+	m.OnRequest(0, makeResult("GET /ping", []sandbox.TestResult{{Name: "OK", Passed: true}},
+		makeResponse(200, "200 OK", nil, 5*time.Millisecond)))
+	assert.Contains(t, buf1.String(), "GET /ping")
+	assert.Contains(t, buf2.String(), "GET /ping")
+}
+
+func TestMulti_OnDone_FansOut(t *testing.T) {
+	var buf1, buf2 bytes.Buffer
+	m := NewMulti(NewCLI(&buf1, true, false), NewCLI(&buf2, true, false))
+	m.OnStart("Suite")
+	result := makeRun("Suite", makeIter(
+		0,
+		makeResult("R", []sandbox.TestResult{{Name: "T", Passed: true}},
+			makeResponse(200, "200 OK", nil, 5*time.Millisecond)),
+	))
+	m.OnDone(result)
+	assert.Contains(t, buf1.String(), "Suite")
+	assert.Contains(t, buf2.String(), "Suite")
+}
+
+// ── JSON reporter — file and stdout paths ─────────────────────────────────────
+
+func TestJSON_OnRequest_IsNoOp(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewJSONWriter(&buf)
+	r.OnStart("Col")
+	r.OnRequest(0, makeResult("GET /ping", nil, makeResponse(200, "200 OK", nil, 5*time.Millisecond)))
+	r.OnDone(makeRun("Col", makeIter(0)))
+	var report jsonReport
+	require.NoError(t, json.Unmarshal(buf.Bytes(), &report))
+	assert.Equal(t, "Col", report.Collection)
+}
+
+func TestJSON_Writer_File(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.json")
+	r := NewJSON(path)
+	r.OnStart("FileCol")
+	r.OnDone(makeRun("FileCol", makeIter(
+		0,
+		makeResult("GET /ok", []sandbox.TestResult{{Name: "Status 200", Passed: true}},
+			makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
+	)))
+	data, err := os.ReadFile(path) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	var report jsonReport
+	require.NoError(t, json.Unmarshal(data, &report))
+	assert.Equal(t, "FileCol", report.Collection)
+}
+
+func TestJSON_Writer_Stdout(t *testing.T) {
+	r := NewJSON("-")
+	r.OnStart("StdoutCol")
+	r.OnDone(makeRun("StdoutCol", makeIter(0)))
+}
+
+// ── JUnit reporter — file and stdout paths ────────────────────────────────────
+
+func TestJUnit_OnRequest_IsNoOp(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewJUnitWriter(&buf)
+	r.OnStart("Col")
+	r.OnRequest(0, makeResult("GET /ping", nil, makeResponse(200, "200 OK", nil, 5*time.Millisecond)))
+	r.OnDone(makeRun("Col", makeIter(0)))
+	assert.True(t, strings.HasPrefix(buf.String(), "<?xml version="))
+}
+
+func TestJUnit_Writer_File(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "report.xml")
+	r := NewJUnit(path)
+	r.OnStart("FileCol")
+	r.OnDone(makeRun("FileCol", makeIter(
+		0,
+		makeResult("GET /ok", []sandbox.TestResult{{Name: "Status 200", Passed: true}},
+			makeResponse(200, "200 OK", nil, 10*time.Millisecond)),
+	)))
+	data, err := os.ReadFile(path) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `<testsuites`)
+	assert.Contains(t, string(data), `name="FileCol"`)
+}
+
+func TestJUnit_Writer_Stdout(t *testing.T) {
+	r := NewJUnit("-")
+	r.OnStart("StdoutCol")
+	r.OnDone(makeRun("StdoutCol", makeIter(0)))
 }
 
 // ── responseSummary ───────────────────────────────────────────────────────────

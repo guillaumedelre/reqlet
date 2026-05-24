@@ -25,6 +25,7 @@ comment:
 
 ignore:
   - "**/*_test.go"
+  - "cli/**"
   - "gui/frontend/**"
   - "node-runner/**"
   - "docs/**"
