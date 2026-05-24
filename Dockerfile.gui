@@ -17,7 +17,7 @@ RUN go mod download
 
 # Build frontend before embedding
 COPY gui/frontend/package*.json ./gui/frontend/
-RUN cd gui/frontend && npm ci
+RUN cd gui/frontend && npm ci && npm rebuild
 
 COPY gui/frontend ./gui/frontend
 RUN cd gui/frontend && npm run build

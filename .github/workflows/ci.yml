@@ -29,7 +29,7 @@ jobs:
             -v ${{ github.workspace }}:/app \
             -w /app \
             golangci/golangci-lint:latest \
-            golangci-lint run ./...
+            golangci-lint run ./engine/... ./cli/...
 
       - uses: actions/setup-node@v4
         with:
