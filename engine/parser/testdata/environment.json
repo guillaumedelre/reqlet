@@ -1,0 +1,11 @@
+{
+  "id": "bbbbbbbb-0000-0000-0000-000000000001",
+  "name": "Test - LOCAL",
+  "values": [
+    { "key": "base_url",    "value": "https://api.example.com", "enabled": true },
+    { "key": "admin_user",  "value": "admin",                   "enabled": true },
+    { "key": "admin_pass",  "value": "secret",                  "enabled": true },
+    { "key": "token",       "value": "",                        "enabled": true },
+    { "key": "disabled_var","value": "unused",                  "enabled": false }
+  ]
+}

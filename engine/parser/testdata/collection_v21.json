@@ -1,0 +1,176 @@
+{
+  "info": {
+    "_postman_id": "aaaaaaaa-0000-0000-0000-000000000001",
+    "name": "Reqlet Test Collection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": ["pm.variables.set('ts', Date.now());"],
+        "type": "text/javascript"
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "exec": [""],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.example.com",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Articles",
+      "item": [
+        {
+          "name": "Get article by id",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "exec": [""], "type": "text/javascript" }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status is 200\", function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json", "type": "text" },
+              { "key": "X-Api-Version", "value": "2", "type": "text" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/articles/article-slug-001",
+              "host": ["{{base_url}}"],
+              "path": ["articles", "article-slug-001"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Search articles",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/articles?lang=FR&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["articles"],
+              "query": [
+                { "key": "lang", "value": "FR" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "auth": {
+        "type": "basic",
+        "basic": [
+          { "key": "username", "value": "{{admin_user}}", "type": "string" },
+          { "key": "password", "value": "{{admin_pass}}", "type": "string" }
+        ]
+      },
+      "item": [
+        {
+          "name": "Create article (JSON)",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json", "type": "text" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Hello World\", \"lang\": \"FR\"}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{base_url}}/articles",
+              "host": ["{{base_url}}"],
+              "path": ["articles"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Upload attachment (form-data)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "brand", "value": "EXAMPLE", "type": "text" },
+                { "key": "lang",  "value": "FR",      "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/attachments",
+              "host": ["{{base_url}}"],
+              "path": ["attachments"]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Login (urlencoded)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "admin" },
+                { "key": "password", "value": "secret" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disabled header",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-Debug", "value": "1", "type": "text", "disabled": true }
+        ],
+        "url": {
+          "raw": "{{base_url}}/ping",
+          "host": ["{{base_url}}"],
+          "path": ["ping"]
+        }
+      },
+      "response": []
+    }
+  ]
+}
