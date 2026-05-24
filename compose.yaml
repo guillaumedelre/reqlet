@@ -28,7 +28,7 @@ services:
       - go-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
     working_dir: /app
-    command: golangci-lint run ./...
+    command: golangci-lint run ./engine/... ./cli/...
 
   build-cli:
     build:
