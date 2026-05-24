@@ -17,6 +17,7 @@ services:
       - .:/app
       - go-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
+      - node-runner-modules:/app/node-runner/node_modules
     working_dir: /app
     command: gotestsum ./...
 

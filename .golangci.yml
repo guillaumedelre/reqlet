@@ -9,13 +9,18 @@ linters:
     - unused
     - misspell
     - gosec
+  exclusions:
+    paths:
+      - "node-runner/node_modules/.*"
 
 formatters:
   enable:
     - gofumpt
     - goimports
-
   settings:
     goimports:
       local-prefixes:
         - github.com/guillaumedelre/reqlet
+  exclusions:
+    paths:
+      - "node-runner/node_modules/.*"
