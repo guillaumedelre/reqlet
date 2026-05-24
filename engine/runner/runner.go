@@ -18,12 +18,14 @@ const maxRequestsPerIteration = 1000
 
 // Options configures a collection run.
 type Options struct {
-	Iterations   int                 // number of times to run the collection; defaults to 1
-	DelayMS      int                 // milliseconds to wait between requests
-	Folder       string              // if non-empty, only run requests in this folder
-	Bail         bool                // stop on the first failed test
-	Data         []map[string]string // per-iteration variable data (CSV/JSON rows)
-	SaveResponse bool                // attach the HTTP response to each RequestResult
+	Iterations   int                                     // number of times to run the collection; defaults to 1
+	DelayMS      int                                     // milliseconds to wait between requests
+	Folder       string                                  // if non-empty, only run requests in this folder
+	Bail         bool                                    // stop on the first failed test
+	Data         []map[string]string                     // per-iteration variable data (CSV/JSON rows)
+	SaveResponse bool                                    // attach the HTTP response to each RequestResult
+	GlobalVars   map[string]string                       // pre-set global variables (applied before collection vars)
+	OnRequest    func(iterIdx int, result RequestResult) // optional streaming callback
 }
 
 // Runner orchestrates the sequential execution of a Postman collection.
@@ -95,6 +97,9 @@ func (r *Runner) Run(ctx context.Context, col *parser.Collection, env *parser.En
 
 	for i := range opts.Iterations {
 		vars := buildVars(col, env)
+		for k, v := range opts.GlobalVars {
+			vars.Set(variables.ScopeGlobal, k, v)
+		}
 		if i < len(opts.Data) {
 			for k, v := range opts.Data[i] {
 				vars.Set(variables.ScopeData, k, v)
@@ -139,6 +144,9 @@ func (r *Runner) runIteration(ctx context.Context, col *parser.Collection, flat 
 			return result, err
 		}
 		result.Requests = append(result.Requests, reqResult)
+		if opts.OnRequest != nil {
+			opts.OnRequest(iterIdx, reqResult)
+		}
 
 		if opts.Bail && !reqResult.Passed() {
 			return result, nil
