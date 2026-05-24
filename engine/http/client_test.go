@@ -1,0 +1,506 @@
+package http
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"mime"
+	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/guillaumedelre/reqlet/engine/parser"
+	"github.com/guillaumedelre/reqlet/engine/variables"
+)
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+func newClient(t *testing.T) *Client {
+	t.Helper()
+	c, err := NewClient(DefaultOptions())
+	require.NoError(t, err)
+	return c
+}
+
+func newVars(kvs ...string) *variables.Resolver {
+	r := variables.NewResolver()
+	for i := 0; i+1 < len(kvs); i += 2 {
+		r.Set(variables.ScopeEnvironment, kvs[i], kvs[i+1])
+	}
+	return r
+}
+
+func parseRequest(method, rawURL string) *parser.Request {
+	return &parser.Request{Method: method, URL: parser.URL{Raw: rawURL}}
+}
+
+// ── NewClient ─────────────────────────────────────────────────────────────────
+
+func TestNewClient_Default(t *testing.T) {
+	c, err := NewClient(DefaultOptions())
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+func TestNewClient_InvalidProxy(t *testing.T) {
+	_, err := NewClient(Options{ProxyURL: "://bad-url"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid proxy URL")
+}
+
+// ── GET ───────────────────────────────────────────────────────────────────────
+
+func TestExecute_GET(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodGet, r.Method)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/ping"), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.JSONEq(t, `{"ok":true}`, string(resp.Body))
+	assert.Positive(t, resp.Duration)
+}
+
+func TestExecute_VariablesResolvedInURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/articles/42", r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := parseRequest("GET", "{{base_url}}/articles/{{id}}")
+	vars := newVars("base_url", srv.URL, "id", "42")
+	resp, err := c.Execute(context.Background(), req, vars)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_Headers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json", r.Header.Get("Accept"))
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "GET",
+		URL:    parser.URL{Raw: srv.URL},
+		Header: []parser.Header{
+			{Key: "Accept", Value: "application/json"},
+			{Key: "Authorization", Value: "Bearer {{token}}"},
+		},
+	}
+	vars := newVars("token", "test-token")
+	resp, err := c.Execute(context.Background(), req, vars)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_DisabledHeaderSkipped(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Empty(t, r.Header.Get("X-Debug"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "GET",
+		URL:    parser.URL{Raw: srv.URL},
+		Header: []parser.Header{
+			{Key: "X-Debug", Value: "1", Disabled: true},
+		},
+	}
+	resp, err := c.Execute(context.Background(), req, newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── Methods ───────────────────────────────────────────────────────────────────
+
+func TestExecute_Methods(t *testing.T) {
+	methods := []string{"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
+	for _, method := range methods {
+		t.Run(method, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, method, r.Method)
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			c := newClient(t)
+			resp, err := c.Execute(context.Background(), parseRequest(method, srv.URL), newVars())
+			require.NoError(t, err)
+			assert.Equal(t, http.StatusOK, resp.StatusCode)
+		})
+	}
+}
+
+// ── Body modes ────────────────────────────────────────────────────────────────
+
+func TestExecute_RawJSONBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]interface{}
+		require.NoError(t, json.Unmarshal(body, &payload))
+		assert.Equal(t, "hello", payload["title"])
+		w.WriteHeader(http.StatusCreated)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeRaw,
+			Raw:  `{"title":"{{name}}"}`,
+			Options: &parser.BodyOptions{
+				Raw: &parser.RawOptions{Language: "json"},
+			},
+		},
+	}
+	vars := newVars("name", "hello")
+	resp, err := c.Execute(context.Background(), req, vars)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode)
+}
+
+func TestExecute_URLEncodedBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/x-www-form-urlencoded", r.Header.Get("Content-Type"))
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "admin", r.FormValue("username"))
+		assert.Equal(t, "secret", r.FormValue("password"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeURLEncoded,
+			URLEncoded: []parser.URLEncodedParam{
+				{Key: "username", Value: "admin"},
+				{Key: "password", Value: "{{pass}}"},
+				{Key: "disabled", Value: "skip", Disabled: true},
+			},
+		},
+	}
+	vars := newVars("pass", "secret")
+	resp, err := c.Execute(context.Background(), req, vars)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_FormDataBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ct := r.Header.Get("Content-Type")
+		mediaType, params, err := mime.ParseMediaType(ct)
+		require.NoError(t, err)
+		assert.Equal(t, "multipart/form-data", mediaType)
+
+		mr := multipart.NewReader(r.Body, params["boundary"])
+		fields := map[string]string{}
+		for {
+			part, err := mr.NextPart()
+			if err == io.EOF {
+				break
+			}
+			require.NoError(t, err)
+			b, _ := io.ReadAll(part)
+			fields[part.FormName()] = string(b)
+		}
+		assert.Equal(t, "FR", fields["lang"])
+		assert.Equal(t, "EXAMPLE", fields["brand"])
+		assert.Empty(t, fields["disabled"])
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeFormData,
+			FormData: []parser.FormDataParam{
+				{Key: "lang", Value: "{{lang}}", Type: "text"},
+				{Key: "brand", Value: "EXAMPLE", Type: "text"},
+				{Key: "disabled", Value: "skip", Type: "text", Disabled: true},
+			},
+		},
+	}
+	vars := newVars("lang", "FR")
+	resp, err := c.Execute(context.Background(), req, vars)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_NoBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		assert.Empty(t, body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── TLS / redirects ───────────────────────────────────────────────────────────
+
+func TestExecute_InsecureTLS(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{Timeout: 5 * time.Second, Insecure: true})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_RedirectsFollowed(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{Timeout: 5 * time.Second, FollowRedirects: true})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_RedirectsDisabled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/final", http.StatusFound)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{Timeout: 5 * time.Second, FollowRedirects: false})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusFound, resp.StatusCode)
+}
+
+// ── Error cases ───────────────────────────────────────────────────────────────
+
+func TestExecute_InvalidURL(t *testing.T) {
+	c := newClient(t)
+	_, err := c.Execute(context.Background(), parseRequest("GET", "://bad"), newVars())
+	require.Error(t, err)
+}
+
+func TestExecute_ContextCancelled(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	c := newClient(t)
+	_, err := c.Execute(ctx, parseRequest("GET", srv.URL), newVars())
+	require.Error(t, err)
+}
+
+func TestExecute_ResponseHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("X-Custom", "reqlet")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, "reqlet", resp.Headers.Get("X-Custom"))
+}
+
+// ── buildBody / contentTypeForRaw ────────────────────────────────────────────
+
+func TestContentTypeForRaw(t *testing.T) {
+	tests := []struct {
+		lang     string
+		expected string
+	}{
+		{"json", "application/json"},
+		{"xml", "application/xml"},
+		{"html", "text/html"},
+		{"javascript", "application/javascript"},
+		{"text", "text/plain"},
+		{"", "text/plain"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.lang, func(t *testing.T) {
+			b := &parser.Body{
+				Mode: parser.BodyModeRaw,
+				Options: &parser.BodyOptions{
+					Raw: &parser.RawOptions{Language: tc.lang},
+				},
+			}
+			assert.Equal(t, tc.expected, contentTypeForRaw(b))
+		})
+	}
+}
+
+func TestContentTypeForRaw_NoOptions(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeRaw}
+	assert.Equal(t, "text/plain", contentTypeForRaw(b))
+}
+
+func TestBuildBody_NilBody(t *testing.T) {
+	r, ct, err := buildBody(nil, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Nil(t, r)
+	assert.Empty(t, ct)
+}
+
+func TestBuildBody_GraphQL(t *testing.T) {
+	b := &parser.Body{
+		Mode: parser.BodyModeGraphQL,
+		GraphQL: &parser.GraphQLBody{
+			Query:     "{ user { id } }",
+			Variables: `{"id":1}`,
+		},
+	}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", ct)
+	body, _ := io.ReadAll(r)
+	assert.Contains(t, string(body), "query")
+}
+
+func TestBuildBody_GraphQL_Nil(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeGraphQL}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Equal(t, "application/json", ct)
+	assert.Nil(t, r)
+}
+
+func TestBuildBody_UnknownMode(t *testing.T) {
+	b := &parser.Body{Mode: "file"}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Nil(t, r)
+	assert.Empty(t, ct)
+}
+
+// ── Proxy ─────────────────────────────────────────────────────────────────────
+
+func TestNewClient_WithProxy(t *testing.T) {
+	// Just verify client construction succeeds with a well-formed proxy URL.
+	c, err := NewClient(Options{
+		Timeout:  5 * time.Second,
+		ProxyURL: "http://proxy.example.com:8080",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+// ── Response fields ───────────────────────────────────────────────────────────
+
+func TestExecute_ResponseFields(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusTeapot)
+		_, _ = w.Write([]byte("I'm a teapot"))
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+	assert.Contains(t, resp.Status, "418")
+	assert.NotEmpty(t, resp.Proto)
+	assert.Equal(t, []byte("I'm a teapot"), resp.Body)
+	assert.Positive(t, resp.Duration)
+}
+
+// ── URL encoding ─────────────────────────────────────────────────────────────
+
+func TestURLEncoded_SpecialChars(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, r.ParseForm())
+		assert.Equal(t, "hello world", r.FormValue("q"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeURLEncoded,
+			URLEncoded: []parser.URLEncodedParam{
+				{Key: "q", Value: "hello world"},
+			},
+		},
+	}
+	resp, err := c.Execute(context.Background(), req, newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── Content-Type not overridden when caller sets it ──────────────────────────
+
+func TestExecute_ContentTypeNotOverriddenByBodyMode(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "application/json; charset=utf-8", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Header: []parser.Header{
+			{Key: "Content-Type", Value: "application/json; charset=utf-8"},
+		},
+		Body: &parser.Body{
+			Mode:    parser.BodyModeRaw,
+			Raw:     `{}`,
+			Options: &parser.BodyOptions{Raw: &parser.RawOptions{Language: "json"}},
+		},
+	}
+	resp, err := c.Execute(context.Background(), req, newVars())
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
