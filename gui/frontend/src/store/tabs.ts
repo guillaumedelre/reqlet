@@ -2,7 +2,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts"
+export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts" | "Settings"
 export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
 export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
 
@@ -39,6 +39,9 @@ export interface Tab {
   response: ResponseData | null
   dirty: boolean
   activeSubTab: RequestSubTab
+  followRedirects: boolean
+  sslVerification: boolean
+  timeout: number
 }
 
 function newTab(patch?: Partial<Tab>): Tab {
@@ -57,6 +60,9 @@ function newTab(patch?: Partial<Tab>): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    followRedirects: true,
+    sslVerification: true,
+    timeout: 0,
     ...patch,
   }
 }
@@ -168,7 +174,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 4,
+      version: 5,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -183,6 +189,9 @@ export const useTabsStore = create<TabsState>()(
             bodyFormData: [],
             bodyUrlencoded: [],
             response: null,
+            followRedirects: true,
+            sslVerification: true,
+            timeout: 0,
             ...(t as object),
           })),
         }

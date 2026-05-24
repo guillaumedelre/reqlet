@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
+import { generateCode, type CodeLanguage } from "@/lib/code-generators"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
 import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
 import {
@@ -13,7 +14,8 @@ import {
 } from "@/store/tabs"
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-const REQUEST_TABS: RequestSubTab[] = ["Params", "Auth", "Headers", "Body", "Scripts"]
+const REQUEST_TABS: RequestSubTab[] = ["Params", "Auth", "Headers", "Body", "Scripts", "Settings"]
+const CODE_LANGUAGES: CodeLanguage[] = ["cURL", "Python", "JavaScript", "Go"]
 const BODY_TYPES: BodyType[] = ["none", "form-data", "urlencoded", "raw", "binary", "GraphQL"]
 const RAW_CONTENT_TYPES: RawContentType[] = ["JSON", "XML", "Text", "HTML", "JavaScript"]
 
@@ -296,6 +298,12 @@ function SubTabContent({
   onHeadersBulkModeChange,
   onFormDataBulkModeChange,
   onUrlencodedBulkModeChange,
+  followRedirects,
+  sslVerification,
+  timeout,
+  onFollowRedirectsChange,
+  onSslVerificationChange,
+  onTimeoutChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
@@ -322,6 +330,12 @@ function SubTabContent({
   onHeadersBulkModeChange: (v: boolean) => void
   onFormDataBulkModeChange: (v: boolean) => void
   onUrlencodedBulkModeChange: (v: boolean) => void
+  followRedirects: boolean
+  sslVerification: boolean
+  timeout: number
+  onFollowRedirectsChange: (v: boolean) => void
+  onSslVerificationChange: (v: boolean) => void
+  onTimeoutChange: (v: number) => void
 }) {
   if (subTab === "Params") {
     return (
@@ -387,6 +401,69 @@ function SubTabContent({
       />
     )
   }
+  if (subTab === "Settings") {
+    const rowStyle: React.CSSProperties = {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "8px 12px",
+      borderBottom: "1px solid var(--border)",
+    }
+    const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
+    const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
+    return (
+      <div style={{ overflowY: "auto", flex: 1 }}>
+        <div style={rowStyle}>
+          <div>
+            <div style={labelStyle}>Follow Redirects</div>
+            <div style={descStyle}>Automatically follow 3xx HTTP redirects</div>
+          </div>
+          <input
+            type="checkbox"
+            checked={followRedirects}
+            onChange={(e) => onFollowRedirectsChange(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+        </div>
+        <div style={rowStyle}>
+          <div>
+            <div style={labelStyle}>SSL Certificate Verification</div>
+            <div style={descStyle}>Reject requests with invalid or self-signed certificates</div>
+          </div>
+          <input
+            type="checkbox"
+            checked={sslVerification}
+            onChange={(e) => onSslVerificationChange(e.target.checked)}
+            style={{ cursor: "pointer" }}
+          />
+        </div>
+        <div style={rowStyle}>
+          <div>
+            <div style={labelStyle}>Request Timeout (ms)</div>
+            <div style={descStyle}>Maximum wait time in milliseconds — 0 means no timeout</div>
+          </div>
+          <input
+            type="number"
+            min={0}
+            step={500}
+            value={timeout}
+            onChange={(e) => onTimeoutChange(Math.max(0, Number(e.target.value)))}
+            style={{
+              width: 80,
+              padding: "2px 6px",
+              fontSize: 11,
+              border: "1px solid var(--border)",
+              borderRadius: 3,
+              background: "var(--bg)",
+              color: "var(--fg)",
+              outline: "none",
+              textAlign: "right",
+            }}
+          />
+        </div>
+      </div>
+    )
+  }
   return (
     <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
       <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>{subTab} — coming soon.</p>
@@ -406,6 +483,9 @@ export function RequestPane() {
     urlencoded: false,
   }
   const [bulkModeMap, setBulkModeMap] = useState<Record<string, BulkModes>>({})
+  const [showCode, setShowCode] = useState(false)
+  const [codeLang, setCodeLang] = useState<CodeLanguage>("cURL")
+  const [copied, setCopied] = useState(false)
   const tabId = tab?.id ?? ""
   const bulkModes: BulkModes = bulkModeMap[tabId] ?? defaultBulkModes
 
@@ -483,6 +563,24 @@ export function RequestPane() {
     })
   }
 
+  function handleFollowRedirectsChange(followRedirects: boolean) {
+    updateTab(tab!.id, { followRedirects })
+  }
+
+  function handleSslVerificationChange(sslVerification: boolean) {
+    updateTab(tab!.id, { sslVerification })
+  }
+
+  function handleTimeoutChange(timeout: number) {
+    updateTab(tab!.id, { timeout })
+  }
+
+  function handleCopy() {
+    navigator.clipboard.writeText(generateCode(tab!, codeLang))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
   const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
   const hasBody =
@@ -534,6 +632,23 @@ export function RequestPane() {
           placeholder="Enter URL"
         />
         <button
+          onClick={() => setShowCode((v) => !v)}
+          title="Generate code"
+          style={{
+            padding: "3px 8px",
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: "1px solid var(--border)",
+            background: showCode ? "var(--bg-sidebar)" : "var(--bg)",
+            color: showCode ? "var(--fg)" : "var(--fg-muted)",
+            cursor: "pointer",
+            fontFamily: "monospace",
+          }}
+        >
+          {"</>"}
+        </button>
+        <button
           style={{
             padding: "3px 14px",
             fontSize: 11,
@@ -578,34 +693,105 @@ export function RequestPane() {
         ))}
       </div>
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        <SubTabContent
-          key={tab.id}
-          subTab={tab.activeSubTab}
-          params={tab.params}
-          headers={tab.headers}
-          pathVars={tab.pathVars}
-          bodyType={tab.bodyType}
-          bodyRaw={tab.bodyRaw}
-          bodyRawContentType={tab.bodyRawContentType}
-          bodyFormData={tab.bodyFormData}
-          bodyUrlencoded={tab.bodyUrlencoded}
-          paramsBulkMode={bulkModes.params}
-          headersBulkMode={bulkModes.headers}
-          formDataBulkMode={bulkModes.formData}
-          urlencodedBulkMode={bulkModes.urlencoded}
-          onParamsChange={handleParamsChange}
-          onHeadersChange={handleHeadersChange}
-          onPathVarsChange={handlePathVarsChange}
-          onBodyTypeChange={handleBodyTypeChange}
-          onBodyRawChange={handleBodyRawChange}
-          onBodyRawContentTypeChange={handleBodyRawContentTypeChange}
-          onBodyFormDataChange={handleBodyFormDataChange}
-          onBodyUrlencodedChange={handleBodyUrlencodedChange}
-          onParamsBulkModeChange={(v) => setBulkMode("params", v)}
-          onHeadersBulkModeChange={(v) => setBulkMode("headers", v)}
-          onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
-          onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
-        />
+        {showCode ? (
+          <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "4px 8px",
+                borderBottom: "1px solid var(--border)",
+                flexShrink: 0,
+              }}
+            >
+              {CODE_LANGUAGES.map((lang) => (
+                <button
+                  key={lang}
+                  onClick={() => setCodeLang(lang)}
+                  style={{
+                    fontSize: 11,
+                    border: "none",
+                    background: codeLang === lang ? "var(--bg)" : "transparent",
+                    color: codeLang === lang ? "var(--fg)" : "var(--fg-muted)",
+                    cursor: "pointer",
+                    padding: "4px 8px",
+                    borderRadius: 3,
+                  }}
+                >
+                  {lang}
+                </button>
+              ))}
+              <button
+                onClick={handleCopy}
+                style={{
+                  marginLeft: "auto",
+                  fontSize: 11,
+                  border: "1px solid var(--border)",
+                  borderRadius: 3,
+                  background: "transparent",
+                  color: copied ? "var(--accent)" : "var(--fg-muted)",
+                  cursor: "pointer",
+                  padding: "2px 8px",
+                }}
+              >
+                {copied ? "Copied!" : "Copy"}
+              </button>
+            </div>
+            <pre
+              style={{
+                flex: 1,
+                margin: 0,
+                padding: "10px 12px",
+                fontSize: 11,
+                fontFamily: "monospace",
+                lineHeight: 1.6,
+                overflowY: "auto",
+                background: "var(--bg-panel)",
+                color: "var(--fg)",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+              }}
+            >
+              {generateCode(tab, codeLang)}
+            </pre>
+          </div>
+        ) : (
+          <SubTabContent
+            key={tab.id}
+            subTab={tab.activeSubTab}
+            params={tab.params}
+            headers={tab.headers}
+            pathVars={tab.pathVars}
+            bodyType={tab.bodyType}
+            bodyRaw={tab.bodyRaw}
+            bodyRawContentType={tab.bodyRawContentType}
+            bodyFormData={tab.bodyFormData}
+            bodyUrlencoded={tab.bodyUrlencoded}
+            paramsBulkMode={bulkModes.params}
+            headersBulkMode={bulkModes.headers}
+            formDataBulkMode={bulkModes.formData}
+            urlencodedBulkMode={bulkModes.urlencoded}
+            onParamsChange={handleParamsChange}
+            onHeadersChange={handleHeadersChange}
+            onPathVarsChange={handlePathVarsChange}
+            onBodyTypeChange={handleBodyTypeChange}
+            onBodyRawChange={handleBodyRawChange}
+            onBodyRawContentTypeChange={handleBodyRawContentTypeChange}
+            onBodyFormDataChange={handleBodyFormDataChange}
+            onBodyUrlencodedChange={handleBodyUrlencodedChange}
+            onParamsBulkModeChange={(v) => setBulkMode("params", v)}
+            onHeadersBulkModeChange={(v) => setBulkMode("headers", v)}
+            onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
+            onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
+            followRedirects={tab.followRedirects}
+            sslVerification={tab.sslVerification}
+            timeout={tab.timeout}
+            onFollowRedirectsChange={handleFollowRedirectsChange}
+            onSslVerificationChange={handleSslVerificationChange}
+            onTimeoutChange={handleTimeoutChange}
+          />
+        )}
       </div>
     </div>
   )

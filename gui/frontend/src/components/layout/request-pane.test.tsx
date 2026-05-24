@@ -20,6 +20,9 @@ function makeTab(): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    followRedirects: true,
+    sslVerification: true,
+    timeout: 0,
   }
 }
 
