@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"mime/multipart"
 	nethttp "net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -24,6 +27,13 @@ type Options struct {
 	Insecure        bool // skip TLS certificate verification
 	FollowRedirects bool
 	ProxyURL        string
+	// ClientCertFile is the path to a PEM-encoded client certificate.
+	// ClientKeyFile is the path to the corresponding PEM-encoded private key.
+	// ClientPassphrase decrypts the private key if it is passphrase-protected.
+	// All three fields are optional; if ClientCertFile is empty no client cert is sent.
+	ClientCertFile   string
+	ClientKeyFile    string
+	ClientPassphrase string
 }
 
 // DefaultOptions returns sensible defaults: 30 s timeout, TLS on, redirects on.
@@ -51,8 +61,18 @@ type Client struct {
 
 // NewClient creates a Client configured with the provided options.
 func NewClient(opts Options) (*Client, error) {
+	tlsCfg := &tls.Config{InsecureSkipVerify: opts.Insecure} //nolint:gosec // controlled by caller
+
+	if opts.ClientCertFile != "" {
+		cert, err := loadClientCert(opts.ClientCertFile, opts.ClientKeyFile, opts.ClientPassphrase)
+		if err != nil {
+			return nil, fmt.Errorf("load client certificate: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+
 	transport := &nethttp.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: opts.Insecure}, //nolint:gosec // controlled by caller
+		TLSClientConfig: tlsCfg,
 	}
 
 	if opts.ProxyURL != "" {
@@ -194,6 +214,62 @@ func buildBody(b *parser.Body, vars *variables.Resolver) (io.Reader, string, err
 	default:
 		return nil, "", nil
 	}
+}
+
+// loadClientCert loads a PEM client certificate and its private key.
+// keyFile may be empty when the key is embedded in certFile.
+// passphrase decrypts an encrypted private key block; leave empty for unencrypted keys.
+func loadClientCert(certFile, keyFile, passphrase string) (tls.Certificate, error) {
+	certPEM, err := os.ReadFile(certFile) //nolint:gosec // path provided by caller
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("read cert %q: %w", certFile, err)
+	}
+
+	var keyPEM []byte
+	if keyFile != "" {
+		keyPEM, err = os.ReadFile(keyFile) //nolint:gosec // path provided by caller
+		if err != nil {
+			return tls.Certificate{}, fmt.Errorf("read key %q: %w", keyFile, err)
+		}
+	} else {
+		keyPEM = certPEM
+	}
+
+	if passphrase != "" {
+		keyPEM, err = decryptPEMKey(keyPEM, []byte(passphrase))
+		if err != nil {
+			return tls.Certificate{}, fmt.Errorf("decrypt key: %w", err)
+		}
+	}
+
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return tls.Certificate{}, fmt.Errorf("parse cert/key pair: %w", err)
+	}
+	return cert, nil
+}
+
+// decryptPEMKey decrypts the first encrypted PEM block found in data and returns
+// a new PEM-encoded byte slice with the decrypted key.
+// If no encrypted block is found, the original data is returned unchanged.
+func decryptPEMKey(data, passphrase []byte) ([]byte, error) {
+	remaining := data
+	for {
+		block, rest := pem.Decode(remaining)
+		if block == nil {
+			break
+		}
+		//nolint:staticcheck // x509.DecryptPEMBlock is deprecated but still the standard way
+		if x509.IsEncryptedPEMBlock(block) {
+			der, err := x509.DecryptPEMBlock(block, passphrase) //nolint:staticcheck
+			if err != nil {
+				return nil, fmt.Errorf("decrypt PEM block %q: %w", block.Type, err)
+			}
+			return pem.EncodeToMemory(&pem.Block{Type: block.Type, Bytes: der}), nil
+		}
+		remaining = rest
+	}
+	return data, nil
 }
 
 func contentTypeForRaw(b *parser.Body) string {

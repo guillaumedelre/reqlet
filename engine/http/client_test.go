@@ -2,13 +2,23 @@ package http
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"io"
+	"math/big"
 	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -567,6 +577,240 @@ func TestExecute_WithTransportWrapper(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, challenged)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── TLS client certificates ───────────────────────────────────────────────────
+
+// generateTestCert generates a self-signed ECDSA cert and key, writes them to
+// separate PEM files in dir, and returns (certPath, keyPath).
+func generateTestCert(t *testing.T, dir string) (certPath, keyPath string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "reqlet-test"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	certPath = filepath.Join(dir, "client.crt")
+	keyPath = filepath.Join(dir, "client.key")
+
+	certFile, err := os.Create(certPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	require.NoError(t, pem.Encode(certFile, &pem.Block{Type: "CERTIFICATE", Bytes: certDER}))
+	require.NoError(t, certFile.Close())
+
+	keyDER, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	keyFile, err := os.Create(keyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	require.NoError(t, pem.Encode(keyFile, &pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))
+	require.NoError(t, keyFile.Close())
+
+	return certPath, keyPath
+}
+
+func TestNewClient_ClientCertFile_NotFound(t *testing.T) {
+	_, err := NewClient(Options{
+		ClientCertFile: "/nonexistent/client.crt",
+		ClientKeyFile:  "/nonexistent/client.key",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load client certificate")
+}
+
+func TestNewClient_ClientKeyFile_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	certPath, _ := generateTestCert(t, dir)
+	_, err := NewClient(Options{
+		ClientCertFile: certPath,
+		ClientKeyFile:  "/nonexistent/client.key",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load client certificate")
+}
+
+func TestNewClient_ValidClientCert(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateTestCert(t, dir)
+	c, err := NewClient(Options{
+		ClientCertFile: certPath,
+		ClientKeyFile:  keyPath,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	transport := c.inner.Transport.(*http.Transport)
+	require.Len(t, transport.TLSClientConfig.Certificates, 1)
+}
+
+func TestNewClient_CertAndKeyInSameFile(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateTestCert(t, dir)
+
+	// Concatenate cert and key into a single PEM file.
+	certData, err := os.ReadFile(certPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	keyData, err := os.ReadFile(keyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	combinedPath := filepath.Join(dir, "combined.pem")
+	require.NoError(t, os.WriteFile(combinedPath, append(certData, keyData...), 0o600)) //nolint:gosec // path from t.TempDir()
+
+	c, err := NewClient(Options{ClientCertFile: combinedPath})
+	require.NoError(t, err)
+	transport := c.inner.Transport.(*http.Transport)
+	require.Len(t, transport.TLSClientConfig.Certificates, 1)
+}
+
+func TestNewClient_InvalidKeyPair(t *testing.T) {
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	cert1, _ := generateTestCert(t, dir1)
+	_, key2 := generateTestCert(t, dir2)
+	_, err := NewClient(Options{
+		ClientCertFile: cert1,
+		ClientKeyFile:  key2,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load client certificate")
+}
+
+func TestExecute_WithClientCert_TLSServer(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateTestCert(t, dir)
+
+	serverCert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	require.NoError(t, err)
+
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	srv.TLS = &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		ClientAuth:   tls.RequestClientCert,
+	}
+	srv.StartTLS()
+	defer srv.Close()
+
+	c, err := NewClient(Options{
+		Insecure:       true,
+		ClientCertFile: certPath,
+		ClientKeyFile:  keyPath,
+	})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestDecryptPEMKey_Unencrypted(t *testing.T) {
+	dir := t.TempDir()
+	_, keyPath := generateTestCert(t, dir)
+	data, err := os.ReadFile(keyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+
+	out, err := decryptPEMKey(data, []byte("ignored"))
+	require.NoError(t, err)
+	assert.Equal(t, data, out)
+}
+
+func TestDecryptPEMKey_EmptyInput(t *testing.T) {
+	out, err := decryptPEMKey([]byte("not a pem block"), []byte("pass"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte("not a pem block"), out)
+}
+
+// generateEncryptedKey generates a test ECDSA private key, encrypts it with
+// passphrase using AES-256, and returns the encrypted PEM block.
+func generateEncryptedKey(t *testing.T, passphrase []byte) []byte {
+	t.Helper()
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+	der, err := x509.MarshalECPrivateKey(key)
+	require.NoError(t, err)
+	//nolint:staticcheck // x509.EncryptPEMBlock is deprecated but still the standard way to generate encrypted PEM for tests
+	block, err := x509.EncryptPEMBlock(rand.Reader, "EC PRIVATE KEY", der, passphrase, x509.PEMCipherAES256)
+	require.NoError(t, err)
+	return pem.EncodeToMemory(block)
+}
+
+func TestDecryptPEMKey_Encrypted_CorrectPassphrase(t *testing.T) {
+	passphrase := []byte("correct-pass")
+	encKey := generateEncryptedKey(t, passphrase)
+
+	out, err := decryptPEMKey(encKey, passphrase)
+	require.NoError(t, err)
+	block, _ := pem.Decode(out)
+	require.NotNil(t, block)
+	assert.False(t, x509.IsEncryptedPEMBlock(block)) //nolint:staticcheck
+}
+
+func TestDecryptPEMKey_Encrypted_WrongPassphrase(t *testing.T) {
+	encKey := generateEncryptedKey(t, []byte("correct"))
+	_, err := decryptPEMKey(encKey, []byte("wrong"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decrypt PEM block")
+}
+
+func TestLoadClientCert_WithPassphrase(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateTestCert(t, dir)
+
+	keyData, err := os.ReadFile(keyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	block, _ := pem.Decode(keyData)
+	require.NotNil(t, block)
+
+	//nolint:staticcheck // x509.EncryptPEMBlock is deprecated but still the standard way to generate encrypted PEM for tests
+	encBlock, err := x509.EncryptPEMBlock(rand.Reader, block.Type, block.Bytes, []byte("mypassphrase"), x509.PEMCipherAES256)
+	require.NoError(t, err)
+	encKeyPath := filepath.Join(dir, "enc.key")
+	f, err := os.Create(encKeyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	require.NoError(t, pem.Encode(f, encBlock))
+	require.NoError(t, f.Close())
+
+	c, err := NewClient(Options{
+		ClientCertFile:   certPath,
+		ClientKeyFile:    encKeyPath,
+		ClientPassphrase: "mypassphrase",
+	})
+	require.NoError(t, err)
+	transport := c.inner.Transport.(*http.Transport)
+	require.Len(t, transport.TLSClientConfig.Certificates, 1)
+}
+
+func TestLoadClientCert_WrongPassphrase(t *testing.T) {
+	dir := t.TempDir()
+	certPath, keyPath := generateTestCert(t, dir)
+
+	keyData, err := os.ReadFile(keyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	block, _ := pem.Decode(keyData)
+	require.NotNil(t, block)
+
+	//nolint:staticcheck // x509.EncryptPEMBlock is deprecated but still the standard way to generate encrypted PEM for tests
+	encBlock, err := x509.EncryptPEMBlock(rand.Reader, block.Type, block.Bytes, []byte("correct"), x509.PEMCipherAES256)
+	require.NoError(t, err)
+	encKeyPath := filepath.Join(dir, "enc.key")
+	f, err := os.Create(encKeyPath) //nolint:gosec // path from t.TempDir()
+	require.NoError(t, err)
+	require.NoError(t, pem.Encode(f, encBlock))
+	require.NoError(t, f.Close())
+
+	_, err = NewClient(Options{
+		ClientCertFile:   certPath,
+		ClientKeyFile:    encKeyPath,
+		ClientPassphrase: "wrong",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "load client certificate")
 }
 
 // errorApplier always returns an error from Apply.
