@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -488,3 +489,220 @@ func TestAWSV4_MissingParams(t *testing.T) {
 		})
 	}
 }
+
+func TestAWSV4_EmptyPath(t *testing.T) {
+	a, err := newAWSV4([]parser.AuthParam{
+		authParam("accessKey", "AKID"),
+		authParam("secretKey", "SECRET"),
+		authParam("region", "us-east-1"),
+		authParam("service", "s3"),
+	})
+	require.NoError(t, err)
+
+	// URL with no path triggers the awsCanonicalURI("") == "/" branch.
+	req := newReq(t, "GET", "https://s3.amazonaws.com")
+	req.URL.Path = ""
+	require.NoError(t, a.Apply(context.Background(), req, newVars()))
+	assert.Contains(t, req.Header.Get("Authorization"), "AWS4-HMAC-SHA256")
+}
+
+func TestAWSV4_WithQueryParams(t *testing.T) {
+	a, err := newAWSV4([]parser.AuthParam{
+		authParam("accessKey", "AKID"),
+		authParam("secretKey", "SECRET"),
+		authParam("region", "us-east-1"),
+		authParam("service", "s3"),
+	})
+	require.NoError(t, err)
+
+	req := newReq(t, "GET", "https://s3.amazonaws.com/bucket?prefix=foo&delimiter=%2F")
+	require.NoError(t, a.Apply(context.Background(), req, newVars()))
+	assert.Contains(t, req.Header.Get("Authorization"), "AWS4-HMAC-SHA256")
+}
+
+func TestAWSV4_BodyWithoutGetBody(t *testing.T) {
+	a, err := newAWSV4([]parser.AuthParam{
+		authParam("accessKey", "AKID"),
+		authParam("secretKey", "SECRET"),
+		authParam("region", "us-east-1"),
+		authParam("service", "execute-api"),
+	})
+	require.NoError(t, err)
+
+	// Body set but GetBody nil: awsBodyHash falls back to empty hash.
+	req := newReq(t, "POST", "https://api.example.com/resource")
+	req.Body = io.NopCloser(strings.NewReader(`{"data":1}`))
+	// GetBody intentionally left nil.
+	require.NoError(t, a.Apply(context.Background(), req, newVars()))
+	assert.Contains(t, req.Header.Get("Authorization"), "AWS4-HMAC-SHA256")
+}
+
+func TestAWSV4_ExplicitReqHost(t *testing.T) {
+	a, err := newAWSV4([]parser.AuthParam{
+		authParam("accessKey", "AKID"),
+		authParam("secretKey", "SECRET"),
+		authParam("region", "us-east-1"),
+		authParam("service", "s3"),
+	})
+	require.NoError(t, err)
+
+	req := newReq(t, "GET", "https://s3.amazonaws.com/bucket/key")
+	req.Host = "s3.amazonaws.com" // explicit Host field, not from URL.
+	require.NoError(t, a.Apply(context.Background(), req, newVars()))
+	assert.Contains(t, req.Header.Get("Authorization"), "AWS4-HMAC-SHA256")
+}
+
+// ── Digest — additional branches ─────────────────────────────────────────────
+
+func TestDigest_TransportError(t *testing.T) {
+	errTransport := roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return nil, fmt.Errorf("connection refused")
+	})
+	dt := &digestTransport{inner: errTransport, username: "u", password: "p"}
+	req := newReq(t, "GET", "http://example.com")
+	_, err := dt.RoundTrip(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "connection refused")
+}
+
+func TestDigest_NonDigestWWWAuthenticate(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", "Basic realm=\"test\"")
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	dt := &digestTransport{inner: http.DefaultTransport, username: "u", password: "p"}
+	req := newReq(t, "GET", srv.URL)
+	resp, err := dt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestDigest_WithQop(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate",
+				`Digest realm="testrealm", nonce="abc", qop="auth"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		authHdr := r.Header.Get("Authorization")
+		assert.Contains(t, authHdr, "qop=auth")
+		assert.Contains(t, authHdr, "nc=")
+		assert.Contains(t, authHdr, "cnonce=")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dt := &digestTransport{inner: http.DefaultTransport, username: "alice", password: "secret"}
+	req := newReq(t, "GET", srv.URL)
+	resp, err := dt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestDigest_MD5Sess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate",
+				`Digest realm="testrealm", nonce="abc", algorithm=MD5-sess`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		assert.Contains(t, r.Header.Get("Authorization"), "algorithm=MD5-sess")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dt := &digestTransport{inner: http.DefaultTransport, username: "alice", password: "secret"}
+	req := newReq(t, "GET", srv.URL)
+	resp, err := dt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestDigest_BodyReplay(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			w.Header().Set("WWW-Authenticate",
+				`Digest realm="testrealm", nonce="abc"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		assert.Equal(t, `{"key":"value"}`, string(body))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	dt := &digestTransport{inner: http.DefaultTransport, username: "alice", password: "secret"}
+	req, err := http.NewRequestWithContext(context.Background(), "POST", srv.URL,
+		strings.NewReader(`{"key":"value"}`))
+	require.NoError(t, err)
+	// GetBody must be set for the body to be replayed.
+	req.GetBody = func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader(`{"key":"value"}`)), nil
+	}
+
+	resp, err := dt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── OAuth2 — additional branches ──────────────────────────────────────────────
+
+func TestOAuth2_EmptyAccessToken(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"access_token":""}`))
+	}))
+	defer tokenSrv.Close()
+
+	a, err := New(&parser.Auth{
+		Type: parser.AuthTypeOAuth2,
+		OAuth2: []parser.AuthParam{
+			authParam("accessTokenUrl", tokenSrv.URL),
+			authParam("clientId", "id"),
+			authParam("clientSecret", "secret"),
+		},
+	})
+	require.NoError(t, err)
+
+	req := newReq(t, "GET", "http://api.example.com")
+	err = a.Apply(context.Background(), req, newVars())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "empty access_token")
+}
+
+func TestOAuth2_InvalidJSON(t *testing.T) {
+	tokenSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer tokenSrv.Close()
+
+	a, err := New(&parser.Auth{
+		Type: parser.AuthTypeOAuth2,
+		OAuth2: []parser.AuthParam{
+			authParam("accessTokenUrl", tokenSrv.URL),
+			authParam("clientId", "id"),
+			authParam("clientSecret", "secret"),
+		},
+	})
+	require.NoError(t, err)
+
+	req := newReq(t, "GET", "http://api.example.com")
+	err = a.Apply(context.Background(), req, newVars())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode token response")
+}
+
+// roundTripFunc is a test helper that adapts a function to http.RoundTripper.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }

@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guillaumedelre/reqlet/engine/auth"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
@@ -503,4 +505,73 @@ func TestExecute_ContentTypeNotOverriddenByBodyMode(t *testing.T) {
 	resp, err := c.Execute(context.Background(), req, newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── Auth integration ──────────────────────────────────────────────────────────
+
+func TestExecute_WithBearerApplier(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a, err := auth.New(&parser.Auth{
+		Type:   parser.AuthTypeBearer,
+		Bearer: []parser.AuthParam{{Key: "token", Value: "test-token"}},
+	})
+	require.NoError(t, err)
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), a)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_ApplierError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	_, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), &errorApplier{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "apply auth")
+}
+
+func TestExecute_WithTransportWrapper(t *testing.T) {
+	challenged := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			challenged = true
+			w.Header().Set("WWW-Authenticate", `Digest realm="test", nonce="nonce123"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a, err := auth.New(&parser.Auth{
+		Type: parser.AuthTypeDigest,
+		Digest: []parser.AuthParam{
+			{Key: "username", Value: "alice"},
+			{Key: "password", Value: "secret"},
+		},
+	})
+	require.NoError(t, err)
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), a)
+	require.NoError(t, err)
+	assert.True(t, challenged)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// errorApplier always returns an error from Apply.
+type errorApplier struct{}
+
+func (errorApplier) Apply(_ context.Context, _ *http.Request, _ *variables.Resolver) error {
+	return errors.New("forced auth error")
 }
