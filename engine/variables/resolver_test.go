@@ -135,6 +135,53 @@ func TestResolver_Resolve_EmptyString(t *testing.T) {
 	assert.Equal(t, "", r.Resolve(""))
 }
 
+// ── Snapshot / ReplaceScope ───────────────────────────────────────────────────
+
+func TestResolver_Snapshot(t *testing.T) {
+	r := NewResolver()
+	r.Set(ScopeEnvironment, "host", "api.example.com")
+	r.Set(ScopeEnvironment, "version", "v1")
+
+	snap := r.Snapshot(ScopeEnvironment)
+	assert.Equal(t, map[string]string{"host": "api.example.com", "version": "v1"}, snap)
+
+	// Snapshot is a copy: mutating it must not affect the resolver.
+	snap["host"] = "mutated"
+	v, _ := r.Get("host")
+	assert.Equal(t, "api.example.com", v)
+}
+
+func TestResolver_Snapshot_Empty(t *testing.T) {
+	r := NewResolver()
+	snap := r.Snapshot(ScopeEnvironment)
+	assert.NotNil(t, snap)
+	assert.Empty(t, snap)
+}
+
+func TestResolver_ReplaceScope(t *testing.T) {
+	r := NewResolver()
+	r.Set(ScopeEnvironment, "old_key", "old_value")
+
+	r.ReplaceScope(ScopeEnvironment, map[string]string{"new_key": "new_value"})
+
+	_, ok := r.Get("old_key")
+	assert.False(t, ok, "old key must be gone after ReplaceScope")
+
+	v, ok := r.Get("new_key")
+	require.True(t, ok)
+	assert.Equal(t, "new_value", v)
+}
+
+func TestResolver_ReplaceScope_Empty(t *testing.T) {
+	r := NewResolver()
+	r.Set(ScopeEnvironment, "key", "value")
+
+	r.ReplaceScope(ScopeEnvironment, map[string]string{})
+
+	_, ok := r.Get("key")
+	assert.False(t, ok, "scope must be empty after ReplaceScope with empty map")
+}
+
 // ── Dynamic variables ─────────────────────────────────────────────────────────
 
 func TestResolver_Resolve_GUID(t *testing.T) {
