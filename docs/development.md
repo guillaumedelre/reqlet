@@ -181,6 +181,28 @@ Colors are used as text and as a 10 % opacity background tint (`color + "1a"`).
 Any new UI surface that displays an HTTP method must import `HTTP_METHOD_COLORS`
 from `@/lib/http-methods` rather than defining its own palette.
 
+#### Body editor
+
+The Body sub-tab renders a type selector bar (none / form-data / urlencoded / raw / binary / GraphQL)
+followed by a type-specific editor:
+
+| Type | Editor |
+|---|---|
+| `none` | Informational message |
+| `raw` | `<textarea>` + content-type picker (JSON / XML / Text / HTML / JavaScript) |
+| `form-data` / `urlencoded` | `KeyValueEditor` |
+| `binary` / `GraphQL` | "coming soon" placeholder |
+
+Body state is stored per-tab: `bodyType`, `bodyRaw`, `bodyRawContentType`, `bodyFormData`,
+`bodyUrlencoded`. The Body tab label shows a filled dot (`●`) when a non-empty body is set.
+
+#### Response pane
+
+Shows an empty state ("Hit Send") until `tab.response` is non-null. When a `ResponseData` is
+present it renders a status bar (status badge colored by HTTP range, time, size) and three
+sub-tabs: Pretty (auto-formats JSON), Raw, Headers. The Save button is a placeholder disabled
+until the HTTP engine is wired up.
+
 #### URL utilities (`src/lib/url.ts`)
 
 Four pure functions manage the relationship between the raw URL string and the

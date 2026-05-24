@@ -1,12 +1,57 @@
 import { useEffect, useRef, useState } from "react"
 
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
+import { generateCode, type CodeLanguage } from "@/lib/code-generators"
+import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
 import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
-import { useTabsStore, type HttpMethod, type KeyValueItem, type RequestSubTab } from "@/store/tabs"
+import {
+  useTabsStore,
+  type BodyType,
+  type HttpMethod,
+  type KeyValueItem,
+  type RawContentType,
+  type RequestSubTab,
+  type Tab,
+} from "@/store/tabs"
+
+const RAW_CONTENT_TYPE_MAP: Record<RawContentType, string> = {
+  JSON: "application/json",
+  XML: "application/xml",
+  Text: "text/plain",
+  HTML: "text/html",
+  JavaScript: "application/javascript",
+}
+
+function computeAutoHeaders(
+  bodyType: BodyType,
+  bodyRawContentType: RawContentType,
+): Array<{ key: string; value: string }> {
+  if (bodyType === "raw") {
+    return [{ key: "Content-Type", value: RAW_CONTENT_TYPE_MAP[bodyRawContentType] }]
+  }
+  if (bodyType === "urlencoded") {
+    return [{ key: "Content-Type", value: "application/x-www-form-urlencoded" }]
+  }
+  if (bodyType === "form-data") {
+    return [{ key: "Content-Type", value: "multipart/form-data; boundary=<generated>" }]
+  }
+  return []
+}
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-const REQUEST_TABS: RequestSubTab[] = ["Params", "Auth", "Headers", "Body", "Scripts"]
+const REQUEST_TABS: RequestSubTab[] = [
+  "Params",
+  "Auth",
+  "Headers",
+  "Body",
+  "Scripts",
+  "Settings",
+  "Code",
+]
+const CODE_LANGUAGES: CodeLanguage[] = ["cURL", "Python", "JavaScript", "Go"]
+const BODY_TYPES: BodyType[] = ["none", "form-data", "urlencoded", "raw", "binary", "GraphQL"]
+const RAW_CONTENT_TYPES: RawContentType[] = ["JSON", "XML", "Text", "HTML", "JavaScript"]
 
 function MethodSelect({
   value,
@@ -101,26 +146,343 @@ const sectionLabelStyle: React.CSSProperties = {
   textTransform: "uppercase",
 }
 
+function bodyTypeLabel(t: BodyType): string {
+  if (t === "urlencoded") return "x-www-form-urlencoded"
+  return t
+}
+
+function BodyEditor({
+  bodyType,
+  bodyRaw,
+  bodyRawContentType,
+  bodyFormData,
+  bodyUrlencoded,
+  formDataBulkMode,
+  urlencodedBulkMode,
+  onBodyTypeChange,
+  onBodyRawChange,
+  onBodyRawContentTypeChange,
+  onBodyFormDataChange,
+  onBodyUrlencodedChange,
+  onFormDataBulkModeChange,
+  onUrlencodedBulkModeChange,
+}: {
+  bodyType: BodyType
+  bodyRaw: string
+  bodyRawContentType: RawContentType
+  bodyFormData: KeyValueItem[]
+  bodyUrlencoded: KeyValueItem[]
+  formDataBulkMode: boolean
+  urlencodedBulkMode: boolean
+  onBodyTypeChange: (t: BodyType) => void
+  onBodyRawChange: (v: string) => void
+  onBodyRawContentTypeChange: (t: RawContentType) => void
+  onBodyFormDataChange: (items: KeyValueItem[]) => void
+  onBodyUrlencodedChange: (items: KeyValueItem[]) => void
+  onFormDataBulkModeChange: (v: boolean) => void
+  onUrlencodedBulkModeChange: (v: boolean) => void
+}) {
+  const typeBtn = (t: BodyType): React.CSSProperties => ({
+    fontSize: 11,
+    border: "none",
+    background: bodyType === t ? "var(--bg)" : "transparent",
+    color: bodyType === t ? "var(--fg)" : "var(--fg-muted)",
+    cursor: "pointer",
+    padding: "4px 8px",
+    borderRadius: 3,
+  })
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 2,
+          padding: "4px 8px",
+          borderBottom: "1px solid var(--border)",
+          flexWrap: "wrap",
+        }}
+      >
+        {BODY_TYPES.map((t) => (
+          <button key={t} onClick={() => onBodyTypeChange(t)} style={typeBtn(t)}>
+            {bodyTypeLabel(t)}
+          </button>
+        ))}
+        {bodyType === "raw" && (
+          <div
+            style={{
+              marginLeft: "auto",
+              display: "flex",
+              gap: 1,
+              background: "var(--bg-sidebar)",
+              borderRadius: 3,
+              padding: 2,
+            }}
+          >
+            {RAW_CONTENT_TYPES.map((ct) => (
+              <button
+                key={ct}
+                onClick={() => onBodyRawContentTypeChange(ct)}
+                style={{
+                  fontSize: 10,
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "2px 6px",
+                  borderRadius: 2,
+                  background: bodyRawContentType === ct ? "var(--bg)" : "transparent",
+                  color: bodyRawContentType === ct ? "var(--fg)" : "var(--fg-muted)",
+                }}
+              >
+                {ct}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {bodyType === "none" && (
+        <div style={{ padding: 16 }}>
+          <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>This request has no body.</p>
+        </div>
+      )}
+
+      {bodyType === "raw" && (
+        <textarea
+          value={bodyRaw}
+          onChange={(e) => onBodyRawChange(e.target.value)}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            resize: "none",
+            border: "none",
+            outline: "none",
+            padding: "8px 10px",
+            fontSize: 11,
+            fontFamily: "monospace",
+            background: "var(--bg-panel)",
+            color: "var(--fg)",
+            lineHeight: 1.5,
+          }}
+          placeholder={`Enter ${bodyRawContentType} body`}
+        />
+      )}
+
+      {bodyType === "form-data" && (
+        <KeyValueEditor
+          key="kve-form-data"
+          items={bodyFormData}
+          onChange={onBodyFormDataChange}
+          keyPlaceholder="Key"
+          valuePlaceholder="Value"
+          allowFileType
+          allowBulkEdit
+          defaultBulkMode={formDataBulkMode}
+          onBulkModeChange={onFormDataBulkModeChange}
+        />
+      )}
+
+      {bodyType === "urlencoded" && (
+        <KeyValueEditor
+          key="kve-urlencoded"
+          items={bodyUrlencoded}
+          onChange={onBodyUrlencodedChange}
+          keyPlaceholder="Key"
+          valuePlaceholder="Value"
+          allowBulkEdit
+          defaultBulkMode={urlencodedBulkMode}
+          onBulkModeChange={onUrlencodedBulkModeChange}
+        />
+      )}
+
+      {(bodyType === "binary" || bodyType === "GraphQL") && (
+        <div style={{ padding: 16 }}>
+          <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>
+            {bodyTypeLabel(bodyType)} — coming soon.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CodePanel({ tab }: { tab: Tab }) {
+  const [codeLang, setCodeLang] = useState<CodeLanguage>("cURL")
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    navigator.clipboard.writeText(generateCode(tab, codeLang))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 4,
+          padding: "4px 8px",
+          borderBottom: "1px solid var(--border)",
+          flexShrink: 0,
+        }}
+      >
+        {CODE_LANGUAGES.map((lang) => (
+          <button
+            key={lang}
+            onClick={() => setCodeLang(lang)}
+            style={{
+              fontSize: 11,
+              border: "none",
+              background: codeLang === lang ? "var(--bg)" : "transparent",
+              color: codeLang === lang ? "var(--fg)" : "var(--fg-muted)",
+              cursor: "pointer",
+              padding: "4px 8px",
+              borderRadius: 3,
+            }}
+          >
+            {lang}
+          </button>
+        ))}
+        <button
+          onClick={handleCopy}
+          style={{
+            marginLeft: "auto",
+            fontSize: 11,
+            border: "1px solid var(--border)",
+            borderRadius: 3,
+            background: "transparent",
+            color: copied ? "var(--accent)" : "var(--fg-muted)",
+            cursor: "pointer",
+            padding: "2px 8px",
+          }}
+        >
+          {copied ? "Copied!" : "Copy"}
+        </button>
+      </div>
+      <pre
+        style={{
+          flex: 1,
+          margin: 0,
+          padding: "10px 12px",
+          fontSize: 11,
+          fontFamily: "monospace",
+          lineHeight: 1.6,
+          overflowY: "auto",
+          background: "var(--bg-panel)",
+          color: "var(--fg)",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-all",
+        }}
+      >
+        {generateCode(tab, codeLang)}
+      </pre>
+    </div>
+  )
+}
+
+function SettingsCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <div
+      style={{
+        width: 15,
+        height: 15,
+        borderRadius: 3,
+        border: checked ? "none" : "1.5px solid var(--border)",
+        background: checked ? "var(--accent)" : "transparent",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+        pointerEvents: "none",
+      }}
+    >
+      {checked && (
+        <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
+          <path
+            d="M1 3.5L3.5 6L9 1"
+            stroke="white"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </div>
+  )
+}
+
 function SubTabContent({
   subTab,
   params,
   headers,
   pathVars,
+  bodyType,
+  bodyRaw,
+  bodyRawContentType,
+  bodyFormData,
+  bodyUrlencoded,
+  paramsBulkMode,
+  headersBulkMode,
+  formDataBulkMode,
+  urlencodedBulkMode,
   onParamsChange,
   onHeadersChange,
   onPathVarsChange,
+  onBodyTypeChange,
+  onBodyRawChange,
+  onBodyRawContentTypeChange,
+  onBodyFormDataChange,
+  onBodyUrlencodedChange,
+  onParamsBulkModeChange,
+  onHeadersBulkModeChange,
+  onFormDataBulkModeChange,
+  onUrlencodedBulkModeChange,
+  followRedirects,
+  sslVerification,
+  timeout,
+  onFollowRedirectsChange,
+  onSslVerificationChange,
+  onTimeoutChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
   headers: KeyValueItem[]
   pathVars: KeyValueItem[]
+  bodyType: BodyType
+  bodyRaw: string
+  bodyRawContentType: RawContentType
+  bodyFormData: KeyValueItem[]
+  bodyUrlencoded: KeyValueItem[]
+  paramsBulkMode: boolean
+  headersBulkMode: boolean
+  formDataBulkMode: boolean
+  urlencodedBulkMode: boolean
   onParamsChange: (items: KeyValueItem[]) => void
   onHeadersChange: (items: KeyValueItem[]) => void
   onPathVarsChange: (items: KeyValueItem[]) => void
+  onBodyTypeChange: (t: BodyType) => void
+  onBodyRawChange: (v: string) => void
+  onBodyRawContentTypeChange: (t: RawContentType) => void
+  onBodyFormDataChange: (items: KeyValueItem[]) => void
+  onBodyUrlencodedChange: (items: KeyValueItem[]) => void
+  onParamsBulkModeChange: (v: boolean) => void
+  onHeadersBulkModeChange: (v: boolean) => void
+  onFormDataBulkModeChange: (v: boolean) => void
+  onUrlencodedBulkModeChange: (v: boolean) => void
+  followRedirects: boolean
+  sslVerification: boolean
+  timeout: number
+  onFollowRedirectsChange: (v: boolean) => void
+  onSslVerificationChange: (v: boolean) => void
+  onTimeoutChange: (v: number) => void
 }) {
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+
   if (subTab === "Params") {
     return (
-      <div>
+      <div style={{ overflowY: "auto", flex: 1 }}>
         {pathVars.length > 0 && (
           <>
             <div style={sectionLabelStyle}>Path Variables</div>
@@ -137,15 +499,183 @@ function SubTabContent({
             </div>
           </>
         )}
-        <KeyValueEditor items={params} onChange={onParamsChange} />
+        <KeyValueEditor
+          key="kve-params"
+          items={params}
+          onChange={onParamsChange}
+          allowBulkEdit
+          defaultBulkMode={paramsBulkMode}
+          onBulkModeChange={onParamsBulkModeChange}
+        />
       </div>
     )
   }
   if (subTab === "Headers") {
-    return <KeyValueEditor items={headers} onChange={onHeadersChange} />
+    const autoHeaders = computeAutoHeaders(bodyType, bodyRawContentType)
+    return (
+      <div style={{ overflowY: "auto", flex: 1 }}>
+        <KeyValueEditor
+          key="kve-headers"
+          items={headers}
+          onChange={onHeadersChange}
+          allowBulkEdit
+          defaultBulkMode={headersBulkMode}
+          onBulkModeChange={onHeadersBulkModeChange}
+          keyAutocomplete={HTTP_HEADER_NAMES}
+        />
+        {autoHeaders.length > 0 && (
+          <>
+            <div
+              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
+            >
+              Auto-generated
+            </div>
+            {autoHeaders.map((h) => (
+              <div
+                key={h.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "20px 1fr 1fr 20px",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 8px",
+                  borderBottom: "1px solid var(--border)",
+                }}
+              >
+                <span />
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontStyle: "italic",
+                    color: "var(--fg-muted)",
+                    padding: "2px 6px",
+                  }}
+                >
+                  {h.key}
+                </span>
+                <span
+                  style={{
+                    fontSize: 11,
+                    fontStyle: "italic",
+                    color: "var(--fg-muted)",
+                    padding: "2px 6px",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {h.value}
+                </span>
+                <span />
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    )
+  }
+  if (subTab === "Body") {
+    return (
+      <BodyEditor
+        bodyType={bodyType}
+        bodyRaw={bodyRaw}
+        bodyRawContentType={bodyRawContentType}
+        bodyFormData={bodyFormData}
+        bodyUrlencoded={bodyUrlencoded}
+        formDataBulkMode={formDataBulkMode}
+        urlencodedBulkMode={urlencodedBulkMode}
+        onBodyTypeChange={onBodyTypeChange}
+        onBodyRawChange={onBodyRawChange}
+        onBodyRawContentTypeChange={onBodyRawContentTypeChange}
+        onBodyFormDataChange={onBodyFormDataChange}
+        onBodyUrlencodedChange={onBodyUrlencodedChange}
+        onFormDataBulkModeChange={onFormDataBulkModeChange}
+        onUrlencodedBulkModeChange={onUrlencodedBulkModeChange}
+      />
+    )
+  }
+  if (subTab === "Settings") {
+    const boolRow = (id: string): React.CSSProperties => ({
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px 12px",
+      borderBottom: "1px solid var(--border)",
+      cursor: "pointer",
+      userSelect: "none",
+      background: hoveredRow === id ? "var(--bg-sidebar)" : "transparent",
+      transition: "background 80ms",
+    })
+    const plainRowStyle: React.CSSProperties = {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: "10px 12px",
+      borderBottom: "1px solid var(--border)",
+    }
+    const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
+    const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
+    return (
+      <div style={{ overflowY: "auto", flex: 1 }}>
+        <div
+          style={boolRow("redirects")}
+          onClick={() => onFollowRedirectsChange(!followRedirects)}
+          onMouseEnter={() => setHoveredRow("redirects")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Follow Redirects</div>
+            <div style={descStyle}>Automatically follow 3xx HTTP redirects</div>
+          </div>
+          <SettingsCheckbox checked={followRedirects} />
+        </div>
+        <div
+          style={boolRow("ssl")}
+          onClick={() => onSslVerificationChange(!sslVerification)}
+          onMouseEnter={() => setHoveredRow("ssl")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>SSL Certificate Verification</div>
+            <div style={descStyle}>Reject requests with invalid or self-signed certificates</div>
+          </div>
+          <SettingsCheckbox checked={sslVerification} />
+        </div>
+        <div style={plainRowStyle}>
+          <div>
+            <div style={labelStyle}>Request Timeout</div>
+            <div style={descStyle}>Maximum wait time — 0 means no timeout</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={String(timeout)}
+              onChange={(e) => {
+                const raw = e.target.value.replace(/\D/g, "")
+                onTimeoutChange(raw === "" ? 0 : parseInt(raw, 10))
+              }}
+              style={{
+                width: 72,
+                padding: "3px 8px",
+                fontSize: 11,
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                outline: "none",
+                textAlign: "right",
+              }}
+            />
+            <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
+          </div>
+        </div>
+      </div>
+    )
   }
   return (
-    <div style={{ padding: 12 }}>
+    <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
       <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>{subTab} — coming soon.</p>
     </div>
   )
@@ -154,6 +684,24 @@ function SubTabContent({
 export function RequestPane() {
   const { tabs, activeTabId, updateTab } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
+
+  type BulkModes = { params: boolean; headers: boolean; formData: boolean; urlencoded: boolean }
+  const defaultBulkModes: BulkModes = {
+    params: false,
+    headers: false,
+    formData: false,
+    urlencoded: false,
+  }
+  const [bulkModeMap, setBulkModeMap] = useState<Record<string, BulkModes>>({})
+  const tabId = tab?.id ?? ""
+  const bulkModes: BulkModes = bulkModeMap[tabId] ?? defaultBulkModes
+
+  function setBulkMode(key: keyof BulkModes, v: boolean) {
+    setBulkModeMap((prev) => ({
+      ...prev,
+      [tabId]: { ...(prev[tabId] ?? defaultBulkModes), [key]: v },
+    }))
+  }
 
   if (!tab) {
     return (
@@ -196,12 +744,56 @@ export function RequestPane() {
     updateTab(tab!.id, { pathVars })
   }
 
+  function handleBodyTypeChange(bodyType: BodyType) {
+    updateTab(tab!.id, { bodyType, dirty: !!tab!.url || bodyType !== "none" })
+  }
+
+  function handleBodyRawChange(bodyRaw: string) {
+    updateTab(tab!.id, { bodyRaw, dirty: !!tab!.url || !!bodyRaw })
+  }
+
+  function handleBodyRawContentTypeChange(bodyRawContentType: RawContentType) {
+    updateTab(tab!.id, { bodyRawContentType })
+  }
+
+  function handleBodyFormDataChange(bodyFormData: KeyValueItem[]) {
+    updateTab(tab!.id, {
+      bodyFormData,
+      dirty: !!tab!.url || bodyFormData.some((f) => !!f.key),
+    })
+  }
+
+  function handleBodyUrlencodedChange(bodyUrlencoded: KeyValueItem[]) {
+    updateTab(tab!.id, {
+      bodyUrlencoded,
+      dirty: !!tab!.url || bodyUrlencoded.some((u) => !!u.key),
+    })
+  }
+
+  function handleFollowRedirectsChange(followRedirects: boolean) {
+    updateTab(tab!.id, { followRedirects })
+  }
+
+  function handleSslVerificationChange(sslVerification: boolean) {
+    updateTab(tab!.id, { sslVerification })
+  }
+
+  function handleTimeoutChange(timeout: number) {
+    updateTab(tab!.id, { timeout })
+  }
+
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
   const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
+  const hasBody =
+    tab.bodyType !== "none" &&
+    (tab.bodyRaw.trim() !== "" ||
+      tab.bodyFormData.some((f) => f.enabled && f.key) ||
+      tab.bodyUrlencoded.some((u) => u.enabled && u.key))
 
   function subTabLabel(t: RequestSubTab): string {
     if (t === "Params" && enabledParamsCount > 0) return `Params (${enabledParamsCount})`
     if (t === "Headers" && enabledHeadersCount > 0) return `Headers (${enabledHeadersCount})`
+    if (t === "Body" && hasBody) return "Body ●"
     return t
   }
 
@@ -284,16 +876,45 @@ export function RequestPane() {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        <SubTabContent
-          subTab={tab.activeSubTab}
-          params={tab.params}
-          headers={tab.headers}
-          pathVars={tab.pathVars}
-          onParamsChange={handleParamsChange}
-          onHeadersChange={handleHeadersChange}
-          onPathVarsChange={handlePathVarsChange}
-        />
+      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+        {tab.activeSubTab === "Code" ? (
+          <CodePanel tab={tab} />
+        ) : (
+          <SubTabContent
+            key={tab.id}
+            subTab={tab.activeSubTab}
+            params={tab.params}
+            headers={tab.headers}
+            pathVars={tab.pathVars}
+            bodyType={tab.bodyType}
+            bodyRaw={tab.bodyRaw}
+            bodyRawContentType={tab.bodyRawContentType}
+            bodyFormData={tab.bodyFormData}
+            bodyUrlencoded={tab.bodyUrlencoded}
+            paramsBulkMode={bulkModes.params}
+            headersBulkMode={bulkModes.headers}
+            formDataBulkMode={bulkModes.formData}
+            urlencodedBulkMode={bulkModes.urlencoded}
+            onParamsChange={handleParamsChange}
+            onHeadersChange={handleHeadersChange}
+            onPathVarsChange={handlePathVarsChange}
+            onBodyTypeChange={handleBodyTypeChange}
+            onBodyRawChange={handleBodyRawChange}
+            onBodyRawContentTypeChange={handleBodyRawContentTypeChange}
+            onBodyFormDataChange={handleBodyFormDataChange}
+            onBodyUrlencodedChange={handleBodyUrlencodedChange}
+            onParamsBulkModeChange={(v) => setBulkMode("params", v)}
+            onHeadersBulkModeChange={(v) => setBulkMode("headers", v)}
+            onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
+            onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
+            followRedirects={tab.followRedirects}
+            sslVerification={tab.sslVerification}
+            timeout={tab.timeout}
+            onFollowRedirectsChange={handleFollowRedirectsChange}
+            onSslVerificationChange={handleSslVerificationChange}
+            onTimeoutChange={handleTimeoutChange}
+          />
+        )}
       </div>
     </div>
   )
