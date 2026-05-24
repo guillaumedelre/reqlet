@@ -8,9 +8,10 @@ import (
 	"strings"
 )
 
+// Schema URL constants for each supported Postman collection format.
 const (
-	schemaV21 = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-	schemaV20 = "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+	SchemaV21 = "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	SchemaV20 = "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
 )
 
 // ParseCollection reads a Postman Collection v2.1 from r.
@@ -26,6 +27,10 @@ func ParseCollection(r io.Reader) (*Collection, error) {
 	}
 
 	if err := validateCollection(&c); err != nil {
+		return nil, err
+	}
+
+	if err := validateAgainstSchema(data, compiledV21); err != nil {
 		return nil, err
 	}
 
@@ -91,8 +96,8 @@ func validateEnvironment(e *Environment) error {
 }
 
 func isSupportedSchema(schema string) bool {
-	return strings.HasPrefix(schema, schemaV21) ||
-		strings.HasPrefix(schema, schemaV20)
+	return strings.HasPrefix(schema, SchemaV21) ||
+		strings.HasPrefix(schema, SchemaV20)
 }
 
 // Walk calls fn for every leaf request item in the collection, in depth-first

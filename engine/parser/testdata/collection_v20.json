@@ -1,0 +1,71 @@
+{
+  "info": {
+    "_postman_id": "bbbbbbbb-0000-0000-0000-000000000002",
+    "name": "Reqlet Test Collection v2.0",
+    "description": "A test collection in Postman Collection v2.0 format",
+    "schema": "https://schema.getpostman.com/json/collection/v2.0.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Articles",
+      "item": [
+        {
+          "name": "Get article",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Status is 200\", function() {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{base_url}}/articles/1"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth folder",
+      "auth": {
+        "type": "basic",
+        "basic": {
+          "username": "{{admin_user}}",
+          "password": "{{admin_pass}}"
+        }
+      },
+      "item": [
+        {
+          "name": "Create article",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"title\": \"Hello v2.0\"}"
+            },
+            "url": "{{base_url}}/articles"
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.example.com"
+    }
+  ]
+}

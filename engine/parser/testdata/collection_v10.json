@@ -1,0 +1,56 @@
+{
+  "id": "cccccccc-0000-0000-0000-000000000001",
+  "name": "Reqlet Test Collection v1.0",
+  "description": "A test collection in Postman Collection v1.0 format",
+  "order": ["req-001", "req-003"],
+  "folders": [
+    {
+      "id": "folder-001",
+      "name": "Articles",
+      "description": "Article requests",
+      "order": ["req-002"]
+    }
+  ],
+  "requests": [
+    {
+      "id": "req-001",
+      "name": "Ping",
+      "method": "GET",
+      "url": "{{base_url}}/ping",
+      "headers": "Accept: application/json\n",
+      "body": "",
+      "dataMode": "raw",
+      "description": "Health check",
+      "folder": null,
+      "preRequestScript": "",
+      "tests": "pm.test(\"Status 200\", function() { pm.response.to.have.status(200); });"
+    },
+    {
+      "id": "req-002",
+      "name": "Get article",
+      "method": "GET",
+      "url": "{{base_url}}/articles/1",
+      "headers": "Accept: application/json\nX-Api-Version: 2\n",
+      "body": "",
+      "dataMode": "raw",
+      "description": "",
+      "folder": "folder-001",
+      "preRequestScript": "pm.variables.set('ts', Date.now());",
+      "tests": ""
+    },
+    {
+      "id": "req-003",
+      "name": "Create article",
+      "method": "POST",
+      "url": "{{base_url}}/articles",
+      "headers": "Content-Type: application/json\n",
+      "data": [],
+      "body": "{\"title\": \"Hello v1.0\"}",
+      "dataMode": "raw",
+      "description": "",
+      "folder": null,
+      "preRequestScript": "",
+      "tests": ""
+    }
+  ]
+}

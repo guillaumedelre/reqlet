@@ -21,8 +21,11 @@ and the GUI backend. Sub-packages follow a single responsibility principle:
 
 | Package | Responsibility |
 |---------|---------------|
-| `engine/parser` | Read and validate Postman collection files (v1, v2.0, v2.1) |
-| `engine/runner` | Orchestrate request execution (ordering, iterations, data files) |
+| `engine/parser` | Read and validate Postman collection files; detect format version (v1.0/v2.0/v2.1); enforce official JSON Schema for v2.0 and v2.1 (schemas embedded via `go:embed`) |
+| `engine/migration` | Transform parsed v1.0 and v2.0 collections into the v2.1 internal model |
+| `engine/loader` | Single entry point for callers (CLI, GUI): `LoadCollection` (parse + migrate → v2.1), `LoadEnvironment`, `LoadData` (CSV/JSON → `[]map[string]string`) |
+| `engine/runner` | Orchestrate request execution (ordering, iterations, data injection) |
+| `engine/reporter` | Output formatters: terminal (ANSI colours), JSON, JUnit/XML |
 | `engine/http` | Execute HTTP requests (`net/http`, redirects, TLS, proxy) |
 | `engine/variables` | Resolve `{{variable}}` across the five Postman scopes |
 | `engine/auth` | Auth strategies (Bearer, Basic, Digest, OAuth 2.0, AWS SigV4…) |
@@ -58,6 +61,11 @@ on the end user's machine.
 
 ```
 User (GUI or CLI)
+     │
+     ▼
+engine/loader          ← LoadCollection / LoadEnvironment / LoadData
+     ├── engine/parser     parse + validate against JSON Schema (per format)
+     └── engine/migration  transform v1.0 / v2.0 → v2.1 internal model
      │
      ▼
 engine/runner ──── resolves variables ──── engine/variables

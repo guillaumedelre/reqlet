@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	enginehttp "github.com/guillaumedelre/reqlet/engine/http"
+	"github.com/guillaumedelre/reqlet/engine/loader"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/reporter"
 	"github.com/guillaumedelre/reqlet/engine/runner"
@@ -196,7 +195,7 @@ func runCollection(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// loadCollection reads and parses a Postman collection file.
+// loadCollection reads and loads a Postman collection file (v1.0, v2.0 or v2.1).
 func loadCollection(path string) (*parser.Collection, error) {
 	f, err := os.Open(path) //nolint:gosec // path provided by user
 	if err != nil {
@@ -204,9 +203,9 @@ func loadCollection(path string) (*parser.Collection, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	col, err := parser.ParseCollection(f)
+	col, err := loader.LoadCollection(f)
 	if err != nil {
-		return nil, fmt.Errorf("parse collection %q: %w", path, err)
+		return nil, fmt.Errorf("load collection %q: %w", path, err)
 	}
 	return col, nil
 }
@@ -223,9 +222,9 @@ func loadEnvironment(path string) (*parser.Environment, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	env, err := parser.ParseEnvironment(f)
+	env, err := loader.LoadEnvironment(f)
 	if err != nil {
-		return nil, fmt.Errorf("parse environment %q: %w", path, err)
+		return nil, fmt.Errorf("load environment %q: %w", path, err)
 	}
 	return env, nil
 }
@@ -242,51 +241,9 @@ func loadData(path string) ([]map[string]string, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	switch strings.ToLower(filepath.Ext(path)) {
-	case ".csv":
-		return parseCSV(f)
-	case ".json":
-		return parseJSONData(f)
-	default:
-		return nil, fmt.Errorf("data file %q: unsupported extension (use .csv or .json)", path)
-	}
-}
-
-func parseCSV(r *os.File) ([]map[string]string, error) {
-	cr := csv.NewReader(r)
-	records, err := cr.ReadAll()
+	rows, err := loader.LoadData(f, filepath.Ext(path))
 	if err != nil {
-		return nil, fmt.Errorf("parse CSV: %w", err)
-	}
-	if len(records) < 2 {
-		return nil, nil
-	}
-	headers := records[0]
-	rows := make([]map[string]string, 0, len(records)-1)
-	for _, record := range records[1:] {
-		row := make(map[string]string, len(headers))
-		for i, h := range headers {
-			if i < len(record) {
-				row[h] = record[i]
-			}
-		}
-		rows = append(rows, row)
-	}
-	return rows, nil
-}
-
-func parseJSONData(r *os.File) ([]map[string]string, error) {
-	var raw []map[string]interface{}
-	if err := json.NewDecoder(r).Decode(&raw); err != nil {
-		return nil, fmt.Errorf("parse JSON data: %w", err)
-	}
-	rows := make([]map[string]string, len(raw))
-	for i, obj := range raw {
-		row := make(map[string]string, len(obj))
-		for k, v := range obj {
-			row[k] = fmt.Sprintf("%v", v)
-		}
-		rows[i] = row
+		return nil, fmt.Errorf("load data %q: %w", path, err)
 	}
 	return rows, nil
 }
