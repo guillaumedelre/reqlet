@@ -1,0 +1,149 @@
+# Development guide
+
+## Prerequisites
+
+- [Docker][docker] (with Compose v2 plugin)
+- An editor — the project ships an `.editorconfig`
+
+Nothing else needs to be installed on the host. All tooling runs inside
+containers.
+
+## First-time setup
+
+```bash
+# Install Go module dependencies (writes go.sum)
+docker compose run --rm go go mod download
+
+# Install Node.js dependencies for node-runner/
+docker compose run --rm node npm install
+
+# Install Node.js dependencies for gui/frontend/
+docker compose run --rm frontend npm install
+```
+
+## Daily commands
+
+### Go (engine/, cli/)
+
+```bash
+# Interactive Go shell
+docker compose run --rm go sh
+
+# Run all tests
+docker compose run --rm test
+
+# Run tests with coverage report
+docker compose run --rm test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./...
+
+# Run unit tests only (exclude integration)
+docker compose run --rm test gotestsum -- -tags=!integration ./...
+
+# Run integration tests only
+docker compose run --rm test gotestsum -- -tags=integration ./...
+
+# Lint (golangci-lint via official image)
+docker compose run --rm lint
+
+# Check formatting (no changes applied)
+docker compose run --rm go gofumpt -l .
+
+# Apply formatting
+docker compose run --rm go gofumpt -w .
+
+# Build CLI binary to dist/
+docker compose run --rm build-cli
+
+# Generate mocks from an interface
+docker compose run --rm go mockgen \
+  -source=engine/runner/runner.go \
+  -destination=engine/runner/mock_runner_test.go \
+  -package=runner
+```
+
+### Node.js (node-runner/)
+
+```bash
+# Interactive Node.js shell
+docker compose run --rm node sh
+
+# Lint
+docker compose run --rm node npm run lint
+
+# Tests
+docker compose run --rm node npm test
+```
+
+### Frontend (gui/frontend/)
+
+```bash
+# Start Vite dev server (accessible at http://localhost:5173)
+docker compose up frontend
+
+# Lint
+docker compose run --rm frontend npm run lint
+
+# Type-check and build
+docker compose run --rm frontend npm run build
+```
+
+## GUI development
+
+`wails dev` (hot-reload) requires a display server — it cannot run in a
+container.
+
+The recommended workflow:
+
+1. Run `docker compose up frontend` for the React side (Vite on port 5173).
+   The Wails bindings (`window.go.*`) are mocked in the frontend so it works
+   without the Go backend.
+2. Develop Go backend code in the `go` container as usual.
+3. Run `docker compose run --rm go wails generate types` to regenerate
+   TypeScript types from Go structs whenever a bound method changes.
+
+Linux GUI binaries are built via `Dockerfile.gui`. macOS and Windows builds run
+on native GitHub Actions runners.
+
+## Running what CI runs
+
+Before opening a PR, replicate the four CI jobs locally:
+
+```bash
+# 1. go — formatting, lint, tests
+docker compose run --rm go gofumpt -l . | tee /tmp/gofumpt.out && test ! -s /tmp/gofumpt.out
+docker compose run --rm lint
+docker compose run --rm test
+
+# 2. frontend — lint + build
+docker compose run --rm frontend npm run lint
+docker compose run --rm frontend npm run build
+
+# 3. node-runner — lint + tests
+docker compose run --rm node npm run lint
+docker compose run --rm node npm test
+
+# 4. docker — build images
+docker build -f Dockerfile.dev .
+docker build -f Dockerfile .
+docker build -f Dockerfile.gui .
+```
+
+## Project structure
+
+```
+reqlet/
+├── engine/          # Shared Go library (business logic)
+├── cli/             # CLI binary → binary: reqlet-cli
+├── gui/             # Wails desktop app → binary: reqlet
+│   └── frontend/    # React + TypeScript (Vite, shadcn/ui, Zustand)
+├── node-runner/     # Node.js pm.* sandbox
+├── docs/            # This documentation
+├── .github/         # CI workflows, issue templates, dependabot
+├── compose.yaml     # Dev environment
+├── Dockerfile       # CLI production image
+├── Dockerfile.dev   # Dev image (Go + Node.js + tools)
+└── Dockerfile.gui   # GUI Linux build (WebKit2GTK + Wails)
+```
+
+See [architecture.md](architecture.md) for a deeper look at the component model.
+
+[docker]: https://docs.docker.com/get-docker/
