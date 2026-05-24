@@ -14,13 +14,19 @@ describe("openTab", () => {
     expect(activeTabId).toBe(tabs[1].id)
   })
 
-  it("new tab has default method GET, empty url, empty params, headers and pathVars", () => {
+  it("new tab has correct defaults", () => {
     const { tabs } = useTabsStore.getState()
     expect(tabs[0].method).toBe("GET")
     expect(tabs[0].url).toBe("")
     expect(tabs[0].params).toEqual([])
     expect(tabs[0].headers).toEqual([])
     expect(tabs[0].pathVars).toEqual([])
+    expect(tabs[0].bodyType).toBe("none")
+    expect(tabs[0].bodyRaw).toBe("")
+    expect(tabs[0].bodyRawContentType).toBe("JSON")
+    expect(tabs[0].bodyFormData).toEqual([])
+    expect(tabs[0].bodyUrlencoded).toEqual([])
+    expect(tabs[0].response).toBeNull()
     expect(tabs[0].dirty).toBe(false)
   })
 })

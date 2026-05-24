@@ -3,12 +3,24 @@ import { persist } from "zustand/middleware"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
 export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts"
+export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
+export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
 
 export interface KeyValueItem {
   id: string
   key: string
   value: string
   enabled: boolean
+}
+
+export interface ResponseData {
+  status: number
+  statusText: string
+  time: number
+  size: number
+  headers: Record<string, string>
+  body: string
+  contentType: string
 }
 
 export interface Tab {
@@ -18,6 +30,12 @@ export interface Tab {
   params: KeyValueItem[]
   headers: KeyValueItem[]
   pathVars: KeyValueItem[]
+  bodyType: BodyType
+  bodyRaw: string
+  bodyRawContentType: RawContentType
+  bodyFormData: KeyValueItem[]
+  bodyUrlencoded: KeyValueItem[]
+  response: ResponseData | null
   dirty: boolean
   activeSubTab: RequestSubTab
 }
@@ -30,6 +48,12 @@ function newTab(patch?: Partial<Tab>): Tab {
     params: [],
     headers: [],
     pathVars: [],
+    bodyType: "none",
+    bodyRaw: "",
+    bodyRawContentType: "JSON",
+    bodyFormData: [],
+    bodyUrlencoded: [],
+    response: null,
     dirty: false,
     activeSubTab: "Params",
     ...patch,
@@ -112,7 +136,7 @@ export const useTabsStore = create<TabsState>()(
         set((s) => {
           const source = s.tabs.find((t) => t.id === id)
           if (!source) return s
-          const dup = { ...source, id: crypto.randomUUID() }
+          const dup = { ...source, id: crypto.randomUUID(), response: null }
           const idx = s.tabs.findIndex((t) => t.id === id)
           const tabs = [...s.tabs.slice(0, idx + 1), dup, ...s.tabs.slice(idx + 1)]
           return { tabs, activeTabId: dup.id }
@@ -143,7 +167,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 3,
+      version: 4,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -152,6 +176,12 @@ export const useTabsStore = create<TabsState>()(
             params: [],
             headers: [],
             pathVars: [],
+            bodyType: "none",
+            bodyRaw: "",
+            bodyRawContentType: "JSON",
+            bodyFormData: [],
+            bodyUrlencoded: [],
+            response: null,
             ...(t as object),
           })),
         }
