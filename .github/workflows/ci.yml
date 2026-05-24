@@ -108,3 +108,10 @@ jobs:
           context: .
           file: Dockerfile
           push: false
+
+      - name: Build Dockerfile.gui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.gui
+          push: false
