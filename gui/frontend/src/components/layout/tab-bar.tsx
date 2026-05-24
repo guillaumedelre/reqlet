@@ -1,3 +1,5 @@
+import { useEffect, useRef, useState } from "react"
+
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
 import { useTabsStore, type Tab } from "@/store/tabs"
@@ -14,7 +16,93 @@ function getTabTitle(url: string): string {
   }
 }
 
-function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
+interface CtxMenu {
+  tabId: string
+  x: number
+  y: number
+}
+
+function ContextMenu({ menu, onClose }: { menu: CtxMenu; onClose: () => void }) {
+  const { tabs, duplicateTab, closeTab, closeOthers, closeToRight } = useTabsStore()
+  const ref = useRef<HTMLDivElement>(null)
+  const tabIdx = tabs.findIndex((t) => t.id === menu.tabId)
+  const hasRight = tabIdx < tabs.length - 1
+  const hasOthers = tabs.length > 1
+
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [onClose])
+
+  const itemStyle = (disabled = false): React.CSSProperties => ({
+    display: "block",
+    width: "100%",
+    padding: "5px 12px",
+    border: "none",
+    background: "transparent",
+    color: disabled ? "var(--fg-muted)" : "var(--fg)",
+    fontSize: 11,
+    cursor: disabled ? "default" : "pointer",
+    textAlign: "left",
+    opacity: disabled ? 0.5 : 1,
+  })
+
+  function action(fn: () => void) {
+    fn()
+    onClose()
+  }
+
+  return (
+    <div
+      ref={ref}
+      style={{
+        position: "fixed",
+        top: menu.y,
+        left: menu.x,
+        zIndex: 200,
+        background: "var(--bg)",
+        border: "1px solid var(--border)",
+        borderRadius: 4,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+        minWidth: 160,
+        padding: "3px 0",
+      }}
+    >
+      <button style={itemStyle()} onClick={() => action(() => duplicateTab(menu.tabId))}>
+        Duplicate
+      </button>
+      <button
+        style={itemStyle(!hasOthers)}
+        onClick={() => !hasOthers || action(() => closeOthers(menu.tabId))}
+      >
+        Close others
+      </button>
+      <button
+        style={itemStyle(!hasRight)}
+        onClick={() => !hasRight || action(() => closeToRight(menu.tabId))}
+      >
+        Close to the right
+      </button>
+      <div style={{ borderTop: "1px solid var(--border)", margin: "3px 0" }} />
+      <button style={itemStyle()} onClick={() => action(() => closeTab(menu.tabId))}>
+        Close
+      </button>
+    </div>
+  )
+}
+
+function TabItem({
+  tab,
+  active,
+  onContextMenu,
+}: {
+  tab: Tab
+  active: boolean
+  onContextMenu: (e: React.MouseEvent, id: string) => void
+}) {
   const { activateTab, closeTab } = useTabsStore()
   const methodColor = HTTP_METHOD_COLORS[tab.method]
 
@@ -23,6 +111,10 @@ function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
       role="tab"
       aria-selected={active}
       onClick={() => activateTab(tab.id)}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        onContextMenu(e, tab.id)
+      }}
       style={{
         display: "flex",
         alignItems: "center",
@@ -102,6 +194,7 @@ function TabItem({ tab, active }: { tab: Tab; active: boolean }) {
 
 export function TabBar() {
   const { tabs, activeTabId, openTab, closeTab, reopenLastTab } = useTabsStore()
+  const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
 
   useKeyboardShortcut("t", openTab, { ctrlOrMeta: true, shift: false })
   useKeyboardShortcut(
@@ -113,39 +206,51 @@ export function TabBar() {
   )
   useKeyboardShortcut("t", reopenLastTab, { ctrlOrMeta: true, shift: true })
 
+  function handleContextMenu(e: React.MouseEvent, tabId: string) {
+    setCtxMenu({ tabId, x: e.clientX, y: e.clientY })
+  }
+
   return (
-    <div
-      style={{
-        height: 36,
-        display: "flex",
-        alignItems: "stretch",
-        borderBottom: "1px solid var(--border)",
-        background: "var(--bg-sidebar)",
-        flexShrink: 0,
-        overflow: "hidden",
-      }}
-    >
-      <div style={{ display: "flex", flex: 1, overflowX: "auto", overflowY: "hidden" }}>
-        {tabs.map((tab) => (
-          <TabItem key={tab.id} tab={tab} active={tab.id === activeTabId} />
-        ))}
-        <button
-          onClick={openTab}
-          title="New tab (Ctrl+T)"
-          style={{
-            flexShrink: 0,
-            width: 28,
-            border: "none",
-            background: "transparent",
-            color: "var(--fg-muted)",
-            cursor: "pointer",
-            fontSize: 16,
-            alignSelf: "center",
-          }}
-        >
-          +
-        </button>
+    <>
+      <div
+        style={{
+          height: 36,
+          display: "flex",
+          alignItems: "stretch",
+          borderBottom: "1px solid var(--border)",
+          background: "var(--bg-sidebar)",
+          flexShrink: 0,
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", flex: 1, overflowX: "auto", overflowY: "hidden" }}>
+          {tabs.map((tab) => (
+            <TabItem
+              key={tab.id}
+              tab={tab}
+              active={tab.id === activeTabId}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
+          <button
+            onClick={openTab}
+            title="New tab (Ctrl+T)"
+            style={{
+              flexShrink: 0,
+              width: 28,
+              border: "none",
+              background: "transparent",
+              color: "var(--fg-muted)",
+              cursor: "pointer",
+              fontSize: 16,
+              alignSelf: "center",
+            }}
+          >
+            +
+          </button>
+        </div>
       </div>
-    </div>
+      {ctxMenu && <ContextMenu menu={ctxMenu} onClose={() => setCtxMenu(null)} />}
+    </>
   )
 }
