@@ -127,6 +127,20 @@ export const useTabsStore = create<TabsState>()(
           tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         })),
     }),
-    { name: "reqlet-tabs" },
+    {
+      name: "reqlet-tabs",
+      version: 2,
+      migrate(persisted: unknown) {
+        const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
+        return {
+          ...s,
+          tabs: (s.tabs ?? []).map((t: unknown) => ({
+            params: [],
+            headers: [],
+            ...(t as object),
+          })),
+        }
+      },
+    },
   ),
 )
