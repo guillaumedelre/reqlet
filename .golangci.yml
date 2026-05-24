@@ -12,6 +12,7 @@ linters:
   exclusions:
     paths:
       - "node-runner/node_modules/.*"
+      - "gui/.*"
 
 formatters:
   enable:
@@ -24,3 +25,4 @@ formatters:
   exclusions:
     paths:
       - "node-runner/node_modules/.*"
+      - "gui/.*"

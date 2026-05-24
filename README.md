@@ -1,6 +1,10 @@
+<div align="center">
+  <img src="REQLET-LOGO.png" alt="Reqlet" width="120" />
+
 # Reqlet
 
-> Open source Postman desktop replacement — GUI, CLI and self-hostable.
+> Your APIs, your machine. Reqlet is an open source API client with a native desktop GUI and a CI-ready CLI — Postman-compatible, no account required.
+</div>
 
 [![CI](https://github.com/guillaumedelre/reqlet/actions/workflows/ci.yml/badge.svg)](https://github.com/guillaumedelre/reqlet/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/guillaumedelre/reqlet/branch/main/graph/badge.svg)](https://codecov.io/gh/guillaumedelre/reqlet)

@@ -5,18 +5,34 @@ coverage:
 
   status:
     project:
-      default:
-        # Seuil global du projet
+      go:
         target: 80%
-        # Tolérance : échec si la couverture descend de plus de 1%
         threshold: 1%
+        flags:
+          - go
         paths:
           - "engine/"
-    patch:
-      default:
-        # Chaque PR doit couvrir ≥ 80% des lignes modifiées
+      frontend:
         target: 80%
         threshold: 1%
+        flags:
+          - frontend
+        paths:
+          - "gui/frontend/src/"
+    patch:
+      default:
+        target: 80%
+        threshold: 1%
+
+flags:
+  go:
+    paths:
+      - engine/
+    carryforward: false
+  frontend:
+    paths:
+      - gui/frontend/src/
+    carryforward: false
 
 comment:
   layout: "reach,diff,flags,files"
@@ -26,6 +42,6 @@ comment:
 ignore:
   - "**/*_test.go"
   - "cli/**"
-  - "gui/frontend/**"
   - "node-runner/**"
   - "docs/**"
+  - "gui/frontend/src/test/**"
