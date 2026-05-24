@@ -62,7 +62,6 @@ reqlet run collection.json --folder "Auth" --reporters cli
 
 - [Architecture overview](docs/architecture.md)
 - [Development guide](docs/development.md)
-- [Newman migration guide](docs/newman-migration.md)
 
 ## Contributing
 
