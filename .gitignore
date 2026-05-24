@@ -47,6 +47,9 @@ ehthumbs.db
 .env.local
 .env.*.local
 
+# Local test fixtures (real collections, not committed)
+fixtures/
+
 # Internal project files
 CLAUDE.md
 DRAFT-ROADMAP.md
