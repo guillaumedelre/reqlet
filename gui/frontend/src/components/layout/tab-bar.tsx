@@ -97,11 +97,21 @@ function ContextMenu({ menu, onClose }: { menu: CtxMenu; onClose: () => void }) 
 function TabItem({
   tab,
   active,
+  dragOver,
   onContextMenu,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   tab: Tab
   active: boolean
+  dragOver: boolean
   onContextMenu: (e: React.MouseEvent, id: string) => void
+  onDragStart: (e: React.DragEvent, id: string) => void
+  onDragOver: (e: React.DragEvent, id: string) => void
+  onDrop: (e: React.DragEvent, id: string) => void
+  onDragEnd: () => void
 }) {
   const { activateTab, closeTab } = useTabsStore()
   const methodColor = HTTP_METHOD_COLORS[tab.method]
@@ -109,12 +119,17 @@ function TabItem({
   return (
     <div
       role="tab"
+      draggable
       aria-selected={active}
       onClick={() => activateTab(tab.id)}
       onContextMenu={(e) => {
         e.preventDefault()
         onContextMenu(e, tab.id)
       }}
+      onDragStart={(e) => onDragStart(e, tab.id)}
+      onDragOver={(e) => onDragOver(e, tab.id)}
+      onDrop={(e) => onDrop(e, tab.id)}
+      onDragEnd={onDragEnd}
       style={{
         display: "flex",
         alignItems: "center",
@@ -129,6 +144,7 @@ function TabItem({
         maxWidth: 180,
         minWidth: 80,
         userSelect: "none",
+        boxShadow: dragOver ? "inset 2px 0 0 var(--accent)" : undefined,
       }}
     >
       <span
@@ -193,8 +209,10 @@ function TabItem({
 }
 
 export function TabBar() {
-  const { tabs, activeTabId, openTab, closeTab, reopenLastTab } = useTabsStore()
+  const { tabs, activeTabId, openTab, closeTab, reopenLastTab, reorderTabs } = useTabsStore()
   const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null)
+  const [dragOverId, setDragOverId] = useState<string | null>(null)
+  const draggedIdRef = useRef<string | null>(null)
 
   useKeyboardShortcut("t", openTab, { ctrlOrMeta: true, shift: false })
   useKeyboardShortcut(
@@ -208,6 +226,30 @@ export function TabBar() {
 
   function handleContextMenu(e: React.MouseEvent, tabId: string) {
     setCtxMenu({ tabId, x: e.clientX, y: e.clientY })
+  }
+
+  function handleDragStart(e: React.DragEvent, id: string) {
+    draggedIdRef.current = id
+    e.dataTransfer.effectAllowed = "move"
+  }
+
+  function handleDragOver(e: React.DragEvent, id: string) {
+    e.preventDefault()
+    if (draggedIdRef.current !== id) setDragOverId(id)
+  }
+
+  function handleDrop(e: React.DragEvent, toId: string) {
+    e.preventDefault()
+    if (draggedIdRef.current && draggedIdRef.current !== toId) {
+      reorderTabs(draggedIdRef.current, toId)
+    }
+    draggedIdRef.current = null
+    setDragOverId(null)
+  }
+
+  function handleDragEnd() {
+    draggedIdRef.current = null
+    setDragOverId(null)
   }
 
   return (
@@ -229,7 +271,12 @@ export function TabBar() {
               key={tab.id}
               tab={tab}
               active={tab.id === activeTabId}
+              dragOver={dragOverId === tab.id}
               onContextMenu={handleContextMenu}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
             />
           ))}
           <button

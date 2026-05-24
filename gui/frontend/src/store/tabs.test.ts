@@ -14,12 +14,13 @@ describe("openTab", () => {
     expect(activeTabId).toBe(tabs[1].id)
   })
 
-  it("new tab has default method GET, empty url, empty params and headers", () => {
+  it("new tab has default method GET, empty url, empty params, headers and pathVars", () => {
     const { tabs } = useTabsStore.getState()
     expect(tabs[0].method).toBe("GET")
     expect(tabs[0].url).toBe("")
     expect(tabs[0].params).toEqual([])
     expect(tabs[0].headers).toEqual([])
+    expect(tabs[0].pathVars).toEqual([])
     expect(tabs[0].dirty).toBe(false)
   })
 })
@@ -153,6 +154,40 @@ describe("reopenLastTab", () => {
     const state = useTabsStore.getState()
     expect(state.tabs).toHaveLength(tabs.length)
     expect(state.activeTabId).toBe(activeTabId)
+  })
+})
+
+describe("reorderTabs", () => {
+  it("moves a tab to a new position", () => {
+    useTabsStore.getState().openTab()
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    const [id0, id1, id2] = tabs.map((t) => t.id)
+    useTabsStore.getState().reorderTabs(id2, id0)
+    const state = useTabsStore.getState()
+    expect(state.tabs[0].id).toBe(id2)
+    expect(state.tabs[1].id).toBe(id0)
+    expect(state.tabs[2].id).toBe(id1)
+  })
+
+  it("does nothing when source and target are the same tab", () => {
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().reorderTabs(tabs[0].id, tabs[0].id)
+    expect(useTabsStore.getState().tabs).toHaveLength(1)
+    expect(useTabsStore.getState().tabs[0].id).toBe(tabs[0].id)
+  })
+
+  it("ignores unknown ids", () => {
+    const before = useTabsStore.getState().tabs.length
+    useTabsStore.getState().reorderTabs("unknown", "alsoUnknown")
+    expect(useTabsStore.getState().tabs).toHaveLength(before)
+  })
+
+  it("preserves activeTabId after reorder", () => {
+    useTabsStore.getState().openTab()
+    const { tabs, activeTabId } = useTabsStore.getState()
+    useTabsStore.getState().reorderTabs(tabs[1].id, tabs[0].id)
+    expect(useTabsStore.getState().activeTabId).toBe(activeTabId)
   })
 })
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { assembleUrl, mergeParams, parseUrl } from "./url"
+import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "./url"
 import type { KeyValueItem } from "@/store/tabs"
 
 function item(id: string, key: string, value: string, enabled = true): KeyValueItem {
@@ -71,6 +71,82 @@ describe("parseUrl", () => {
 
   it("handles empty string", () => {
     expect(parseUrl("")).toEqual({ base: "", params: [] })
+  })
+})
+
+describe("extractPathVarNames", () => {
+  it("returns empty array for URL with no path vars", () => {
+    expect(extractPathVarNames("https://api.example.com/users")).toEqual([])
+  })
+
+  it("extracts :param style variables from the path", () => {
+    expect(extractPathVarNames("https://api.example.com/users/:userId")).toEqual(["userId"])
+  })
+
+  it("extracts multiple :param variables", () => {
+    expect(extractPathVarNames("https://api.example.com/users/:userId/posts/:postId")).toEqual([
+      "userId",
+      "postId",
+    ])
+  })
+
+  it("extracts {{param}} style variables from the path", () => {
+    expect(extractPathVarNames("https://api.example.com/users/{{id}}")).toEqual(["id"])
+  })
+
+  it("extracts both :param and {{param}} styles", () => {
+    expect(extractPathVarNames("https://api.example.com/:a/{{b}}")).toEqual(["a", "b"])
+  })
+
+  it("deduplicates repeated variable names", () => {
+    expect(extractPathVarNames("https://api.example.com/:id/sub/:id")).toEqual(["id"])
+  })
+
+  it("ignores :param patterns in the query string", () => {
+    expect(extractPathVarNames("https://api.example.com/users?:notavar=1")).toEqual([])
+  })
+
+  it("returns empty array for empty url", () => {
+    expect(extractPathVarNames("")).toEqual([])
+  })
+})
+
+describe("mergePathVars", () => {
+  it("creates a new item for a name not in the existing list", () => {
+    const result = mergePathVars([], ["id"])
+    expect(result).toHaveLength(1)
+    expect(result[0].key).toBe("id")
+    expect(result[0].value).toBe("")
+    expect(result[0].enabled).toBe(true)
+  })
+
+  it("preserves existing value and id when name matches", () => {
+    const existing: KeyValueItem[] = [{ id: "x", key: "id", value: "42", enabled: true }]
+    const result = mergePathVars(existing, ["id"])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe("x")
+    expect(result[0].value).toBe("42")
+  })
+
+  it("removes items no longer present in the names list", () => {
+    const existing: KeyValueItem[] = [{ id: "x", key: "old", value: "v", enabled: true }]
+    const result = mergePathVars(existing, ["new"])
+    expect(result).toHaveLength(1)
+    expect(result[0].key).toBe("new")
+  })
+
+  it("returns empty array when names is empty", () => {
+    expect(mergePathVars([], [])).toEqual([])
+  })
+
+  it("preserves order of names list", () => {
+    const existing: KeyValueItem[] = [
+      { id: "b", key: "b", value: "2", enabled: true },
+      { id: "a", key: "a", value: "1", enabled: true },
+    ]
+    const result = mergePathVars(existing, ["a", "b"])
+    expect(result[0].key).toBe("a")
+    expect(result[1].key).toBe("b")
   })
 })
 

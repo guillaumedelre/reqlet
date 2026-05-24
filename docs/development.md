@@ -181,6 +181,24 @@ Colors are used as text and as a 10 % opacity background tint (`color + "1a"`).
 Any new UI surface that displays an HTTP method must import `HTTP_METHOD_COLORS`
 from `@/lib/http-methods` rather than defining its own palette.
 
+#### URL utilities (`src/lib/url.ts`)
+
+Four pure functions manage the relationship between the raw URL string and the
+structured params/path-variables arrays:
+
+| Function | Purpose |
+|---|---|
+| `assembleUrl(base, params)` | Build the display URL from the base and enabled params |
+| `parseUrl(raw)` | Split a raw URL into `{ base, params[] }` |
+| `mergeParams(existing, parsed)` | Reconcile the params array after a URL edit (preserves IDs, keeps disabled items) |
+| `extractPathVarNames(url)` | Return the list of variable names found in the path — `:param` and `{{param}}` syntax, ignores the query string |
+| `mergePathVars(existing, names)` | Reconcile the path-vars array with the extracted names (preserves user-entered values, drops removed vars) |
+
+The `url` field on a tab stores the base URL only (no query string). `params` is
+the structured list. `pathVars` holds the extracted path variables with their
+user-supplied values (substituted at send time). Both arrays are kept in sync via
+the above functions on every URL field edit.
+
 [swagger-ui]: https://swagger.io/tools/swagger-ui/
 
 ## Running what CI runs
