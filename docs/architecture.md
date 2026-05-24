@@ -26,7 +26,7 @@ and the GUI backend. Sub-packages follow a single responsibility principle:
 | `engine/loader` | Single entry point for callers (CLI, GUI): `LoadCollection` (parse + migrate → v2.1), `LoadEnvironment`, `LoadData` (CSV/JSON → `[]map[string]string`) |
 | `engine/runner` | Orchestrate request execution (ordering, iterations, data injection) |
 | `engine/reporter` | Output formatters: terminal (ANSI colours), JSON, JUnit/XML |
-| `engine/http` | Execute HTTP requests (`net/http`, redirects, TLS, proxy) |
+| `engine/http` | Execute HTTP requests (`net/http`, redirects, TLS, proxy, client certificates) |
 | `engine/variables` | Resolve `{{variable}}` across the five Postman scopes |
 | `engine/auth` | Auth strategies (Bearer, Basic, Digest, OAuth 2.0, AWS SigV4…) |
 | `engine/storage` | SQLite persistence via `modernc.org/sqlite` + `sqlc` + `golang-migrate` |

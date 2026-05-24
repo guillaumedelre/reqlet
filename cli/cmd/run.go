@@ -27,23 +27,26 @@ var runCmd = &cobra.Command{
 
 // flag values
 var (
-	flagEnvironment   string
-	flagGlobals       string
-	flagData          string
-	flagIterations    int
-	flagDelayRequest  int
-	flagTimeout       int
-	flagTimeoutReq    int
-	flagFolder        string
-	flagBail          bool
-	flagInsecure      bool
-	flagNoColor       bool
-	flagVerbose       bool
-	flagEnvVar        []string
-	flagGlobalVar     []string
-	flagReporterJSON  string
-	flagReporterJUnit string
-	flagNodeRunner    string
+	flagEnvironment      string
+	flagGlobals          string
+	flagData             string
+	flagIterations       int
+	flagDelayRequest     int
+	flagTimeout          int
+	flagTimeoutReq       int
+	flagFolder           string
+	flagBail             bool
+	flagInsecure         bool
+	flagNoColor          bool
+	flagVerbose          bool
+	flagEnvVar           []string
+	flagGlobalVar        []string
+	flagReporterJSON     string
+	flagReporterJUnit    string
+	flagNodeRunner       string
+	flagClientCert       string
+	flagClientKey        string
+	flagClientPassphrase string
 )
 
 func init() {
@@ -65,6 +68,9 @@ func init() {
 	f.StringVar(&flagReporterJSON, "reporter-json-export", "", "write JSON report to file (- for stdout)")
 	f.StringVar(&flagReporterJUnit, "reporter-junit-export", "", "write JUnit XML report to file (- for stdout)")
 	f.StringVar(&flagNodeRunner, "node-runner", "", "path to node-runner/src/index.js (overrides REQLET_NODE_RUNNER)")
+	f.StringVar(&flagClientCert, "ssl-client-cert", "", "path to PEM client certificate file")
+	f.StringVar(&flagClientKey, "ssl-client-key", "", "path to PEM client private key file")
+	f.StringVar(&flagClientPassphrase, "ssl-client-passphrase", "", "passphrase for encrypted client key")
 }
 
 func runCollection(cmd *cobra.Command, args []string) error {
@@ -131,6 +137,9 @@ func runCollection(cmd *cobra.Command, args []string) error {
 	httpOpts := enginehttp.DefaultOptions()
 	httpOpts.Timeout = time.Duration(flagTimeoutReq) * time.Second
 	httpOpts.Insecure = flagInsecure
+	httpOpts.ClientCertFile = flagClientCert
+	httpOpts.ClientKeyFile = flagClientKey
+	httpOpts.ClientPassphrase = flagClientPassphrase
 	httpClient, err := enginehttp.NewClient(httpOpts)
 	if err != nil {
 		return fmt.Errorf("http client: %w", err)
