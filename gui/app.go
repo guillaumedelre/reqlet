@@ -1,14 +1,21 @@
 // Package main is the entry point for the Reqlet desktop application.
-// It uses Wails v2 (github.com/wailsapp/wails/v2) to expose Go methods
-// to the React frontend via window.go.* bindings.
-// The Wails dependency and full IPC wiring are introduced in Phase 2.
+// Wails v2 exposes Go methods to the React frontend via window.go.* bindings.
 package main
 
-// App holds application-level state and exposes methods to the frontend
-// via Wails bindings.
-type App struct{}
+import "context"
+
+// App holds application state and exposes methods to the frontend via Wails bindings.
+type App struct {
+	ctx context.Context
+}
 
 // NewApp creates the application instance.
 func NewApp() *App {
 	return &App{}
 }
+
+func (a *App) startup(ctx context.Context) {
+	a.ctx = ctx
+}
+
+func (a *App) shutdown(_ context.Context) {}

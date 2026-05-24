@@ -1,5 +1,4 @@
 # Go
-dist/
 *.exe
 *.test
 *.prof
@@ -18,11 +17,19 @@ node-runner/*.blob
 gui/frontend/dist/
 node-runner/dist/
 
+# Frontend test artifacts
+gui/frontend/coverage/
+gui/frontend/junit.xml
+
 # Wails generated bindings
 gui/frontend/wailsjs/
 
-# Build artifacts
-build/
+# Build artifacts (binaries go to dist/, not build/)
+dist/reqlet*
+dist/reqlet-cli*
+
+# OS — WSL metadata
+*:Zone.Identifier
 
 # SQLite user data
 *.db

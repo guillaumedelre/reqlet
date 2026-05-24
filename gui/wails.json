@@ -9,5 +9,11 @@
   "author": {
     "name": "Guillaume Delré",
     "email": "delre.guillaume@gmail.com"
+  },
+  "info": {
+    "productName": "Reqlet",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright 2024 Guillaume Delré",
+    "comments": "Open source Postman desktop replacement"
   }
 }
