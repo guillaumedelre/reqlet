@@ -11,6 +11,7 @@ export interface KeyValueItem {
   key: string
   value: string
   enabled: boolean
+  type?: "text" | "file"
 }
 
 export interface ResponseData {

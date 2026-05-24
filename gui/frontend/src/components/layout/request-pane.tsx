@@ -230,6 +230,7 @@ function BodyEditor({
           onChange={onBodyFormDataChange}
           keyPlaceholder="Key"
           valuePlaceholder="Value"
+          allowFileType
         />
       )}
 
