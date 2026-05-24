@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -14,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/guillaumedelre/reqlet/engine/auth"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
@@ -64,7 +66,7 @@ func TestExecute_GET(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(t)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/ping"), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/ping"), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 	assert.JSONEq(t, `{"ok":true}`, string(resp.Body))
@@ -81,7 +83,7 @@ func TestExecute_VariablesResolvedInURL(t *testing.T) {
 	c := newClient(t)
 	req := parseRequest("GET", "{{base_url}}/articles/{{id}}")
 	vars := newVars("base_url", srv.URL, "id", "42")
-	resp, err := c.Execute(context.Background(), req, vars)
+	resp, err := c.Execute(context.Background(), req, vars, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -104,7 +106,7 @@ func TestExecute_Headers(t *testing.T) {
 		},
 	}
 	vars := newVars("token", "test-token")
-	resp, err := c.Execute(context.Background(), req, vars)
+	resp, err := c.Execute(context.Background(), req, vars, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -124,7 +126,7 @@ func TestExecute_DisabledHeaderSkipped(t *testing.T) {
 			{Key: "X-Debug", Value: "1", Disabled: true},
 		},
 	}
-	resp, err := c.Execute(context.Background(), req, newVars())
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -142,7 +144,7 @@ func TestExecute_Methods(t *testing.T) {
 			defer srv.Close()
 
 			c := newClient(t)
-			resp, err := c.Execute(context.Background(), parseRequest(method, srv.URL), newVars())
+			resp, err := c.Execute(context.Background(), parseRequest(method, srv.URL), newVars(), nil)
 			require.NoError(t, err)
 			assert.Equal(t, http.StatusOK, resp.StatusCode)
 		})
@@ -175,7 +177,7 @@ func TestExecute_RawJSONBody(t *testing.T) {
 		},
 	}
 	vars := newVars("name", "hello")
-	resp, err := c.Execute(context.Background(), req, vars)
+	resp, err := c.Execute(context.Background(), req, vars, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 }
@@ -204,7 +206,7 @@ func TestExecute_URLEncodedBody(t *testing.T) {
 		},
 	}
 	vars := newVars("pass", "secret")
-	resp, err := c.Execute(context.Background(), req, vars)
+	resp, err := c.Execute(context.Background(), req, vars, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -248,7 +250,7 @@ func TestExecute_FormDataBody(t *testing.T) {
 		},
 	}
 	vars := newVars("lang", "FR")
-	resp, err := c.Execute(context.Background(), req, vars)
+	resp, err := c.Execute(context.Background(), req, vars, nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -262,7 +264,7 @@ func TestExecute_NoBody(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(t)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -277,7 +279,7 @@ func TestExecute_InsecureTLS(t *testing.T) {
 
 	c, err := NewClient(Options{Timeout: 5 * time.Second, Insecure: true})
 	require.NoError(t, err)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -294,7 +296,7 @@ func TestExecute_RedirectsFollowed(t *testing.T) {
 
 	c, err := NewClient(Options{Timeout: 5 * time.Second, FollowRedirects: true})
 	require.NoError(t, err)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -311,7 +313,7 @@ func TestExecute_RedirectsDisabled(t *testing.T) {
 
 	c, err := NewClient(Options{Timeout: 5 * time.Second, FollowRedirects: false})
 	require.NoError(t, err)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/redirect"), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusFound, resp.StatusCode)
 }
@@ -320,7 +322,7 @@ func TestExecute_RedirectsDisabled(t *testing.T) {
 
 func TestExecute_InvalidURL(t *testing.T) {
 	c := newClient(t)
-	_, err := c.Execute(context.Background(), parseRequest("GET", "://bad"), newVars())
+	_, err := c.Execute(context.Background(), parseRequest("GET", "://bad"), newVars(), nil)
 	require.Error(t, err)
 }
 
@@ -334,7 +336,7 @@ func TestExecute_ContextCancelled(t *testing.T) {
 	cancel()
 
 	c := newClient(t)
-	_, err := c.Execute(ctx, parseRequest("GET", srv.URL), newVars())
+	_, err := c.Execute(ctx, parseRequest("GET", srv.URL), newVars(), nil)
 	require.Error(t, err)
 }
 
@@ -346,7 +348,7 @@ func TestExecute_ResponseHeaders(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(t)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "reqlet", resp.Headers.Get("X-Custom"))
 }
@@ -443,7 +445,7 @@ func TestExecute_ResponseFields(t *testing.T) {
 	defer srv.Close()
 
 	c := newClient(t)
-	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars())
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusTeapot, resp.StatusCode)
 	assert.Contains(t, resp.Status, "418")
@@ -473,7 +475,7 @@ func TestURLEncoded_SpecialChars(t *testing.T) {
 			},
 		},
 	}
-	resp, err := c.Execute(context.Background(), req, newVars())
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -500,7 +502,76 @@ func TestExecute_ContentTypeNotOverriddenByBodyMode(t *testing.T) {
 			Options: &parser.BodyOptions{Raw: &parser.RawOptions{Language: "json"}},
 		},
 	}
-	resp, err := c.Execute(context.Background(), req, newVars())
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// ── Auth integration ──────────────────────────────────────────────────────────
+
+func TestExecute_WithBearerApplier(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a, err := auth.New(&parser.Auth{
+		Type:   parser.AuthTypeBearer,
+		Bearer: []parser.AuthParam{{Key: "token", Value: "test-token"}},
+	})
+	require.NoError(t, err)
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), a)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestExecute_ApplierError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	_, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), &errorApplier{})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "apply auth")
+}
+
+func TestExecute_WithTransportWrapper(t *testing.T) {
+	challenged := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			challenged = true
+			w.Header().Set("WWW-Authenticate", `Digest realm="test", nonce="nonce123"`)
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a, err := auth.New(&parser.Auth{
+		Type: parser.AuthTypeDigest,
+		Digest: []parser.AuthParam{
+			{Key: "username", Value: "alice"},
+			{Key: "password", Value: "secret"},
+		},
+	})
+	require.NoError(t, err)
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), a)
+	require.NoError(t, err)
+	assert.True(t, challenged)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+// errorApplier always returns an error from Apply.
+type errorApplier struct{}
+
+func (errorApplier) Apply(_ context.Context, _ *http.Request, _ *variables.Resolver) error {
+	return errors.New("forced auth error")
 }

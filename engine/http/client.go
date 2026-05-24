@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/guillaumedelre/reqlet/engine/auth"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
@@ -77,7 +78,8 @@ func NewClient(opts Options) (*Client, error) {
 }
 
 // Execute sends a Postman request, resolving variables before dispatch.
-func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variables.Resolver) (*Response, error) {
+// applier is optional: pass nil to send the request without authentication.
+func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variables.Resolver, applier auth.Applier) (*Response, error) {
 	rawURL := vars.Resolve(req.URL.Raw)
 
 	body, contentType, err := buildBody(req.Body, vars)
@@ -101,8 +103,21 @@ func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variabl
 		httpReq.Header.Set("Content-Type", contentType)
 	}
 
+	// Apply authentication and optionally wrap the transport per-request.
+	inner := c.inner
+	if applier != nil {
+		if tw, ok := applier.(auth.TransportWrapper); ok {
+			clone := *c.inner
+			clone.Transport = tw.WrapTransport(c.inner.Transport)
+			inner = &clone
+		}
+		if err := applier.Apply(ctx, httpReq, vars); err != nil {
+			return nil, fmt.Errorf("apply auth: %w", err)
+		}
+	}
+
 	start := time.Now()
-	resp, err := c.inner.Do(httpReq)
+	resp, err := inner.Do(httpReq)
 	duration := time.Since(start)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
