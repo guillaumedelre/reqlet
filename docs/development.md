@@ -160,6 +160,29 @@ Linux GUI binaries are built via `Dockerfile.gui` (builds the frontend via
 `npm ci && npm run build`, then `go build ./gui/...`). macOS and Windows builds
 run on native GitHub Actions runners.
 
+### UI conventions
+
+#### HTTP method colors
+
+HTTP methods are color-coded throughout the UI (tab badges, method selector) using the
+[Swagger UI][swagger-ui] palette, defined in `gui/frontend/src/lib/http-methods.ts`:
+
+| Method  | Color     | Hex       |
+|---------|-----------|-----------|
+| GET     | Blue      | `#61affe` |
+| POST    | Green     | `#49cc90` |
+| PUT     | Orange    | `#fca130` |
+| PATCH   | Teal      | `#50e3c2` |
+| DELETE  | Red       | `#f93e3e` |
+| HEAD    | Purple    | `#9012fe` |
+| OPTIONS | Dark blue | `#0d5aa7` |
+
+Colors are used as text and as a 10 % opacity background tint (`color + "1a"`).
+Any new UI surface that displays an HTTP method must import `HTTP_METHOD_COLORS`
+from `@/lib/http-methods` rather than defining its own palette.
+
+[swagger-ui]: https://swagger.io/tools/swagger-ui/
+
 ## Running what CI runs
 
 Before opening a PR, replicate the four CI jobs locally:

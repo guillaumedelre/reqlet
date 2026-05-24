@@ -20,8 +20,6 @@ export function AppLayout() {
         color: "var(--fg)",
       }}
     >
-      <TabBar />
-
       <Group id="main" orientation="horizontal" style={{ flex: 1 }}>
         <Panel
           id="sidebar"
@@ -36,17 +34,20 @@ export function AppLayout() {
         <Separator style={{ width: 3, background: "transparent" }} />
 
         <Panel id="main-content" style={{ overflow: "hidden" }}>
-          <Group id="content" orientation="vertical" style={{ height: "100%" }}>
-            <Panel id="request" defaultSize="45%" minSize="20%" style={{ overflow: "hidden" }}>
-              <RequestPane />
-            </Panel>
+          <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+            <TabBar />
+            <Group id="content" orientation="vertical" style={{ flex: 1 }}>
+              <Panel id="request" defaultSize="45%" minSize="20%" style={{ overflow: "hidden" }}>
+                <RequestPane />
+              </Panel>
 
-            <Separator style={{ height: 3, background: "transparent" }} />
+              <Separator style={{ height: 3, background: "transparent" }} />
 
-            <Panel id="response" minSize="20%" style={{ overflow: "hidden" }}>
-              <ResponsePane />
-            </Panel>
-          </Group>
+              <Panel id="response" minSize="20%" style={{ overflow: "hidden" }}>
+                <ResponsePane />
+              </Panel>
+            </Group>
+          </div>
         </Panel>
       </Group>
 

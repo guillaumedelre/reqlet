@@ -40,7 +40,7 @@ build-gui: ## Build the GUI Linux image via Dockerfile.gui (macOS/Windows requir
 
 frontend-dev: ## Start the React dev server at http://localhost:5173 (UI only, no Go backend)
 	$(INFO) @printf "Starting Vite dev server at $(CYAN)http://localhost:5173$(RESET)\n"
-	docker compose up frontend
+	docker compose up frontend --remove-orphans
 
 test-all: ## Run the full test suite
 	$(INFO) @printf "Running tests...\n"
