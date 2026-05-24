@@ -119,10 +119,7 @@ describe("KeyValueEditor — row operations", () => {
   it("removes a row when clicking ×", () => {
     const onChange = vi.fn()
     render(
-      <KeyValueEditor
-        items={[item("keep", "this"), item("remove", "me")]}
-        onChange={onChange}
-      />,
+      <KeyValueEditor items={[item("keep", "this"), item("remove", "me")]} onChange={onChange} />,
     )
     fireEvent.click(screen.getAllByTitle("Remove")[1])
     expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ key: "keep" })])
