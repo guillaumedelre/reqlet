@@ -121,22 +121,30 @@ function BodyEditor({
   bodyRawContentType,
   bodyFormData,
   bodyUrlencoded,
+  formDataBulkMode,
+  urlencodedBulkMode,
   onBodyTypeChange,
   onBodyRawChange,
   onBodyRawContentTypeChange,
   onBodyFormDataChange,
   onBodyUrlencodedChange,
+  onFormDataBulkModeChange,
+  onUrlencodedBulkModeChange,
 }: {
   bodyType: BodyType
   bodyRaw: string
   bodyRawContentType: RawContentType
   bodyFormData: KeyValueItem[]
   bodyUrlencoded: KeyValueItem[]
+  formDataBulkMode: boolean
+  urlencodedBulkMode: boolean
   onBodyTypeChange: (t: BodyType) => void
   onBodyRawChange: (v: string) => void
   onBodyRawContentTypeChange: (t: RawContentType) => void
   onBodyFormDataChange: (items: KeyValueItem[]) => void
   onBodyUrlencodedChange: (items: KeyValueItem[]) => void
+  onFormDataBulkModeChange: (v: boolean) => void
+  onUrlencodedBulkModeChange: (v: boolean) => void
 }) {
   const typeBtn = (t: BodyType): React.CSSProperties => ({
     fontSize: 11,
@@ -226,20 +234,28 @@ function BodyEditor({
 
       {bodyType === "form-data" && (
         <KeyValueEditor
+          key="kve-form-data"
           items={bodyFormData}
           onChange={onBodyFormDataChange}
           keyPlaceholder="Key"
           valuePlaceholder="Value"
           allowFileType
+          allowBulkEdit
+          defaultBulkMode={formDataBulkMode}
+          onBulkModeChange={onFormDataBulkModeChange}
         />
       )}
 
       {bodyType === "urlencoded" && (
         <KeyValueEditor
+          key="kve-urlencoded"
           items={bodyUrlencoded}
           onChange={onBodyUrlencodedChange}
           keyPlaceholder="Key"
           valuePlaceholder="Value"
+          allowBulkEdit
+          defaultBulkMode={urlencodedBulkMode}
+          onBulkModeChange={onUrlencodedBulkModeChange}
         />
       )}
 
@@ -264,6 +280,10 @@ function SubTabContent({
   bodyRawContentType,
   bodyFormData,
   bodyUrlencoded,
+  paramsBulkMode,
+  headersBulkMode,
+  formDataBulkMode,
+  urlencodedBulkMode,
   onParamsChange,
   onHeadersChange,
   onPathVarsChange,
@@ -272,6 +292,10 @@ function SubTabContent({
   onBodyRawContentTypeChange,
   onBodyFormDataChange,
   onBodyUrlencodedChange,
+  onParamsBulkModeChange,
+  onHeadersBulkModeChange,
+  onFormDataBulkModeChange,
+  onUrlencodedBulkModeChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
@@ -282,6 +306,10 @@ function SubTabContent({
   bodyRawContentType: RawContentType
   bodyFormData: KeyValueItem[]
   bodyUrlencoded: KeyValueItem[]
+  paramsBulkMode: boolean
+  headersBulkMode: boolean
+  formDataBulkMode: boolean
+  urlencodedBulkMode: boolean
   onParamsChange: (items: KeyValueItem[]) => void
   onHeadersChange: (items: KeyValueItem[]) => void
   onPathVarsChange: (items: KeyValueItem[]) => void
@@ -290,6 +318,10 @@ function SubTabContent({
   onBodyRawContentTypeChange: (t: RawContentType) => void
   onBodyFormDataChange: (items: KeyValueItem[]) => void
   onBodyUrlencodedChange: (items: KeyValueItem[]) => void
+  onParamsBulkModeChange: (v: boolean) => void
+  onHeadersBulkModeChange: (v: boolean) => void
+  onFormDataBulkModeChange: (v: boolean) => void
+  onUrlencodedBulkModeChange: (v: boolean) => void
 }) {
   if (subTab === "Params") {
     return (
@@ -310,14 +342,28 @@ function SubTabContent({
             </div>
           </>
         )}
-        <KeyValueEditor items={params} onChange={onParamsChange} />
+        <KeyValueEditor
+          key="kve-params"
+          items={params}
+          onChange={onParamsChange}
+          allowBulkEdit
+          defaultBulkMode={paramsBulkMode}
+          onBulkModeChange={onParamsBulkModeChange}
+        />
       </div>
     )
   }
   if (subTab === "Headers") {
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
-        <KeyValueEditor items={headers} onChange={onHeadersChange} />
+        <KeyValueEditor
+          key="kve-headers"
+          items={headers}
+          onChange={onHeadersChange}
+          allowBulkEdit
+          defaultBulkMode={headersBulkMode}
+          onBulkModeChange={onHeadersBulkModeChange}
+        />
       </div>
     )
   }
@@ -329,11 +375,15 @@ function SubTabContent({
         bodyRawContentType={bodyRawContentType}
         bodyFormData={bodyFormData}
         bodyUrlencoded={bodyUrlencoded}
+        formDataBulkMode={formDataBulkMode}
+        urlencodedBulkMode={urlencodedBulkMode}
         onBodyTypeChange={onBodyTypeChange}
         onBodyRawChange={onBodyRawChange}
         onBodyRawContentTypeChange={onBodyRawContentTypeChange}
         onBodyFormDataChange={onBodyFormDataChange}
         onBodyUrlencodedChange={onBodyUrlencodedChange}
+        onFormDataBulkModeChange={onFormDataBulkModeChange}
+        onUrlencodedBulkModeChange={onUrlencodedBulkModeChange}
       />
     )
   }
@@ -347,6 +397,24 @@ function SubTabContent({
 export function RequestPane() {
   const { tabs, activeTabId, updateTab } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
+
+  type BulkModes = { params: boolean; headers: boolean; formData: boolean; urlencoded: boolean }
+  const defaultBulkModes: BulkModes = {
+    params: false,
+    headers: false,
+    formData: false,
+    urlencoded: false,
+  }
+  const [bulkModeMap, setBulkModeMap] = useState<Record<string, BulkModes>>({})
+  const tabId = tab?.id ?? ""
+  const bulkModes: BulkModes = bulkModeMap[tabId] ?? defaultBulkModes
+
+  function setBulkMode(key: keyof BulkModes, v: boolean) {
+    setBulkModeMap((prev) => ({
+      ...prev,
+      [tabId]: { ...(prev[tabId] ?? defaultBulkModes), [key]: v },
+    }))
+  }
 
   if (!tab) {
     return (
@@ -511,6 +579,7 @@ export function RequestPane() {
       </div>
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <SubTabContent
+          key={tab.id}
           subTab={tab.activeSubTab}
           params={tab.params}
           headers={tab.headers}
@@ -520,6 +589,10 @@ export function RequestPane() {
           bodyRawContentType={tab.bodyRawContentType}
           bodyFormData={tab.bodyFormData}
           bodyUrlencoded={tab.bodyUrlencoded}
+          paramsBulkMode={bulkModes.params}
+          headersBulkMode={bulkModes.headers}
+          formDataBulkMode={bulkModes.formData}
+          urlencodedBulkMode={bulkModes.urlencoded}
           onParamsChange={handleParamsChange}
           onHeadersChange={handleHeadersChange}
           onPathVarsChange={handlePathVarsChange}
@@ -528,6 +601,10 @@ export function RequestPane() {
           onBodyRawContentTypeChange={handleBodyRawContentTypeChange}
           onBodyFormDataChange={handleBodyFormDataChange}
           onBodyUrlencodedChange={handleBodyUrlencodedChange}
+          onParamsBulkModeChange={(v) => setBulkMode("params", v)}
+          onHeadersBulkModeChange={(v) => setBulkMode("headers", v)}
+          onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
+          onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
         />
       </div>
     </div>
