@@ -21,7 +21,7 @@ func TestParseCollection_V21(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, "Reqlet Test Collection", c.Info.Name)
-	assert.Equal(t, schemaV21, c.Info.Schema)
+	assert.Equal(t, SchemaV21, c.Info.Schema)
 	assert.Len(t, c.Item, 3)
 	assert.Len(t, c.Variable, 1)
 	assert.Equal(t, "base_url", c.Variable[0].Key)

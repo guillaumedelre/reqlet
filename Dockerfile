@@ -3,7 +3,7 @@ WORKDIR /app
 COPY go.mod ./
 RUN go mod download
 COPY . .
-RUN go build -o /dist/reqlet-cli ./cli/...
+RUN go build -o /dist/reqlet-cli ./cli
 
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
