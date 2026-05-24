@@ -162,14 +162,12 @@ describe("updateTab", () => {
     const { tabs } = useTabsStore.getState()
     const param = { id: "p1", key: "page", value: "1", enabled: true }
     const header = { id: "h1", key: "Authorization", value: "Bearer token", enabled: true }
-    useTabsStore
-      .getState()
-      .updateTab(tabs[0].id, {
-        method: "POST",
-        url: "https://api.example.com",
-        params: [param],
-        headers: [header],
-      })
+    useTabsStore.getState().updateTab(tabs[0].id, {
+      method: "POST",
+      url: "https://api.example.com",
+      params: [param],
+      headers: [header],
+    })
     const state = useTabsStore.getState()
     expect(state.tabs[0].method).toBe("POST")
     expect(state.tabs[0].url).toBe("https://api.example.com")
