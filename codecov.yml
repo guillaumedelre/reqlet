@@ -40,6 +40,13 @@ coverage:
           - reqlet-runner
         paths:
           - "runner/src/"
+      reqlet-hub:
+        target: 80%
+        threshold: 1%
+        flags:
+          - reqlet-hub
+        paths:
+          - "hub/"
     patch:
       default:
         target: 80%
@@ -65,6 +72,10 @@ flags:
   reqlet-runner:
     paths:
       - runner/src/
+    carryforward: false
+  reqlet-hub:
+    paths:
+      - hub/
     carryforward: false
 
 comment:
