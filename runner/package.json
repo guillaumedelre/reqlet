@@ -16,7 +16,7 @@
     "coverageReporters": ["lcov", "text"]
   },
   "devDependencies": {
-    "eslint": "^9.0.0",
+    "eslint": "^10.4.0",
     "jest": "^29.0.0"
   },
   "dependencies": {
