@@ -710,7 +710,7 @@ function SubTabContent({
         <div style={plainRowStyle}>
           <div>
             <div style={labelStyle}>Maximum Number of Redirects</div>
-            <div style={descStyle}>Cap on consecutive redirects to follow</div>
+            <div style={descStyle}>Cap on consecutive redirects — 0 means unlimited</div>
           </div>
           <input
             type="text"

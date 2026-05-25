@@ -36,11 +36,11 @@ function makeTab(): Tab {
     followOriginalMethod: false,
     followAuthorizationHeader: false,
     removeRefererOnRedirect: false,
-    maxRedirects: 10,
+    maxRedirects: 0,
     sslVerification: true,
     encodeUrl: true,
     disableCookieJar: false,
-    httpVersion: "auto",
+    httpVersion: "http1",
     timeout: 0,
     proxyUrl: "",
     proxyUsername: "",
@@ -232,16 +232,15 @@ describe("RequestPane — Settings tab", () => {
   it("timeout input filters non-numeric characters and updates the store", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    const input = screen.getByDisplayValue("0")
-    fireEvent.change(input, { target: { value: "3000" } })
+    // timeout is the second "0"-valued input; maxRedirects is the first
+    fireEvent.change(screen.getAllByDisplayValue("0")[1], { target: { value: "3000" } })
     expect(useTabsStore.getState().tabs[0].timeout).toBe(3000)
   })
 
   it("timeout input ignores non-numeric characters", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    const input = screen.getByDisplayValue("0")
-    fireEvent.change(input, { target: { value: "abc" } })
+    fireEvent.change(screen.getAllByDisplayValue("0")[1], { target: { value: "abc" } })
     expect(useTabsStore.getState().tabs[0].timeout).toBe(0)
   })
 
@@ -299,7 +298,8 @@ describe("RequestPane — Settings tab", () => {
   it("max redirects input updates the store", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    fireEvent.change(screen.getByDisplayValue("10"), { target: { value: "5" } })
+    // maxRedirects is the first "0"-valued input; timeout is the second
+    fireEvent.change(screen.getAllByDisplayValue("0")[0], { target: { value: "5" } })
     expect(useTabsStore.getState().tabs[0].maxRedirects).toBe(5)
   })
 
