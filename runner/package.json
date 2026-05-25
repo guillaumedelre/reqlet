@@ -1,5 +1,5 @@
 {
-  "name": "@reqlet/node-runner",
+  "name": "@reqlet/runner",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -7,11 +7,13 @@
   "scripts": {
     "start": "node src/index.js",
     "test": "node --experimental-vm-modules node_modules/.bin/jest",
+    "test:ci": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
     "lint": "eslint src/"
   },
   "jest": {
     "transform": {},
-    "testEnvironment": "node"
+    "testEnvironment": "node",
+    "coverageReporters": ["lcov", "text"]
   },
   "devDependencies": {
     "eslint": "^9.0.0",

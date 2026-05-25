@@ -43,7 +43,7 @@ var (
 	flagGlobalVar        []string
 	flagReporterJSON     string
 	flagReporterJUnit    string
-	flagNodeRunner       string
+	flagRunner           string
 	flagClientCert       string
 	flagClientKey        string
 	flagClientPassphrase string
@@ -67,7 +67,7 @@ func init() {
 	f.StringArrayVar(&flagGlobalVar, "global-var", nil, "set global variable (key=value)")
 	f.StringVar(&flagReporterJSON, "reporter-json-export", "", "write JSON report to file (- for stdout)")
 	f.StringVar(&flagReporterJUnit, "reporter-junit-export", "", "write JUnit XML report to file (- for stdout)")
-	f.StringVar(&flagNodeRunner, "node-runner", "", "path to node-runner/src/index.js (overrides REQLET_NODE_RUNNER)")
+	f.StringVar(&flagRunner, "runner", "", "path to runner/src/index.js (overrides REQLET_RUNNER)")
 	f.StringVar(&flagClientCert, "ssl-client-cert", "", "path to PEM client certificate file")
 	f.StringVar(&flagClientKey, "ssl-client-key", "", "path to PEM client private key file")
 	f.StringVar(&flagClientPassphrase, "ssl-client-passphrase", "", "passphrase for encrypted client key")
@@ -146,11 +146,11 @@ func runCollection(cmd *cobra.Command, args []string) error {
 	}
 
 	// Sandbox
-	scriptPath, err := resolveNodeRunner(flagNodeRunner)
+	scriptPath, err := resolveRunner(flagRunner)
 	if err != nil {
 		return err
 	}
-	sb, err := sandbox.NewNodeRunner(scriptPath)
+	sb, err := sandbox.NewRunner(scriptPath)
 	if err != nil {
 		return fmt.Errorf("sandbox: %w", err)
 	}
@@ -270,30 +270,30 @@ func parseKV(pairs []string) (map[string]string, error) {
 	return m, nil
 }
 
-// resolveNodeRunner returns the path to the node-runner entry script.
-// Priority: explicit flag > REQLET_NODE_RUNNER env var > standard locations.
-func resolveNodeRunner(flagPath string) (string, error) {
+// resolveRunner returns the path to the runner entry script.
+// Priority: explicit flag > REQLET_RUNNER env var > standard locations.
+func resolveRunner(flagPath string) (string, error) {
 	if flagPath != "" {
 		return flagPath, nil
 	}
-	if v := os.Getenv("REQLET_NODE_RUNNER"); v != "" {
+	if v := os.Getenv("REQLET_RUNNER"); v != "" {
 		return v, nil
 	}
 
 	// Try relative to the executable
 	exe, err := os.Executable()
 	if err == nil {
-		candidate := filepath.Join(filepath.Dir(exe), "..", "node-runner", "src", "index.js")
+		candidate := filepath.Join(filepath.Dir(exe), "..", "runner", "src", "index.js")
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate, nil
 		}
 	}
 
 	// Try relative to the working directory
-	candidate := filepath.Join("node-runner", "src", "index.js")
+	candidate := filepath.Join("runner", "src", "index.js")
 	if _, err := os.Stat(candidate); err == nil {
 		return candidate, nil
 	}
 
-	return "", fmt.Errorf("node runner not found: set REQLET_NODE_RUNNER or use --node-runner")
+	return "", fmt.Errorf("runner not found: set REQLET_RUNNER or use --runner")
 }

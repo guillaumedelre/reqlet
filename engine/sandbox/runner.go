@@ -12,8 +12,8 @@ import (
 	"sync/atomic"
 )
 
-// NodeRunner implements Runner by communicating with a node subprocess over stdio.
-type NodeRunner struct {
+// nodeRunner communicates with a Node.js subprocess over stdio.
+type nodeRunner struct {
 	cmd      *exec.Cmd
 	stdin    io.WriteCloser
 	mu       sync.Mutex
@@ -47,10 +47,10 @@ type response struct {
 	err    error
 }
 
-// NewNodeRunner starts the node-runner process at the given script path.
+// NewRunner starts the Node.js runner process at the given script path.
 // The working directory is set to the script's directory so that Node.js
 // resolves node_modules correctly.
-func NewNodeRunner(scriptPath string) (*NodeRunner, error) {
+func NewRunner(scriptPath string) (Runner, error) {
 	cmd := exec.Command("node", scriptPath) //nolint:gosec // scriptPath is controlled by the caller
 	// node_modules lives in the parent of src/, so set cwd there.
 	cmd.Dir = filepath.Dir(filepath.Dir(scriptPath))
@@ -68,7 +68,7 @@ func NewNodeRunner(scriptPath string) (*NodeRunner, error) {
 		return nil, fmt.Errorf("sandbox: start node: %w", err)
 	}
 
-	r := &NodeRunner{
+	r := &nodeRunner{
 		cmd:      cmd,
 		stdin:    stdin,
 		inflight: make(map[string]chan response),
@@ -80,7 +80,7 @@ func NewNodeRunner(scriptPath string) (*NodeRunner, error) {
 }
 
 // Execute sends a script to the node process and waits for the result.
-func (r *NodeRunner) Execute(ctx context.Context, script, event string, sctx *ScriptContext) (*ScriptResult, error) {
+func (r *nodeRunner) Execute(ctx context.Context, script, event string, sctx *ScriptContext) (*ScriptResult, error) {
 	id := fmt.Sprintf("%d", r.nextID.Add(1))
 	ch := make(chan response, 1)
 
@@ -120,12 +120,12 @@ func (r *NodeRunner) Execute(ctx context.Context, script, event string, sctx *Sc
 }
 
 // Close shuts down the node process.
-func (r *NodeRunner) Close() error {
+func (r *nodeRunner) Close() error {
 	_ = r.stdin.Close()
 	return r.cmd.Wait()
 }
 
-func (r *NodeRunner) readLoop(stdout io.Reader) {
+func (r *nodeRunner) readLoop(stdout io.Reader) {
 	defer close(r.done)
 	scanner := bufio.NewScanner(stdout)
 	for scanner.Scan() {
@@ -151,7 +151,7 @@ func (r *NodeRunner) readLoop(stdout io.Reader) {
 	}
 }
 
-func (r *NodeRunner) removeInflight(id string) {
+func (r *nodeRunner) removeInflight(id string) {
 	r.mu.Lock()
 	delete(r.inflight, id)
 	r.mu.Unlock()

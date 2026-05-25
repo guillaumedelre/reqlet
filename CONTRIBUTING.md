@@ -30,7 +30,7 @@ docker compose run --rm lint
 # Build CLI binary
 docker compose run --rm build-cli
 
-# Node.js shell (node-runner/)
+# Node.js shell (runner/)
 docker compose run --rm node sh
 
 # Frontend dev server — accessible at http://localhost:5173

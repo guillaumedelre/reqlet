@@ -94,7 +94,7 @@ shell-go: ## Open an interactive Go dev shell (engine/, cli/, agent/)
 	$(INFO) @printf "Opening Go shell...\n"
 	$(DC) go sh
 
-shell-node: ## Open an interactive Node.js shell (node-runner/)
+shell-node: ## Open an interactive Node.js shell (runner/)
 	$(INFO) @printf "Opening Node.js shell...\n"
 	$(DC) node sh
 

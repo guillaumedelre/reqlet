@@ -17,7 +17,7 @@ services:
       - .:/app
       - go-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
-      - node-runner-modules:/app/node-runner/node_modules
+      - runner-modules:/app/runner/node_modules
     working_dir: /app
     command: gotestsum ./engine/... ./cli/... ./agent/...
 
@@ -44,8 +44,8 @@ services:
   node:
     image: node:22-alpine
     volumes:
-      - ./node-runner:/app
-      - node-runner-modules:/app/node_modules
+      - ./runner:/app
+      - runner-modules:/app/node_modules
     working_dir: /app
 
   web:
@@ -88,6 +88,6 @@ services:
 volumes:
   go-cache:
   go-mod-cache:
-  node-runner-modules:
+  runner-modules:
   web-modules:
   reqlet-data:
