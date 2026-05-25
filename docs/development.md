@@ -287,9 +287,19 @@ Global proxy configuration (host, port, credentials) is stored in SQLite and app
 #### Response pane
 
 Shows an empty state ("Hit Send") until `tab.response` is non-null. When a `ResponseData` is
-present it renders a status bar (status badge colored by HTTP range, time, size) and three
-sub-tabs: Pretty (auto-formats JSON), Raw, Headers. The Save button is a placeholder disabled
-until the HTTP engine is wired up.
+present it renders a status bar (status badge, time, size, **Save** button) and five sub-tabs:
+
+| Sub-tab | Content |
+|---|---|
+| Pretty | Monaco editor, read-only; JSON is auto-formatted via `JSON.stringify` |
+| Raw | `<pre>` with the raw body string |
+| Headers | Key/value grid of response headers |
+| Preview | Sandboxed `<iframe sandbox="" srcDoc={body}>` — renders HTML with scripts and same-origin access blocked |
+| Visualize | Placeholder; populated by `pm.visualizer.set(template, data)` once the script engine is wired up (section 2.14) |
+
+**Save button** triggers a `URL.createObjectURL` download. The file extension is inferred from
+the response `Content-Type` via `guessExt` (`src/lib/response.ts`): `json`, `xml`, `html`, `css`,
+`js`, `csv`, or `txt` as fallback.
 
 #### URL utilities (`src/lib/url.ts`)
 

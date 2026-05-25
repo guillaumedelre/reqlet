@@ -1,9 +1,10 @@
 import { useState } from "react"
 
 import { CodeEditor } from "@/components/ui/code-editor"
+import { guessExt } from "@/lib/response"
 import { useTabsStore, type ResponseData } from "@/store/tabs"
 
-type ResponseSubTab = "Pretty" | "Raw" | "Headers"
+type ResponseSubTab = "Pretty" | "Raw" | "Headers" | "Preview" | "Visualize"
 
 function statusColor(status: number): string {
   if (status < 200) return "var(--fg-muted)"
@@ -36,8 +37,23 @@ function tryPrettyJson(body: string): string {
   }
 }
 
-function StatusBar({ response }: { response: ResponseData }) {
+function StatusBar({ response, url }: { response: ResponseData; url: string }) {
   const color = statusColor(response.status)
+
+  function handleSave() {
+    const ext = guessExt(response.contentType)
+    const blob = new Blob([response.body], { type: response.contentType })
+    const href = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = href
+    a.download = `response.${ext}`
+    a.click()
+    URL.revokeObjectURL(href)
+  }
+
+  // suppress unused-var warning — url will be used for filename inference once Send is wired
+  void url
+
   return (
     <div
       style={{
@@ -67,17 +83,16 @@ function StatusBar({ response }: { response: ResponseData }) {
       </span>
       <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>{formatSize(response.size)}</span>
       <button
-        disabled
+        onClick={handleSave}
         title="Download response"
         style={{
           fontSize: 11,
           border: "1px solid var(--border)",
           background: "transparent",
           color: "var(--fg-muted)",
-          cursor: "not-allowed",
+          cursor: "pointer",
           padding: "1px 8px",
           borderRadius: 3,
-          opacity: 0.5,
         }}
       >
         Save
@@ -156,6 +171,34 @@ function HeadersList({ headers }: { headers: Record<string, string> }) {
   )
 }
 
+function PreviewBody({ body }: { body: string }) {
+  if (!body) {
+    return (
+      <p style={{ padding: "10px 12px", fontSize: 11, color: "var(--fg-muted)" }}>
+        Empty response body.
+      </p>
+    )
+  }
+  return (
+    <iframe
+      sandbox=""
+      srcDoc={body}
+      title="Response preview"
+      style={{ flex: 1, border: "none", width: "100%", height: "100%", background: "#fff" }}
+    />
+  )
+}
+
+function VisualizeBody() {
+  return (
+    <p style={{ padding: "10px 12px", fontSize: 11, color: "var(--fg-muted)" }}>
+      Visualize data is set via{" "}
+      <code style={{ fontFamily: "monospace" }}>pm.visualizer.set(template, data)</code> in the
+      Tests script. Available once the script engine is wired up (section 2.14).
+    </p>
+  )
+}
+
 export function ResponsePane() {
   const { tabs, activeTabId } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
@@ -203,7 +246,7 @@ export function ResponsePane() {
         overflow: "hidden",
       }}
     >
-      <StatusBar response={response} />
+      <StatusBar response={response} url={tab.url} />
       <div
         style={{
           display: "flex",
@@ -212,20 +255,35 @@ export function ResponsePane() {
           flexShrink: 0,
         }}
       >
-        {(["Pretty", "Raw", "Headers"] as ResponseSubTab[]).map((t) => (
+        {(["Pretty", "Raw", "Headers", "Preview", "Visualize"] as ResponseSubTab[]).map((t) => (
           <button key={t} onClick={() => setSubTab(t)} style={subTabStyle(t)}>
             {t}
           </button>
         ))}
       </div>
-      {subTab === "Pretty" ? (
+      {subTab === "Pretty" && (
         <div style={{ flex: 1, overflow: "hidden" }}>
           <PrettyBody response={response} />
         </div>
-      ) : (
+      )}
+      {subTab === "Raw" && (
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {subTab === "Raw" && <RawBody body={response.body} />}
-          {subTab === "Headers" && <HeadersList headers={response.headers} />}
+          <RawBody body={response.body} />
+        </div>
+      )}
+      {subTab === "Headers" && (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <HeadersList headers={response.headers} />
+        </div>
+      )}
+      {subTab === "Preview" && (
+        <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
+          <PreviewBody body={response.body} />
+        </div>
+      )}
+      {subTab === "Visualize" && (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          <VisualizeBody />
         </div>
       )}
     </div>
