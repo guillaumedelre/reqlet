@@ -240,6 +240,50 @@ Both use `CodeEditor` in JavaScript mode. Their content is stored in `preRequest
 `testScript` on the tab (Zustand store, persisted). Execution requires the node-runner
 (section 2.14 — GUI-Go bindings, not yet wired).
 
+#### Settings tab
+
+Per-request settings are grouped into five sections in the Settings sub-tab.
+
+**HTTP**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `httpVersion` | `"auto" \| "http1" \| "http2"` | `"http1"` | Rendered as a button group (Auto / HTTP/1.x / HTTP/2) |
+| `encodeUrl` | `boolean` | `true` | Percent-encode special characters in the URL before sending |
+| `disableCookieJar` | `boolean` | `false` | Opt out of the shared cookie jar for this request |
+
+**Redirects**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `followRedirects` | `boolean` | `true` | Follow `3xx` responses automatically |
+| `followOriginalMethod` | `boolean` | `false` | Re-send with the original method instead of downgrading to `GET` |
+| `followAuthorizationHeader` | `boolean` | `false` | Forward the `Authorization` header to the redirect target |
+| `removeRefererOnRedirect` | `boolean` | `false` | Strip the `Referer` header on redirect |
+| `maxRedirects` | `number` | `0` | Maximum hops (`0` = unlimited, matching `timeout` semantics) |
+
+**Security**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `sslVerification` | `boolean` | `true` | Validate the server TLS certificate |
+
+TLS cipher/protocol controls map to `engine/http` `tls.Config` and are not yet exposed in the frontend (section 2.11 in the roadmap).
+
+**Timeout**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `timeout` | `number` | `0` | Request timeout in milliseconds (`0` = no timeout) |
+
+**Proxy**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ignoreProxy` | `boolean` | `false` | Bypass the global proxy for this request (maps to Postman `proxy-config.disabled`) |
+
+Global proxy configuration (host, port, credentials) is stored in SQLite and applies to all requests unless `ignoreProxy` is set. The CLI exposes it via a `--proxy` flag. Implementation is tracked in section 2.12 of the roadmap.
+
 #### Response pane
 
 Shows an empty state ("Hit Send") until `tab.response` is non-null. When a `ResponseData` is
