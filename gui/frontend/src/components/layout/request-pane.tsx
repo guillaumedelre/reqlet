@@ -438,9 +438,15 @@ function SubTabContent({
   followRedirects,
   sslVerification,
   timeout,
+  proxyUrl,
+  proxyUsername,
+  proxyPassword,
   onFollowRedirectsChange,
   onSslVerificationChange,
   onTimeoutChange,
+  onProxyUrlChange,
+  onProxyUsernameChange,
+  onProxyPasswordChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
@@ -470,9 +476,15 @@ function SubTabContent({
   followRedirects: boolean
   sslVerification: boolean
   timeout: number
+  proxyUrl: string
+  proxyUsername: string
+  proxyPassword: string
   onFollowRedirectsChange: (v: boolean) => void
   onSslVerificationChange: (v: boolean) => void
   onTimeoutChange: (v: number) => void
+  onProxyUrlChange: (v: string) => void
+  onProxyUsernameChange: (v: string) => void
+  onProxyPasswordChange: (v: string) => void
 }) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
 
@@ -618,6 +630,62 @@ function SubTabContent({
             <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
           </div>
         </div>
+        <div style={{ ...plainRowStyle, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+          <div>
+            <div style={labelStyle}>Proxy</div>
+            <div style={descStyle}>Override system proxy for this request</div>
+          </div>
+          <input
+            type="text"
+            placeholder="http://proxy.example.com:8080"
+            value={proxyUrl}
+            onChange={(e) => onProxyUrlChange(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "3px 8px",
+              fontSize: 11,
+              border: "1px solid var(--border)",
+              borderRadius: 3,
+              background: "var(--bg)",
+              color: "var(--fg)",
+              outline: "none",
+            }}
+          />
+          <div style={{ display: "flex", gap: 6 }}>
+            <input
+              type="text"
+              placeholder="Username"
+              value={proxyUsername}
+              onChange={(e) => onProxyUsernameChange(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "3px 8px",
+                fontSize: 11,
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                outline: "none",
+              }}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={proxyPassword}
+              onChange={(e) => onProxyPasswordChange(e.target.value)}
+              style={{
+                flex: 1,
+                padding: "3px 8px",
+                fontSize: 11,
+                border: "1px solid var(--border)",
+                borderRadius: 3,
+                background: "var(--bg)",
+                color: "var(--fg)",
+                outline: "none",
+              }}
+            />
+          </div>
+        </div>
       </div>
     )
   }
@@ -727,6 +795,18 @@ export function RequestPane() {
 
   function handleTimeoutChange(timeout: number) {
     updateTab(tab!.id, { timeout })
+  }
+
+  function handleProxyUrlChange(proxyUrl: string) {
+    updateTab(tab!.id, { proxyUrl })
+  }
+
+  function handleProxyUsernameChange(proxyUsername: string) {
+    updateTab(tab!.id, { proxyUsername })
+  }
+
+  function handleProxyPasswordChange(proxyPassword: string) {
+    updateTab(tab!.id, { proxyPassword })
   }
 
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
@@ -869,9 +949,15 @@ export function RequestPane() {
             followRedirects={tab.followRedirects}
             sslVerification={tab.sslVerification}
             timeout={tab.timeout}
+            proxyUrl={tab.proxyUrl}
+            proxyUsername={tab.proxyUsername}
+            proxyPassword={tab.proxyPassword}
             onFollowRedirectsChange={handleFollowRedirectsChange}
             onSslVerificationChange={handleSslVerificationChange}
             onTimeoutChange={handleTimeoutChange}
+            onProxyUrlChange={handleProxyUrlChange}
+            onProxyUsernameChange={handleProxyUsernameChange}
+            onProxyPasswordChange={handleProxyPasswordChange}
           />
         )}
       </div>

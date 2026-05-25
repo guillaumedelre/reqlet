@@ -52,6 +52,9 @@ export interface Tab {
   followRedirects: boolean
   sslVerification: boolean
   timeout: number
+  proxyUrl: string
+  proxyUsername: string
+  proxyPassword: string
 }
 
 function newTab(patch?: Partial<Tab>): Tab {
@@ -75,6 +78,9 @@ function newTab(patch?: Partial<Tab>): Tab {
     followRedirects: true,
     sslVerification: true,
     timeout: 0,
+    proxyUrl: "",
+    proxyUsername: "",
+    proxyPassword: "",
     ...patch,
   }
 }
@@ -186,7 +192,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 6,
+      version: 7,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -206,6 +212,9 @@ export const useTabsStore = create<TabsState>()(
             followRedirects: true,
             sslVerification: true,
             timeout: 0,
+            proxyUrl: "",
+            proxyUsername: "",
+            proxyPassword: "",
             ...(t as object),
           })),
         }
