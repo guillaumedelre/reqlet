@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
+import { CodeEditor } from "@/components/ui/code-editor"
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
 import { generateCode, type CodeLanguage } from "@/lib/code-generators"
 import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
@@ -15,28 +16,19 @@ import {
   type Tab,
 } from "@/store/tabs"
 
-const RAW_CONTENT_TYPE_MAP: Record<RawContentType, string> = {
-  JSON: "application/json",
-  XML: "application/xml",
-  Text: "text/plain",
-  HTML: "text/html",
-  JavaScript: "application/javascript",
+const RAW_CONTENT_TYPE_TO_MONACO: Record<RawContentType, string> = {
+  JSON: "json",
+  XML: "xml",
+  HTML: "html",
+  JavaScript: "javascript",
+  Text: "plaintext",
 }
 
-function computeAutoHeaders(
-  bodyType: BodyType,
-  bodyRawContentType: RawContentType,
-): Array<{ key: string; value: string }> {
-  if (bodyType === "raw") {
-    return [{ key: "Content-Type", value: RAW_CONTENT_TYPE_MAP[bodyRawContentType] }]
-  }
-  if (bodyType === "urlencoded") {
-    return [{ key: "Content-Type", value: "application/x-www-form-urlencoded" }]
-  }
-  if (bodyType === "form-data") {
-    return [{ key: "Content-Type", value: "multipart/form-data; boundary=<generated>" }]
-  }
-  return []
+const CODE_LANG_TO_MONACO: Record<CodeLanguage, string> = {
+  cURL: "shell",
+  Python: "python",
+  JavaScript: "javascript",
+  Go: "go",
 }
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
@@ -45,7 +37,8 @@ const REQUEST_TABS: RequestSubTab[] = [
   "Auth",
   "Headers",
   "Body",
-  "Scripts",
+  "Pre-request Script",
+  "Tests",
   "Settings",
   "Code",
 ]
@@ -248,24 +241,13 @@ function BodyEditor({
       )}
 
       {bodyType === "raw" && (
-        <textarea
-          value={bodyRaw}
-          onChange={(e) => onBodyRawChange(e.target.value)}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            resize: "none",
-            border: "none",
-            outline: "none",
-            padding: "8px 10px",
-            fontSize: 11,
-            fontFamily: "monospace",
-            background: "var(--bg-panel)",
-            color: "var(--fg)",
-            lineHeight: 1.5,
-          }}
-          placeholder={`Enter ${bodyRawContentType} body`}
-        />
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <CodeEditor
+            value={bodyRaw}
+            onChange={onBodyRawChange}
+            language={RAW_CONTENT_TYPE_TO_MONACO[bodyRawContentType]}
+          />
+        </div>
       )}
 
       {bodyType === "form-data" && (
@@ -361,23 +343,37 @@ function CodePanel({ tab }: { tab: Tab }) {
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre
-        style={{
-          flex: 1,
-          margin: 0,
-          padding: "10px 12px",
-          fontSize: 11,
-          fontFamily: "monospace",
-          lineHeight: 1.6,
-          overflowY: "auto",
-          background: "var(--bg-panel)",
-          color: "var(--fg)",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-all",
-        }}
-      >
-        {generateCode(tab, codeLang)}
-      </pre>
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <CodeEditor
+          value={generateCode(tab, codeLang)}
+          language={CODE_LANG_TO_MONACO[codeLang]}
+          readOnly
+        />
+      </div>
+    </div>
+  )
+}
+
+function ScriptPanel({
+  value,
+  onChange,
+  eventName,
+}: {
+  value: string
+  onChange: (v: string) => void
+  eventName: "prerequest" | "test"
+}) {
+  const hint =
+    eventName === "prerequest"
+      ? "// Runs before the request is sent.\n// pm.environment.set('token', '...')\n// pm.request.headers.add({ key: 'X-Custom', value: '...' })"
+      : "// Runs after the response is received.\n// pm.test('Status is 200', () => pm.expect(pm.response.code).to.equal(200))"
+  return (
+    <div style={{ flex: 1, overflow: "hidden" }}>
+      <CodeEditor
+        value={value || hint}
+        onChange={(v) => onChange(v === hint ? "" : v)}
+        language="javascript"
+      />
     </div>
   )
 }
@@ -511,7 +507,6 @@ function SubTabContent({
     )
   }
   if (subTab === "Headers") {
-    const autoHeaders = computeAutoHeaders(bodyType, bodyRawContentType)
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
         <KeyValueEditor
@@ -523,54 +518,6 @@ function SubTabContent({
           onBulkModeChange={onHeadersBulkModeChange}
           keyAutocomplete={HTTP_HEADER_NAMES}
         />
-        {autoHeaders.length > 0 && (
-          <>
-            <div
-              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
-            >
-              Auto-generated
-            </div>
-            {autoHeaders.map((h) => (
-              <div
-                key={h.key}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "20px 1fr 1fr 20px",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "3px 8px",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <span />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontStyle: "italic",
-                    color: "var(--fg-muted)",
-                    padding: "2px 6px",
-                  }}
-                >
-                  {h.key}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontStyle: "italic",
-                    color: "var(--fg-muted)",
-                    padding: "2px 6px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {h.value}
-                </span>
-                <span />
-              </div>
-            ))}
-          </>
-        )}
       </div>
     )
   }
@@ -879,6 +826,18 @@ export function RequestPane() {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {tab.activeSubTab === "Code" ? (
           <CodePanel tab={tab} />
+        ) : tab.activeSubTab === "Pre-request Script" ? (
+          <ScriptPanel
+            value={tab.preRequestScript}
+            onChange={(v) => updateTab(tab.id, { preRequestScript: v })}
+            eventName="prerequest"
+          />
+        ) : tab.activeSubTab === "Tests" ? (
+          <ScriptPanel
+            value={tab.testScript}
+            onChange={(v) => updateTab(tab.id, { testScript: v })}
+            eventName="test"
+          />
         ) : (
           <SubTabContent
             key={tab.id}

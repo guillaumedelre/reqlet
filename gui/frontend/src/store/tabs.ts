@@ -2,7 +2,15 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts" | "Settings" | "Code"
+export type RequestSubTab =
+  | "Params"
+  | "Auth"
+  | "Headers"
+  | "Body"
+  | "Pre-request Script"
+  | "Tests"
+  | "Settings"
+  | "Code"
 export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
 export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
 
@@ -39,6 +47,8 @@ export interface Tab {
   response: ResponseData | null
   dirty: boolean
   activeSubTab: RequestSubTab
+  preRequestScript: string
+  testScript: string
   followRedirects: boolean
   sslVerification: boolean
   timeout: number
@@ -60,6 +70,8 @@ function newTab(patch?: Partial<Tab>): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    preRequestScript: "",
+    testScript: "",
     followRedirects: true,
     sslVerification: true,
     timeout: 0,
@@ -174,7 +186,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 5,
+      version: 6,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -189,6 +201,8 @@ export const useTabsStore = create<TabsState>()(
             bodyFormData: [],
             bodyUrlencoded: [],
             response: null,
+            preRequestScript: "",
+            testScript: "",
             followRedirects: true,
             sslVerification: true,
             timeout: 0,

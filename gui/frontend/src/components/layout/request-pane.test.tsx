@@ -1,5 +1,15 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("@monaco-editor/react", () => ({
+  default: ({ value, onChange }: { value: string; onChange?: (v: string) => void }) => (
+    <textarea
+      data-testid="monaco-editor"
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  ),
+}))
 
 import { useTabsStore, type Tab } from "@/store/tabs"
 import { RequestPane } from "./request-pane"
@@ -20,6 +30,8 @@ function makeTab(): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    preRequestScript: "",
+    testScript: "",
     followRedirects: true,
     sslVerification: true,
     timeout: 0,
@@ -69,15 +81,15 @@ describe("RequestPane — Body tab", () => {
     expect(screen.getByText("This request has no body.")).toBeInTheDocument()
   })
 
-  it("switching body type to raw shows textarea", () => {
+  it("switching body type to raw shows Monaco editor", () => {
     render(<RequestPane />)
     goToSubTab("Body")
     fireEvent.click(screen.getByRole("button", { name: "raw" }))
     expect(useTabsStore.getState().tabs[0].bodyType).toBe("raw")
-    expect(screen.getByPlaceholderText(/Enter JSON body/)).toBeInTheDocument()
+    expect(screen.getByTestId("monaco-editor")).toBeInTheDocument()
   })
 
-  it("typing in raw body textarea updates the store", () => {
+  it("typing in raw body Monaco editor updates the store", () => {
     const tab = makeTab()
     useTabsStore.setState({
       tabs: [{ ...tab, bodyType: "raw" }],
@@ -86,7 +98,7 @@ describe("RequestPane — Body tab", () => {
     })
     render(<RequestPane />)
     goToSubTab("Body")
-    fireEvent.change(screen.getByPlaceholderText(/Enter JSON body/), {
+    fireEvent.change(screen.getByTestId("monaco-editor"), {
       target: { value: '{"key":"value"}' },
     })
     expect(useTabsStore.getState().tabs[0].bodyRaw).toBe('{"key":"value"}')
@@ -147,7 +159,8 @@ describe("RequestPane — Code tab", () => {
     })
     render(<RequestPane />)
     goToSubTab("Code")
-    expect(screen.getByText(/curl -X GET/)).toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/curl -X GET/)
   })
 
   it("switching to Python updates the snippet", () => {
@@ -160,7 +173,8 @@ describe("RequestPane — Code tab", () => {
     render(<RequestPane />)
     goToSubTab("Code")
     fireEvent.click(screen.getByRole("button", { name: "Python" }))
-    expect(screen.getByText(/import requests/)).toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/import requests/)
   })
 
   it("switching to Go updates the snippet", () => {
@@ -173,77 +187,8 @@ describe("RequestPane — Code tab", () => {
     render(<RequestPane />)
     goToSubTab("Code")
     fireEvent.click(screen.getByRole("button", { name: "Go" }))
-    expect(screen.getByText(/package main/)).toBeInTheDocument()
-  })
-})
-
-describe("RequestPane — auto-generated headers", () => {
-  it("shows Content-Type for raw JSON body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "JSON" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("Content-Type")).toBeInTheDocument()
-    expect(screen.getByText("application/json")).toBeInTheDocument()
-  })
-
-  it("shows application/xml for raw XML body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "XML" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("application/xml")).toBeInTheDocument()
-  })
-
-  it("shows urlencoded Content-Type for urlencoded body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "urlencoded" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("application/x-www-form-urlencoded")).toBeInTheDocument()
-  })
-
-  it("shows multipart/form-data Content-Type for form-data body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "form-data" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText(/multipart\/form-data/)).toBeInTheDocument()
-  })
-
-  it("shows no auto-generated section for bodyType none", () => {
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
-    expect(screen.queryByText("Content-Type")).not.toBeInTheDocument()
-  })
-
-  it("shows no auto-generated section for bodyType binary", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "binary" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/package main/)
   })
 })
 
