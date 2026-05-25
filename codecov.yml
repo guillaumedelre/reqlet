@@ -5,33 +5,66 @@ coverage:
 
   status:
     project:
-      go:
+      reqlet-engine:
         target: 80%
         threshold: 1%
         flags:
-          - go
+          - reqlet-engine
         paths:
           - "engine/"
-      web:
+      reqlet-cli:
         target: 80%
         threshold: 1%
         flags:
-          - web
+          - reqlet-cli
+        paths:
+          - "cli/"
+      reqlet-agent:
+        target: 80%
+        threshold: 1%
+        flags:
+          - reqlet-agent
+        paths:
+          - "agent/"
+      reqlet-web:
+        target: 80%
+        threshold: 1%
+        flags:
+          - reqlet-web
         paths:
           - "gui/web/src/"
+      reqlet-runner:
+        target: 80%
+        threshold: 1%
+        flags:
+          - reqlet-runner
+        paths:
+          - "runner/src/"
     patch:
       default:
         target: 80%
         threshold: 1%
 
 flags:
-  go:
+  reqlet-engine:
     paths:
       - engine/
     carryforward: false
-  web:
+  reqlet-cli:
+    paths:
+      - cli/
+    carryforward: false
+  reqlet-agent:
+    paths:
+      - agent/
+    carryforward: false
+  reqlet-web:
     paths:
       - gui/web/src/
+    carryforward: false
+  reqlet-runner:
+    paths:
+      - runner/src/
     carryforward: false
 
 comment:
@@ -41,7 +74,5 @@ comment:
 
 ignore:
   - "**/*_test.go"
-  - "cli/**"
-  - "node-runner/**"
   - "docs/**"
   - "gui/web/src/test/**"
