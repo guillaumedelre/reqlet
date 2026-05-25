@@ -16,7 +16,7 @@ DC      := docker compose run --rm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-agent-prod dev-web dev-stack test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
+.PHONY: help build-cli build-agent build-gui build-web build-hub dev-agent dev-agent-prod dev-web dev-stack dev-hub dev-hub-prod test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
 
 help: ## Show this help message
 	@printf "\n$(BOLD)Reqlet — build & dev targets$(RESET)\n\n"
@@ -43,6 +43,11 @@ build-gui: ## Build the GUI Linux image via Dockerfile.gui (macOS/Windows requir
 	docker build -f Dockerfile.gui -t reqlet-gui .
 	$(OK) @printf "Image $(BOLD)reqlet-gui$(RESET) built.\n"
 
+build-hub: ## Build the reqlet-hub Docker image
+	$(INFO) @printf "Building reqlet-hub image...\n"
+	docker build -f Dockerfile.hub -t reqlet-hub .
+	$(OK) @printf "Image $(BOLD)reqlet-hub$(RESET) built.\n"
+
 dev-web: ## Start the React dev server at http://localhost:5173 (UI only, no Go backend)
 	$(INFO) @printf "Starting Vite dev server at $(CYAN)http://localhost:5173$(RESET)\n"
 	docker compose up web --remove-orphans
@@ -59,23 +64,31 @@ dev-stack: ## Start Vite (HMR) + Go agent in parallel — open http://localhost:
 	$(INFO) @printf "Starting Vite + dev agent — open $(CYAN)http://localhost:5173$(RESET) ($(CYAN)/api/*$(RESET) proxied to port 3001)\n"
 	docker compose up web dev-agent --remove-orphans
 
+dev-hub: ## Start reqlet-hub at http://localhost:3002 — fast rebuild via go run (dev use)
+	$(INFO) @printf "Starting dev hub (go run) at $(CYAN)http://localhost:3002$(RESET)\n"
+	docker compose up dev-hub --remove-orphans
+
+dev-hub-prod: ## Start the production hub image at http://localhost:3002 (full Docker build)
+	$(INFO) @printf "Starting production reqlet-hub at $(CYAN)http://localhost:3002$(RESET)\n"
+	docker compose up hub --remove-orphans
+
 test-all: ## Run the full test suite
 	$(INFO) @printf "Running tests...\n"
 	$(DC) test
 
 test-coverage: ## Run tests with coverage report (coverage.out + coverage.html)
 	$(INFO) @printf "Running tests with coverage...\n"
-	$(DC) test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/...
+	$(DC) test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/... ./hub/...
 	$(DC) go go tool cover -html=coverage.out -o coverage.html
 	$(OK) @printf "Coverage report: $(BOLD)coverage.html$(RESET)\n"
 
 test-unit: ## Run unit tests only (excludes integration tag)
 	$(INFO) @printf "Running unit tests...\n"
-	$(DC) test gotestsum -- -tags='!integration' ./engine/... ./cli/... ./agent/...
+	$(DC) test gotestsum -- -tags='!integration' ./engine/... ./cli/... ./agent/... ./hub/...
 
 test-integration: ## Run integration tests only
 	$(INFO) @printf "Running integration tests...\n"
-	$(DC) test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/...
+	$(DC) test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/... ./hub/...
 
 go-lint: ## Run golangci-lint
 	$(INFO) @printf "Running linter...\n"
