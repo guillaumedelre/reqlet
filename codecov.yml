@@ -12,13 +12,13 @@ coverage:
           - go
         paths:
           - "engine/"
-      frontend:
+      web:
         target: 80%
         threshold: 1%
         flags:
-          - frontend
+          - web
         paths:
-          - "gui/frontend/src/"
+          - "gui/web/src/"
     patch:
       default:
         target: 80%
@@ -29,9 +29,9 @@ flags:
     paths:
       - engine/
     carryforward: false
-  frontend:
+  web:
     paths:
-      - gui/frontend/src/
+      - gui/web/src/
     carryforward: false
 
 comment:
@@ -44,4 +44,4 @@ ignore:
   - "cli/**"
   - "node-runner/**"
   - "docs/**"
-  - "gui/frontend/src/test/**"
+  - "gui/web/src/test/**"
