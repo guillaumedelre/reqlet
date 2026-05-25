@@ -253,7 +253,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Dockerfile.gui
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.gui
@@ -266,28 +266,28 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Build Dockerfile.dev
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.dev
           push: false
 
       - name: Build Dockerfile (CLI)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile
           push: false
 
       - name: Build Dockerfile.agent
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.agent
           push: false
 
       - name: Build Dockerfile.hub
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.hub
