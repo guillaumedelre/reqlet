@@ -22,6 +22,14 @@ export interface KeyValueItem {
   type?: "text" | "file"
 }
 
+export interface HttpTimings {
+  dns: number
+  tcp: number
+  tls: number
+  ttfb: number
+  download: number
+}
+
 export interface ResponseData {
   status: number
   statusText: string
@@ -30,6 +38,7 @@ export interface ResponseData {
   headers: Record<string, string>
   body: string
   contentType: string
+  timings?: HttpTimings
 }
 
 export interface Tab {

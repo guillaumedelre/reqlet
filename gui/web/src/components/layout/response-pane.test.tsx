@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@monaco-editor/react", () => ({
@@ -8,7 +8,7 @@ vi.mock("@monaco-editor/react", () => ({
 }))
 
 import { guessExt } from "@/lib/response"
-import { useTabsStore, type ResponseData } from "@/store/tabs"
+import { useTabsStore, type HttpTimings, type ResponseData } from "@/store/tabs"
 import { ResponsePane } from "./response-pane"
 
 const makeResponse = (patch: Partial<ResponseData> = {}): ResponseData => ({
@@ -226,6 +226,133 @@ describe("ResponsePane — Visualize tab", () => {
   })
 })
 
+describe("ResponsePane — timing popover", () => {
+  it("does not show popover on hover when timings are absent", () => {
+    setResponse({ time: 50 })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.queryByText("DNS Lookup")).not.toBeInTheDocument()
+  })
+
+  it("shows all waterfall phases on hover when timings are present", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("DNS Lookup")).toBeInTheDocument()
+    expect(screen.getByText("TCP Handshake")).toBeInTheDocument()
+    expect(screen.getByText("TLS Handshake")).toBeInTheDocument()
+    expect(screen.getByText(/TTFB/)).toBeInTheDocument()
+    expect(screen.getByText("Download")).toBeInTheDocument()
+  })
+
+  it("shows phase durations formatted to 2 decimal places", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("3.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("6.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("12.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("29.00 ms")).toBeInTheDocument()
+  })
+
+  it("shows the correct total in the popover", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("50.00 ms")).toBeInTheDocument()
+  })
+
+  it("hides the popover on mouse leave", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    const timeEl = screen.getByText("50 ms")
+    fireEvent.mouseEnter(timeEl)
+    expect(screen.getByText("DNS Lookup")).toBeInTheDocument()
+    fireEvent.mouseLeave(timeEl)
+    expect(screen.queryByText("DNS Lookup")).not.toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Copy button", () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it("Copy button is present in the status bar", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+  })
+
+  it("clicking Copy writes the response body to clipboard", async () => {
+    setResponse({ body: '{"x":1}', contentType: "application/json" })
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await Promise.resolve()
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{"x":1}')
+  })
+})
+
+describe("ResponsePane — Word wrap toggle", () => {
+  it("shows Wrap toggle button on Pretty tab", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(
+      screen.getByRole("button", { name: /disable word wrap|enable word wrap/i }),
+    ).toBeInTheDocument()
+  })
+
+  it("hides Wrap toggle on non-Pretty tabs", () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+    expect(
+      screen.queryByRole("button", { name: /disable word wrap|enable word wrap/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("toggling Wrap changes its title", () => {
+    setResponse()
+    render(<ResponsePane />)
+    const btn = screen.getByRole("button", { name: "Disable word wrap" })
+    fireEvent.click(btn)
+    expect(screen.getByRole("button", { name: "Enable word wrap" })).toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Search button", () => {
+  it("shows Search button on Pretty tab", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(screen.getByRole("button", { name: "Search in response (Ctrl+F)" })).toBeInTheDocument()
+  })
+
+  it("hides Search button on non-Pretty tabs", () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+    expect(
+      screen.queryByRole("button", { name: "Search in response (Ctrl+F)" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("clicking Search does not throw when editor is not mounted", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Search in response (Ctrl+F)" })),
+    ).not.toThrow()
+  })
+})
+
 describe("ResponsePane — Save (download)", () => {
   it("Save button is enabled when a response is present", () => {
     setResponse()
@@ -269,5 +396,114 @@ describe("guessExt", () => {
     ["", "txt"],
   ])("guessExt(%s) === %s", (ct, expected) => {
     expect(guessExt(ct)).toBe(expected)
+  })
+})
+
+describe("ResponsePane — layout", () => {
+  it("root element has height 100% in empty state to fill the resizable panel", () => {
+    const { container } = render(<ResponsePane />)
+    expect(container.firstChild).toHaveStyle({ height: "100%" })
+  })
+
+  it("root element has height 100% when a response is present", () => {
+    setResponse()
+    const { container } = render(<ResponsePane />)
+    expect(container.firstChild).toHaveStyle({ height: "100%" })
+  })
+})
+
+describe("ResponsePane — status bar (additional)", () => {
+  it("renders a 1xx informational status without crashing", () => {
+    setResponse({ status: 100, statusText: "Continue" })
+    render(<ResponsePane />)
+    expect(screen.getByText("100")).toBeInTheDocument()
+  })
+
+  it("formats size as B when exactly 999 bytes (boundary below KB)", () => {
+    setResponse({ size: 999 })
+    render(<ResponsePane />)
+    expect(screen.getByText("999 B")).toBeInTheDocument()
+  })
+
+  it("formats size as KB at the exact 1 000-byte boundary", () => {
+    setResponse({ size: 1000 })
+    render(<ResponsePane />)
+    expect(screen.getByText("1.00 KB")).toBeInTheDocument()
+  })
+
+  it("formats size as MB at the exact 1 000 000-byte boundary", () => {
+    setResponse({ size: 1_000_000 })
+    render(<ResponsePane />)
+    expect(screen.getByText("1.00 MB")).toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Pretty tab (additional)", () => {
+  it("pretty-prints application/ld+json (a +json media type variant)", () => {
+    setResponse({ body: '{"@context":"https://schema.org"}', contentType: "application/ld+json" })
+    render(<ResponsePane />)
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.defaultValue).toBe('{\n  "@context": "https://schema.org"\n}')
+  })
+
+  it("pretty-prints application/vnd.api+json (another +json variant)", () => {
+    setResponse({ body: '{"data":null}', contentType: "application/vnd.api+json" })
+    render(<ResponsePane />)
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.defaultValue).toBe('{\n  "data": null\n}')
+  })
+})
+
+describe("ResponsePane — timing popover (additional)", () => {
+  it("shows placeholder text referencing Bloc C on hover when timings are absent", () => {
+    setResponse({ time: 50 })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText(/Bloc C/)).toBeInTheDocument()
+  })
+
+  it("popover shows 0.00 ms for every phase when all durations are zero", () => {
+    const timings: HttpTimings = { dns: 0, tcp: 0, tls: 0, ttfb: 0, download: 0 }
+    setResponse({ time: 0, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("0 ms"))
+    const zeros = screen.getAllByText("0.00 ms")
+    expect(zeros.length).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe("ResponsePane — Copy button (additional)", () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it("shows 'Copied!' feedback immediately after click", async () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument()
+  })
+
+  it("reverts back to 'Copy' after 1500 ms", async () => {
+    vi.useFakeTimers()
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1500)
+    })
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+    vi.useRealTimers()
   })
 })
