@@ -2,14 +2,15 @@
 
 ## Overview
 
-Reqlet is a monorepo with a single `go.mod`. The codebase is split into five
+Reqlet is a monorepo with a single `go.mod`. The codebase is split into six
 distinct layers that share no circular dependencies:
 
 ```
-engine/       ← shared Go library (business logic)
-cli/          ← CLI binary (cobra) → binary: reqlet-cli
-gui/          ← Wails v2 desktop app → binary: reqlet
-agent/        ← web agent (Go HTTP server) → binary: reqlet-agent
+engine/  ← shared Go library (business logic)
+cli/     ← CLI binary (cobra) → binary: reqlet-cli
+gui/     ← Wails v2 desktop app → binary: reqlet
+agent/   ← web agent (Go HTTP server) → binary: reqlet-agent
+hub/     ← collaboration server (Go + chi) → binary: reqlet-hub (Docker only)
 runner/  ← Node.js process (pm.* sandbox), communicates via stdio JSON
 ```
 
@@ -20,6 +21,8 @@ graph TD
     CLI["cli/ → reqlet-cli"]
     GUI["gui/ → reqlet"]
     Agent["agent/ → reqlet-agent"]
+    Hub["hub/ → reqlet-hub
+    Docker only"]
     Runner["runner/
     pm.* sandbox"]
     WebUI["gui/web/
@@ -28,6 +31,7 @@ graph TD
     CLI --> Engine
     GUI --> Engine
     Agent --> Engine
+    Hub --> Engine
     Engine --> Runner
     GUI -. embeds .-> WebUI
     Agent -. embeds .-> WebUI
@@ -233,7 +237,7 @@ simplify cross-compilation.
 
 - Git bare repos per team workspace (collections sync via `git push/pull`)
 - PostgreSQL for users, teams, organisations, roles, and tokens
-- Self-hostable: Docker Compose or standalone binary
+- Self-hostable: Docker Compose (no standalone binary)
 
 ## Build matrix
 
@@ -248,6 +252,7 @@ simplify cross-compilation.
 | GUI — Linux | `Dockerfile.gui` (WebKit2GTK in container) |
 | GUI — macOS | GitHub Actions `macos-latest` (Wails) |
 | GUI — Windows | GitHub Actions `windows-latest` (Wails) |
+| Hub — Linux x64/arm64 | `Dockerfile.hub` (multi-arch, Docker only) |
 
 [cobra]: https://github.com/spf13/cobra
 [wails]: https://wails.io
