@@ -19,6 +19,7 @@ func newMux(webContent fs.FS) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("/api/send", handleSend)
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", http.FileServer(http.FS(webContent)))
 	return mux

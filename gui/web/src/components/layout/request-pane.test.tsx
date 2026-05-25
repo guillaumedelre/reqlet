@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@monaco-editor/react", () => ({
@@ -11,7 +11,26 @@ vi.mock("@monaco-editor/react", () => ({
   ),
 }))
 
-import { useTabsStore, type Tab } from "@/store/tabs"
+vi.mock("@/lib/backend", () => ({
+  sendRequest: vi.fn(),
+  SendError: class SendError extends Error {
+    code: string
+    constructor(message: string, code: string) {
+      super(message)
+      this.code = code
+      this.name = "SendError"
+    }
+  },
+  isWails: vi.fn(() => false),
+}))
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn() },
+}))
+
+import { sendRequest } from "@/lib/backend"
+import { toast } from "sonner"
+import { useTabsStore, type ResponseData, type Tab } from "@/store/tabs"
 import { RequestPane } from "./request-pane"
 
 function makeTab(): Tab {
@@ -685,5 +704,138 @@ describe("RequestPane — Auth tab placeholder", () => {
     render(<RequestPane />)
     goToSubTab("Auth")
     expect(screen.getByText("Auth — coming soon.")).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Send button", () => {
+  beforeEach(() => {
+    vi.mocked(sendRequest).mockReset()
+    vi.mocked(toast.error).mockReset()
+  })
+
+  it("is disabled when URL is empty", () => {
+    render(<RequestPane />)
+    const btn = screen.getByRole("button", { name: "Send" })
+    expect(btn).toBeDisabled()
+  })
+
+  it("is enabled when URL is non-empty", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled()
+  })
+
+  it("calls sendRequest and stores the response on success", async () => {
+    const mockResponse = {
+      status: 200,
+      statusText: "200 OK",
+      time: 42,
+      size: 13,
+      headers: {},
+      body: '{"ok":true}',
+      contentType: "application/json",
+    }
+    vi.mocked(sendRequest).mockResolvedValueOnce(mockResponse)
+
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    })
+
+    await waitFor(() => {
+      const stored = useTabsStore.getState().tabs[0].response
+      expect(stored).toEqual(mockResponse)
+    })
+    expect(toast.error).not.toHaveBeenCalled()
+  })
+
+  it("shows a toast on SendError", async () => {
+    const { SendError } = await import("@/lib/backend")
+    vi.mocked(sendRequest).mockRejectedValueOnce(
+      new SendError("connection refused", "network_error"),
+    )
+
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    })
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("connection refused")
+    })
+  })
+
+  it("shows a generic toast on unexpected error", async () => {
+    vi.mocked(sendRequest).mockRejectedValueOnce(new Error("boom"))
+
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    })
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Unexpected error")
+    })
+  })
+
+  it("shows 'Sending…' while the request is in flight", async () => {
+    let resolve!: (v: ResponseData) => void
+    vi.mocked(sendRequest).mockReturnValueOnce(new Promise<ResponseData>((r) => (resolve = r)))
+
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://example.com" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Send" }))
+    })
+
+    expect(screen.getByRole("button", { name: "Sending…" })).toBeDisabled()
+
+    await act(async () => {
+      resolve({
+        status: 200,
+        statusText: "OK",
+        time: 1,
+        size: 0,
+        headers: {},
+        body: "",
+        contentType: "",
+      })
+    })
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled()
+    })
   })
 })

@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react"
+import { toast } from "sonner"
 
 import { CodeEditor } from "@/components/ui/code-editor"
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
+import { SendError, sendRequest } from "@/lib/backend"
 import { generateCode, type CodeLanguage } from "@/lib/code-generators"
 import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
@@ -787,6 +789,7 @@ function SubTabContent({
 export function RequestPane() {
   const { tabs, activeTabId, updateTab } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
+  const [sending, setSending] = useState(false)
 
   type BulkModes = { params: boolean; headers: boolean; formData: boolean; urlencoded: boolean }
   const defaultBulkModes: BulkModes = {
@@ -907,6 +910,19 @@ export function RequestPane() {
     updateTab(tab!.id, { ignoreProxy })
   }
 
+  async function handleSend() {
+    if (!tab || sending || !tab.url) return
+    setSending(true)
+    try {
+      const response = await sendRequest(tab)
+      updateTab(tab.id, { response })
+    } catch (err) {
+      toast.error(err instanceof SendError ? err.message : "Unexpected error")
+    } finally {
+      setSending(false)
+    }
+  }
+
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
   const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
   const hasBody =
@@ -958,18 +974,21 @@ export function RequestPane() {
           placeholder="Enter URL"
         />
         <button
+          onClick={handleSend}
+          disabled={sending || !tab.url}
           style={{
             padding: "3px 14px",
             fontSize: 11,
             fontWeight: 600,
             borderRadius: 4,
             border: "none",
-            background: "var(--accent)",
+            background: sending || !tab.url ? "var(--fg-muted)" : "var(--accent)",
             color: "#fff",
-            cursor: "pointer",
+            cursor: sending || !tab.url ? "not-allowed" : "pointer",
+            opacity: sending || !tab.url ? 0.6 : 1,
           }}
         >
-          Send
+          {sending ? "Sending…" : "Send"}
         </button>
       </div>
       <div

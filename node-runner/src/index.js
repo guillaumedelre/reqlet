@@ -1,24 +1,9 @@
 // Entry point for the Node.js sandbox process.
 // Communicates with the Go host via newline-delimited JSON over stdio.
+import { fileURLToPath } from "node:url";
 import { execute } from "./executor.js";
 
-process.stdin.setEncoding("utf8");
-
-let buffer = "";
-
-process.stdin.on("data", (chunk) => {
-  buffer += chunk;
-  const lines = buffer.split("\n");
-  buffer = lines.pop();
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    handleLine(line);
-  }
-});
-
-process.stdin.on("end", () => process.exit(0));
-
-async function handleLine(line) {
+export async function handleLine(line) {
   let message;
   try {
     message = JSON.parse(line);
@@ -42,6 +27,28 @@ async function handleLine(line) {
   }
 }
 
-function respond(id, result, error) {
+export function respond(id, result, error) {
   process.stdout.write(JSON.stringify({ id, result, error }) + "\n");
+}
+
+// Only start the stdin loop when run directly (not imported by tests).
+const isMain =
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  process.stdin.setEncoding("utf8");
+
+  let buffer = "";
+
+  process.stdin.on("data", (chunk) => {
+    buffer += chunk;
+    const lines = buffer.split("\n");
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      handleLine(line);
+    }
+  });
+
+  process.stdin.on("end", () => process.exit(0));
 }
