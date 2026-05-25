@@ -11,9 +11,10 @@ export default defineConfig({
     },
   },
   server: {
-    // Forward /api/* to reqlet-agent when running alongside `docker compose up agent`
+    // Forward /api/* to reqlet-agent.
+    // In Docker Compose the agent is reached via its service name; on the host via localhost.
     proxy: {
-      "/api": "http://localhost:3001",
+      "/api": process.env.API_TARGET ?? "http://localhost:3001",
     },
   },
   test: {

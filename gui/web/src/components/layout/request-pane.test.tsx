@@ -780,7 +780,9 @@ describe("RequestPane — Send button", () => {
     })
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("connection refused")
+      expect(toast.error).toHaveBeenCalledWith("connection refused", {
+        description: "network_error",
+      })
     })
   })
 
@@ -800,7 +802,7 @@ describe("RequestPane — Send button", () => {
     })
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith("Unexpected error")
+      expect(toast.error).toHaveBeenCalledWith("Unexpected error", { description: undefined })
     })
   })
 

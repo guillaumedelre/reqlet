@@ -917,7 +917,9 @@ export function RequestPane() {
       const response = await sendRequest(tab)
       updateTab(tab.id, { response })
     } catch (err) {
-      toast.error(err instanceof SendError ? err.message : "Unexpected error")
+      toast.error(err instanceof SendError ? err.message : "Unexpected error", {
+        description: err instanceof SendError ? err.code : undefined,
+      })
     } finally {
       setSending(false)
     }

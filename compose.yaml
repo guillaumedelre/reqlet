@@ -56,8 +56,26 @@ services:
     working_dir: /app
     ports:
       - "5173:5173"
+    environment:
+      API_TARGET: http://dev-agent:8080
     command: npm run dev -- --host
 
+  # Fast dev agent: compiles and runs Go directly, no Docker image rebuild needed.
+  # The embedded agent/web/ placeholder is enough — Vite (port 5173) serves the real UI.
+  dev-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    ports:
+      - "3001:8080"
+    command: go run ./agent/...
+
+  # Production agent: full build (npm build → go:embed → alpine). Used for release testing.
   agent:
     build:
       context: .
