@@ -19,7 +19,7 @@ services:
       - go-mod-cache:/go/pkg/mod
       - runner-modules:/app/runner/node_modules
     working_dir: /app
-    command: gotestsum ./engine/... ./cli/... ./agent/...
+    command: gotestsum ./engine/... ./cli/... ./agent/... ./hub/...
 
   lint:
     image: golangci/golangci-lint:latest
@@ -28,7 +28,7 @@ services:
       - go-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
     working_dir: /app
-    command: golangci-lint run ./engine/... ./cli/... ./agent/...
+    command: golangci-lint run ./engine/... ./cli/... ./agent/... ./hub/...
 
   build-cli:
     build:
@@ -85,9 +85,54 @@ services:
     volumes:
       - reqlet-data:/data
 
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: reqlet
+      POSTGRES_PASSWORD: reqlet
+      POSTGRES_DB: reqlet_hub
+    ports:
+      - "5432:5432"
+    volumes:
+      - hub-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U reqlet -d reqlet_hub"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # Fast dev hub: compiles and runs Go directly, no Docker image rebuild needed.
+  dev-hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    volumes:
+      - .:/app
+      - go-cache:/root/.cache/go-build
+      - go-mod-cache:/go/pkg/mod
+    working_dir: /app
+    ports:
+      - "3002:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: go run ./hub/...
+
+  # Production hub: full build via Dockerfile.hub.
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.hub
+    ports:
+      - "3002:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   go-cache:
   go-mod-cache:
   runner-modules:
   web-modules:
   reqlet-data:
+  hub-db-data:

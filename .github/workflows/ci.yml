@@ -208,6 +208,42 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+  reqlet-hub:
+    name: reqlet-hub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Lint
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            golangci/golangci-lint:latest \
+            golangci-lint run ./hub/...
+
+      - name: Test
+        run: |
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -coverpkg=./hub/... \
+            ./hub/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage.out
+          flags: reqlet-hub
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
   # reqlet-gui Go code requires GTK/WebKitGTK and cannot be unit-tested in
   # standard CI. Validated via Docker build only.
   reqlet-gui:
@@ -248,4 +284,11 @@ jobs:
         with:
           context: .
           file: Dockerfile.agent
+          push: false
+
+      - name: Build Dockerfile.hub
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.hub
           push: false

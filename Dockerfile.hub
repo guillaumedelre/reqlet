@@ -1,0 +1,16 @@
+# Build the Go hub binary
+FROM golang:1.25-alpine AS go-builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go build -o /dist/reqlet-hub ./hub/...
+
+# Minimal runtime
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates
+COPY --from=go-builder /dist/reqlet-hub /usr/local/bin/reqlet-hub
+EXPOSE 8082
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8082/api/health || exit 1
+ENTRYPOINT ["reqlet-hub"]
