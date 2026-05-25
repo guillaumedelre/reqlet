@@ -23,24 +23,29 @@ export async function sendRequest(tab: Tab): Promise<ResponseData> {
 
   const url = assembleUrl(tab.url, tab.params)
 
-  const res = await fetch("/api/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      method: tab.method,
-      url,
-      headers: tab.headers,
-      bodyType: tab.bodyType,
-      bodyRaw: tab.bodyRaw,
-      bodyRawContentType: tab.bodyRawContentType,
-      bodyFormData: tab.bodyFormData,
-      bodyUrlencoded: tab.bodyUrlencoded,
-      followRedirects: tab.followRedirects,
-      sslVerification: tab.sslVerification,
-      timeout: tab.timeout,
-      ignoreProxy: tab.ignoreProxy,
-    }),
-  })
+  let res: Response
+  try {
+    res = await fetch("/api/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        method: tab.method,
+        url,
+        headers: tab.headers,
+        bodyType: tab.bodyType,
+        bodyRaw: tab.bodyRaw,
+        bodyRawContentType: tab.bodyRawContentType,
+        bodyFormData: tab.bodyFormData,
+        bodyUrlencoded: tab.bodyUrlencoded,
+        followRedirects: tab.followRedirects,
+        sslVerification: tab.sslVerification,
+        timeout: tab.timeout,
+        ignoreProxy: tab.ignoreProxy,
+      }),
+    })
+  } catch {
+    throw new SendError("Agent unreachable — is reqlet-agent running?", "agent_unreachable")
+  }
 
   const data = (await res.json()) as { error?: string; code?: string } & ResponseData
 

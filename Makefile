@@ -16,7 +16,7 @@ DC      := docker compose run --rm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-web dev-stack test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
+.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-agent-prod dev-web dev-stack test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
 
 help: ## Show this help message
 	@printf "\n$(BOLD)Reqlet — build & dev targets$(RESET)\n\n"
@@ -47,13 +47,17 @@ dev-web: ## Start the React dev server at http://localhost:5173 (UI only, no Go 
 	$(INFO) @printf "Starting Vite dev server at $(CYAN)http://localhost:5173$(RESET)\n"
 	docker compose up web --remove-orphans
 
-dev-agent: ## Start the web agent at http://localhost:3001 (full stack: React + Go API)
-	$(INFO) @printf "Starting reqlet-agent at $(CYAN)http://localhost:3001$(RESET)\n"
+dev-agent: ## Start the Go agent at http://localhost:3001 — fast rebuild via go run (dev use)
+	$(INFO) @printf "Starting dev agent (go run) at $(CYAN)http://localhost:3001$(RESET)\n"
+	docker compose up dev-agent --remove-orphans
+
+dev-agent-prod: ## Start the production agent image at http://localhost:3001 (full Docker build)
+	$(INFO) @printf "Starting production reqlet-agent at $(CYAN)http://localhost:3001$(RESET)\n"
 	docker compose up agent --remove-orphans
 
-dev-stack: ## Start Vite (HMR) + agent (API) in parallel — open http://localhost:5173
-	$(INFO) @printf "Starting Vite + reqlet-agent — open $(CYAN)http://localhost:5173$(RESET) ($(CYAN)/api/*$(RESET) proxied to port 3001)\n"
-	docker compose up web agent --remove-orphans
+dev-stack: ## Start Vite (HMR) + Go agent in parallel — open http://localhost:5173
+	$(INFO) @printf "Starting Vite + dev agent — open $(CYAN)http://localhost:5173$(RESET) ($(CYAN)/api/*$(RESET) proxied to port 3001)\n"
+	docker compose up web dev-agent --remove-orphans
 
 test-all: ## Run the full test suite
 	$(INFO) @printf "Running tests...\n"

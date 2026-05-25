@@ -84,6 +84,15 @@ describe("sendRequest", () => {
     expect(result.body).toBe('{"ok":true}')
   })
 
+  it("wraps fetch network error (agent unreachable) in SendError", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("Failed to fetch"))
+
+    const err = await sendRequest(baseTab).catch((e) => e)
+    expect(err).toBeInstanceOf(SendError)
+    expect(err.message).toMatch(/agent unreachable/i)
+    expect(err.code).toBe("agent_unreachable")
+  })
+
   it("throws SendError on non-ok response", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       new Response(JSON.stringify({ error: "connection refused", code: "network_error" }), {
