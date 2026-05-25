@@ -30,7 +30,7 @@ vi.mock("sonner", () => ({
 
 import { sendRequest } from "@/lib/backend"
 import { toast } from "sonner"
-import { useTabsStore, type Tab } from "@/store/tabs"
+import { useTabsStore, type ResponseData, type Tab } from "@/store/tabs"
 import { RequestPane } from "./request-pane"
 
 function makeTab(): Tab {
@@ -805,8 +805,8 @@ describe("RequestPane — Send button", () => {
   })
 
   it("shows 'Sending…' while the request is in flight", async () => {
-    let resolve!: (v: unknown) => void
-    vi.mocked(sendRequest).mockReturnValueOnce(new Promise((r) => (resolve = r)))
+    let resolve!: (v: ResponseData) => void
+    vi.mocked(sendRequest).mockReturnValueOnce(new Promise<ResponseData>((r) => (resolve = r)))
 
     const tab = makeTab()
     useTabsStore.setState({
