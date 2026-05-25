@@ -436,13 +436,27 @@ function SubTabContent({
   onFormDataBulkModeChange,
   onUrlencodedBulkModeChange,
   followRedirects,
+  followOriginalMethod,
+  followAuthorizationHeader,
+  removeRefererOnRedirect,
+  maxRedirects,
   sslVerification,
+  encodeUrl,
+  disableCookieJar,
+  httpVersion,
   timeout,
   proxyUrl,
   proxyUsername,
   proxyPassword,
   onFollowRedirectsChange,
+  onFollowOriginalMethodChange,
+  onFollowAuthorizationHeaderChange,
+  onRemoveRefererOnRedirectChange,
+  onMaxRedirectsChange,
   onSslVerificationChange,
+  onEncodeUrlChange,
+  onDisableCookieJarChange,
+  onHttpVersionChange,
   onTimeoutChange,
   onProxyUrlChange,
   onProxyUsernameChange,
@@ -474,13 +488,27 @@ function SubTabContent({
   onFormDataBulkModeChange: (v: boolean) => void
   onUrlencodedBulkModeChange: (v: boolean) => void
   followRedirects: boolean
+  followOriginalMethod: boolean
+  followAuthorizationHeader: boolean
+  removeRefererOnRedirect: boolean
+  maxRedirects: number
   sslVerification: boolean
+  encodeUrl: boolean
+  disableCookieJar: boolean
+  httpVersion: "auto" | "http1" | "http2"
   timeout: number
   proxyUrl: string
   proxyUsername: string
   proxyPassword: string
   onFollowRedirectsChange: (v: boolean) => void
+  onFollowOriginalMethodChange: (v: boolean) => void
+  onFollowAuthorizationHeaderChange: (v: boolean) => void
+  onRemoveRefererOnRedirectChange: (v: boolean) => void
+  onMaxRedirectsChange: (v: number) => void
   onSslVerificationChange: (v: boolean) => void
+  onEncodeUrlChange: (v: boolean) => void
+  onDisableCookieJarChange: (v: boolean) => void
+  onHttpVersionChange: (v: "auto" | "http1" | "http2") => void
   onTimeoutChange: (v: number) => void
   onProxyUrlChange: (v: string) => void
   onProxyUsernameChange: (v: string) => void
@@ -574,8 +602,61 @@ function SubTabContent({
     }
     const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
     const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
+    const inputStyle: React.CSSProperties = {
+      padding: "3px 8px",
+      fontSize: 11,
+      border: "1px solid var(--border)",
+      borderRadius: 3,
+      background: "var(--bg)",
+      color: "var(--fg)",
+      outline: "none",
+    }
+    const HTTP_VERSIONS: { value: "auto" | "http1" | "http2"; label: string }[] = [
+      { value: "auto", label: "Auto" },
+      { value: "http1", label: "HTTP/1.x" },
+      { value: "http2", label: "HTTP/2" },
+    ]
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
+        {/* HTTP */}
+        <div style={plainRowStyle}>
+          <div>
+            <div style={labelStyle}>HTTP Version</div>
+            <div style={descStyle}>Protocol version used to send the request</div>
+          </div>
+          <div style={{ display: "flex", gap: 2 }}>
+            {HTTP_VERSIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => onHttpVersionChange(value)}
+                style={{
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  border: "1px solid var(--border)",
+                  borderRadius: 3,
+                  background: httpVersion === value ? "var(--accent)" : "var(--bg)",
+                  color: httpVersion === value ? "#fff" : "var(--fg-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div
+          style={boolRow("encode-url")}
+          onClick={() => onEncodeUrlChange(!encodeUrl)}
+          onMouseEnter={() => setHoveredRow("encode-url")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Encode URL Automatically</div>
+            <div style={descStyle}>Encode path, query parameters, and auth fields</div>
+          </div>
+          <SettingsCheckbox checked={encodeUrl} />
+        </div>
+        {/* Redirects */}
         <div
           style={boolRow("redirects")}
           onClick={() => onFollowRedirectsChange(!followRedirects)}
@@ -589,6 +670,62 @@ function SubTabContent({
           <SettingsCheckbox checked={followRedirects} />
         </div>
         <div
+          style={boolRow("original-method")}
+          onClick={() => onFollowOriginalMethodChange(!followOriginalMethod)}
+          onMouseEnter={() => setHoveredRow("original-method")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Follow Original HTTP Method</div>
+            <div style={descStyle}>Redirect with the original method instead of GET</div>
+          </div>
+          <SettingsCheckbox checked={followOriginalMethod} />
+        </div>
+        <div
+          style={boolRow("follow-auth")}
+          onClick={() => onFollowAuthorizationHeaderChange(!followAuthorizationHeader)}
+          onMouseEnter={() => setHoveredRow("follow-auth")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Follow Authorization Header</div>
+            <div style={descStyle}>
+              Retain the Authorization header when redirecting to a different hostname
+            </div>
+          </div>
+          <SettingsCheckbox checked={followAuthorizationHeader} />
+        </div>
+        <div
+          style={boolRow("remove-referer")}
+          onClick={() => onRemoveRefererOnRedirectChange(!removeRefererOnRedirect)}
+          onMouseEnter={() => setHoveredRow("remove-referer")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Remove Referer Header on Redirect</div>
+            <div style={descStyle}>Strip the Referer header when a redirect occurs</div>
+          </div>
+          <SettingsCheckbox checked={removeRefererOnRedirect} />
+        </div>
+        <div style={plainRowStyle}>
+          <div>
+            <div style={labelStyle}>Maximum Number of Redirects</div>
+            <div style={descStyle}>Cap on consecutive redirects to follow</div>
+          </div>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={String(maxRedirects)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/\D/g, "")
+              onMaxRedirectsChange(raw === "" ? 0 : parseInt(raw, 10))
+            }}
+            style={{ ...inputStyle, width: 56, textAlign: "right" }}
+          />
+        </div>
+        {/* Security */}
+        <div
           style={boolRow("ssl")}
           onClick={() => onSslVerificationChange(!sslVerification)}
           onMouseEnter={() => setHoveredRow("ssl")}
@@ -600,6 +737,19 @@ function SubTabContent({
           </div>
           <SettingsCheckbox checked={sslVerification} />
         </div>
+        <div
+          style={boolRow("cookie-jar")}
+          onClick={() => onDisableCookieJarChange(!disableCookieJar)}
+          onMouseEnter={() => setHoveredRow("cookie-jar")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Disable Cookie Jar</div>
+            <div style={descStyle}>Cookies will not be stored or sent for this request</div>
+          </div>
+          <SettingsCheckbox checked={disableCookieJar} />
+        </div>
+        {/* Timeout */}
         <div style={plainRowStyle}>
           <div>
             <div style={labelStyle}>Request Timeout</div>
@@ -615,21 +765,12 @@ function SubTabContent({
                 const raw = e.target.value.replace(/\D/g, "")
                 onTimeoutChange(raw === "" ? 0 : parseInt(raw, 10))
               }}
-              style={{
-                width: 72,
-                padding: "3px 8px",
-                fontSize: 11,
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                background: "var(--bg)",
-                color: "var(--fg)",
-                outline: "none",
-                textAlign: "right",
-              }}
+              style={{ ...inputStyle, width: 72, textAlign: "right" }}
             />
             <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
           </div>
         </div>
+        {/* Proxy */}
         <div style={{ ...plainRowStyle, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
           <div>
             <div style={labelStyle}>Proxy</div>
@@ -640,16 +781,7 @@ function SubTabContent({
             placeholder="http://proxy.example.com:8080"
             value={proxyUrl}
             onChange={(e) => onProxyUrlChange(e.target.value)}
-            style={{
-              width: "100%",
-              padding: "3px 8px",
-              fontSize: 11,
-              border: "1px solid var(--border)",
-              borderRadius: 3,
-              background: "var(--bg)",
-              color: "var(--fg)",
-              outline: "none",
-            }}
+            style={{ ...inputStyle, width: "100%" }}
           />
           <div style={{ display: "flex", gap: 6 }}>
             <input
@@ -657,32 +789,14 @@ function SubTabContent({
               placeholder="Username"
               value={proxyUsername}
               onChange={(e) => onProxyUsernameChange(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "3px 8px",
-                fontSize: 11,
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                background: "var(--bg)",
-                color: "var(--fg)",
-                outline: "none",
-              }}
+              style={{ ...inputStyle, flex: 1 }}
             />
             <input
               type="password"
               placeholder="Password"
               value={proxyPassword}
               onChange={(e) => onProxyPasswordChange(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "3px 8px",
-                fontSize: 11,
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                background: "var(--bg)",
-                color: "var(--fg)",
-                outline: "none",
-              }}
+              style={{ ...inputStyle, flex: 1 }}
             />
           </div>
         </div>
@@ -788,23 +902,39 @@ export function RequestPane() {
   function handleFollowRedirectsChange(followRedirects: boolean) {
     updateTab(tab!.id, { followRedirects })
   }
-
+  function handleFollowOriginalMethodChange(followOriginalMethod: boolean) {
+    updateTab(tab!.id, { followOriginalMethod })
+  }
+  function handleFollowAuthorizationHeaderChange(followAuthorizationHeader: boolean) {
+    updateTab(tab!.id, { followAuthorizationHeader })
+  }
+  function handleRemoveRefererOnRedirectChange(removeRefererOnRedirect: boolean) {
+    updateTab(tab!.id, { removeRefererOnRedirect })
+  }
+  function handleMaxRedirectsChange(maxRedirects: number) {
+    updateTab(tab!.id, { maxRedirects })
+  }
   function handleSslVerificationChange(sslVerification: boolean) {
     updateTab(tab!.id, { sslVerification })
   }
-
+  function handleEncodeUrlChange(encodeUrl: boolean) {
+    updateTab(tab!.id, { encodeUrl })
+  }
+  function handleDisableCookieJarChange(disableCookieJar: boolean) {
+    updateTab(tab!.id, { disableCookieJar })
+  }
+  function handleHttpVersionChange(httpVersion: "auto" | "http1" | "http2") {
+    updateTab(tab!.id, { httpVersion })
+  }
   function handleTimeoutChange(timeout: number) {
     updateTab(tab!.id, { timeout })
   }
-
   function handleProxyUrlChange(proxyUrl: string) {
     updateTab(tab!.id, { proxyUrl })
   }
-
   function handleProxyUsernameChange(proxyUsername: string) {
     updateTab(tab!.id, { proxyUsername })
   }
-
   function handleProxyPasswordChange(proxyPassword: string) {
     updateTab(tab!.id, { proxyPassword })
   }
@@ -947,13 +1077,27 @@ export function RequestPane() {
             onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
             onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
             followRedirects={tab.followRedirects}
+            followOriginalMethod={tab.followOriginalMethod}
+            followAuthorizationHeader={tab.followAuthorizationHeader}
+            removeRefererOnRedirect={tab.removeRefererOnRedirect}
+            maxRedirects={tab.maxRedirects}
             sslVerification={tab.sslVerification}
+            encodeUrl={tab.encodeUrl}
+            disableCookieJar={tab.disableCookieJar}
+            httpVersion={tab.httpVersion}
             timeout={tab.timeout}
             proxyUrl={tab.proxyUrl}
             proxyUsername={tab.proxyUsername}
             proxyPassword={tab.proxyPassword}
             onFollowRedirectsChange={handleFollowRedirectsChange}
+            onFollowOriginalMethodChange={handleFollowOriginalMethodChange}
+            onFollowAuthorizationHeaderChange={handleFollowAuthorizationHeaderChange}
+            onRemoveRefererOnRedirectChange={handleRemoveRefererOnRedirectChange}
+            onMaxRedirectsChange={handleMaxRedirectsChange}
             onSslVerificationChange={handleSslVerificationChange}
+            onEncodeUrlChange={handleEncodeUrlChange}
+            onDisableCookieJarChange={handleDisableCookieJarChange}
+            onHttpVersionChange={handleHttpVersionChange}
             onTimeoutChange={handleTimeoutChange}
             onProxyUrlChange={handleProxyUrlChange}
             onProxyUsernameChange={handleProxyUsernameChange}

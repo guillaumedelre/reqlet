@@ -50,7 +50,14 @@ export interface Tab {
   preRequestScript: string
   testScript: string
   followRedirects: boolean
+  followOriginalMethod: boolean
+  followAuthorizationHeader: boolean
+  removeRefererOnRedirect: boolean
+  maxRedirects: number
   sslVerification: boolean
+  encodeUrl: boolean
+  disableCookieJar: boolean
+  httpVersion: "auto" | "http1" | "http2"
   timeout: number
   proxyUrl: string
   proxyUsername: string
@@ -76,7 +83,14 @@ function newTab(patch?: Partial<Tab>): Tab {
     preRequestScript: "",
     testScript: "",
     followRedirects: true,
+    followOriginalMethod: false,
+    followAuthorizationHeader: false,
+    removeRefererOnRedirect: false,
+    maxRedirects: 10,
     sslVerification: true,
+    encodeUrl: true,
+    disableCookieJar: false,
+    httpVersion: "auto",
     timeout: 0,
     proxyUrl: "",
     proxyUsername: "",
@@ -192,7 +206,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 7,
+      version: 8,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -210,7 +224,14 @@ export const useTabsStore = create<TabsState>()(
             preRequestScript: "",
             testScript: "",
             followRedirects: true,
+            followOriginalMethod: false,
+            followAuthorizationHeader: false,
+            removeRefererOnRedirect: false,
+            maxRedirects: 10,
             sslVerification: true,
+            encodeUrl: true,
+            disableCookieJar: false,
+            httpVersion: "auto",
             timeout: 0,
             proxyUrl: "",
             proxyUsername: "",

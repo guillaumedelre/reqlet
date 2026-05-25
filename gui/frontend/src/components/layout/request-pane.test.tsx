@@ -33,7 +33,14 @@ function makeTab(): Tab {
     preRequestScript: "",
     testScript: "",
     followRedirects: true,
+    followOriginalMethod: false,
+    followAuthorizationHeader: false,
+    removeRefererOnRedirect: false,
+    maxRedirects: 10,
     sslVerification: true,
+    encodeUrl: true,
+    disableCookieJar: false,
+    httpVersion: "auto",
     timeout: 0,
     proxyUrl: "",
     proxyUsername: "",
@@ -196,14 +203,6 @@ describe("RequestPane — Code tab", () => {
 })
 
 describe("RequestPane — Settings tab", () => {
-  it("shows all three setting controls", () => {
-    render(<RequestPane />)
-    goToSubTab("Settings")
-    expect(screen.getByText("Follow Redirects")).toBeInTheDocument()
-    expect(screen.getByText("SSL Certificate Verification")).toBeInTheDocument()
-    expect(screen.getByText("Request Timeout")).toBeInTheDocument()
-  })
-
   it("clicking Follow Redirects row toggles the store value", () => {
     const tab = makeTab()
     useTabsStore.setState({
@@ -244,6 +243,71 @@ describe("RequestPane — Settings tab", () => {
     const input = screen.getByDisplayValue("0")
     fireEvent.change(input, { target: { value: "abc" } })
     expect(useTabsStore.getState().tabs[0].timeout).toBe(0)
+  })
+
+  it("shows all three setting controls", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByText("Follow Redirects")).toBeInTheDocument()
+    expect(screen.getByText("SSL Certificate Verification")).toBeInTheDocument()
+    expect(screen.getByText("Request Timeout")).toBeInTheDocument()
+  })
+
+  it("shows HTTP version buttons", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByRole("button", { name: "Auto" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "HTTP/1.x" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "HTTP/2" })).toBeInTheDocument()
+  })
+
+  it("clicking HTTP/2 updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByRole("button", { name: "HTTP/2" }))
+    expect(useTabsStore.getState().tabs[0].httpVersion).toBe("http2")
+  })
+
+  it("clicking Encode URL Automatically row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Encode URL Automatically"))
+    expect(useTabsStore.getState().tabs[0].encodeUrl).toBe(false)
+  })
+
+  it("clicking Follow Original HTTP Method row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Follow Original HTTP Method"))
+    expect(useTabsStore.getState().tabs[0].followOriginalMethod).toBe(true)
+  })
+
+  it("clicking Follow Authorization Header row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Follow Authorization Header"))
+    expect(useTabsStore.getState().tabs[0].followAuthorizationHeader).toBe(true)
+  })
+
+  it("clicking Remove Referer Header on Redirect row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Remove Referer Header on Redirect"))
+    expect(useTabsStore.getState().tabs[0].removeRefererOnRedirect).toBe(true)
+  })
+
+  it("max redirects input updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.change(screen.getByDisplayValue("10"), { target: { value: "5" } })
+    expect(useTabsStore.getState().tabs[0].maxRedirects).toBe(5)
+  })
+
+  it("clicking Disable Cookie Jar row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Disable Cookie Jar"))
+    expect(useTabsStore.getState().tabs[0].disableCookieJar).toBe(true)
   })
 
   it("shows proxy URL, username and password inputs", () => {
