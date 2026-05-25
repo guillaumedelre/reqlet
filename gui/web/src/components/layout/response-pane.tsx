@@ -1,10 +1,23 @@
-import { useState } from "react"
+import { useRef, useState } from "react"
+
+import type { OnMount } from "@monaco-editor/react"
 
 import { CodeEditor } from "@/components/ui/code-editor"
 import { guessExt } from "@/lib/response"
-import { useTabsStore, type ResponseData } from "@/store/tabs"
+import { useTabsStore, type HttpTimings, type ResponseData } from "@/store/tabs"
 
 type ResponseSubTab = "Pretty" | "Raw" | "Headers" | "Preview" | "Visualize"
+type MonacoEditor = Parameters<OnMount>[0]
+
+const RESPONSE_TABS: ResponseSubTab[] = ["Pretty", "Raw", "Headers", "Preview", "Visualize"]
+
+const TIMELINE_PHASES: { key: keyof HttpTimings; label: string; color: string }[] = [
+  { key: "dns", label: "DNS Lookup", color: "#f90" },
+  { key: "tcp", label: "TCP Handshake", color: "#0c6" },
+  { key: "tls", label: "TLS Handshake", color: "#c33" },
+  { key: "ttfb", label: "Wait (TTFB)", color: "#26f" },
+  { key: "download", label: "Download", color: "#a4f" },
+]
 
 function statusColor(status: number): string {
   if (status < 200) return "var(--fg-muted)"
@@ -37,8 +50,107 @@ function tryPrettyJson(body: string): string {
   }
 }
 
+function TimingPopover({ timings }: { timings: HttpTimings }) {
+  const total = TIMELINE_PHASES.reduce((sum, { key }) => sum + timings[key], 0)
+  let offset = 0
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "calc(100% + 4px)",
+        right: 0,
+        background: "var(--bg-panel)",
+        border: "1px solid var(--border)",
+        borderRadius: 4,
+        padding: "8px 12px",
+        zIndex: 100,
+        minWidth: 240,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+      }}
+    >
+      {TIMELINE_PHASES.map(({ key, label, color }) => {
+        const duration = timings[key]
+        const leftPct = total > 0 ? (offset / total) * 100 : 0
+        const widthPct = total > 0 ? (duration / total) * 100 : 0
+        offset += duration
+        return (
+          <div key={key} style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <span
+              style={{
+                width: 110,
+                fontSize: 10,
+                color: "var(--fg-muted)",
+                textAlign: "right",
+                flexShrink: 0,
+              }}
+            >
+              {label}
+            </span>
+            <div
+              style={{
+                flex: 1,
+                height: 10,
+                position: "relative",
+                background: "var(--border)",
+                borderRadius: 2,
+              }}
+            >
+              <div
+                style={{
+                  position: "absolute",
+                  left: `${leftPct}%`,
+                  width: `${widthPct}%`,
+                  height: "100%",
+                  background: color,
+                  borderRadius: 2,
+                }}
+              />
+            </div>
+            <span
+              style={{
+                width: 52,
+                fontSize: 10,
+                color: "var(--fg)",
+                textAlign: "right",
+                flexShrink: 0,
+              }}
+            >
+              {duration.toFixed(2)} ms
+            </span>
+          </div>
+        )
+      })}
+      <div
+        style={{
+          borderTop: "1px solid var(--border)",
+          marginTop: 6,
+          paddingTop: 4,
+          display: "flex",
+          justifyContent: "flex-end",
+          gap: 6,
+        }}
+      >
+        <span style={{ fontSize: 10, color: "var(--fg-muted)" }}>Total</span>
+        <span style={{ fontSize: 10, fontWeight: 700, color: "var(--fg)" }}>
+          {total.toFixed(2)} ms
+        </span>
+      </div>
+    </div>
+  )
+}
+
 function StatusBar({ response, url }: { response: ResponseData; url: string }) {
+  const [copied, setCopied] = useState(false)
+  const [showTimings, setShowTimings] = useState(false)
   const color = statusColor(response.status)
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(response.body).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
 
   function handleSave() {
     const ext = guessExt(response.contentType)
@@ -53,6 +165,16 @@ function StatusBar({ response, url }: { response: ResponseData; url: string }) {
 
   // suppress unused-var warning — url will be used for filename inference once Send is wired
   void url
+
+  const btnStyle: React.CSSProperties = {
+    fontSize: 11,
+    border: "1px solid var(--border)",
+    background: "transparent",
+    color: "var(--fg-muted)",
+    cursor: "pointer",
+    padding: "1px 8px",
+    borderRadius: 3,
+  }
 
   return (
     <div
@@ -79,29 +201,40 @@ function StatusBar({ response, url }: { response: ResponseData; url: string }) {
       </span>
       <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>{response.statusText}</span>
       <span style={{ fontSize: 11, color: "var(--fg-muted)", marginLeft: "auto" }}>
-        {response.time} ms
+        <span
+          style={{
+            position: "relative",
+            cursor: response.timings ? "pointer" : "default",
+            textDecoration: response.timings ? "underline dotted" : "none",
+          }}
+          onMouseEnter={() => response.timings && setShowTimings(true)}
+          onMouseLeave={() => setShowTimings(false)}
+          aria-label={response.timings ? "Show timing breakdown" : undefined}
+        >
+          {response.time} ms
+          {showTimings && response.timings && <TimingPopover timings={response.timings} />}
+        </span>
       </span>
       <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>{formatSize(response.size)}</span>
-      <button
-        onClick={handleSave}
-        title="Download response"
-        style={{
-          fontSize: 11,
-          border: "1px solid var(--border)",
-          background: "transparent",
-          color: "var(--fg-muted)",
-          cursor: "pointer",
-          padding: "1px 8px",
-          borderRadius: 3,
-        }}
-      >
+      <button onClick={handleCopy} title="Copy response body" style={btnStyle}>
+        {copied ? "Copied!" : "Copy"}
+      </button>
+      <button onClick={handleSave} title="Download response" style={btnStyle}>
         Save
       </button>
     </div>
   )
 }
 
-function PrettyBody({ response }: { response: ResponseData }) {
+function PrettyBody({
+  response,
+  wordWrap,
+  onEditorMount,
+}: {
+  response: ResponseData
+  wordWrap: "on" | "off"
+  onEditorMount: (editor: MonacoEditor) => void
+}) {
   const isJson =
     response.contentType.includes("application/json") || response.contentType.includes("+json")
   const content = isJson ? tryPrettyJson(response.body) : response.body
@@ -114,8 +247,20 @@ function PrettyBody({ response }: { response: ResponseData }) {
     )
   }
 
+  const handleMount: OnMount = (editor) => {
+    onEditorMount(editor)
+  }
+
   return (
-    <CodeEditor value={content} language={contentTypeToMonacoLang(response.contentType)} readOnly />
+    <div style={{ position: "absolute", inset: 0 }}>
+      <CodeEditor
+        value={content}
+        language={contentTypeToMonacoLang(response.contentType)}
+        readOnly
+        wordWrap={wordWrap}
+        onMount={handleMount}
+      />
+    </div>
   )
 }
 
@@ -203,6 +348,8 @@ export function ResponsePane() {
   const { tabs, activeTabId } = useTabsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
   const [subTab, setSubTab] = useState<ResponseSubTab>("Pretty")
+  const [wordWrap, setWordWrap] = useState<"on" | "off">("on")
+  const editorRef = useRef<MonacoEditor | null>(null)
 
   const subTabStyle = (t: ResponseSubTab): React.CSSProperties => ({
     fontSize: 11,
@@ -214,6 +361,16 @@ export function ResponsePane() {
     borderBottom: subTab === t ? "2px solid var(--accent)" : "2px solid transparent",
     marginBottom: -1,
     whiteSpace: "nowrap",
+  })
+
+  const toolBtnStyle = (active: boolean): React.CSSProperties => ({
+    fontSize: 10,
+    border: `1px solid ${active ? "var(--fg-muted)" : "var(--border)"}`,
+    background: "transparent",
+    color: active ? "var(--fg)" : "var(--fg-muted)",
+    cursor: "pointer",
+    padding: "1px 6px",
+    borderRadius: 3,
   })
 
   if (!tab?.response) {
@@ -250,20 +407,56 @@ export function ResponsePane() {
       <div
         style={{
           display: "flex",
-          padding: "0 4px",
+          alignItems: "center",
           borderBottom: "1px solid var(--border)",
           flexShrink: 0,
         }}
       >
-        {(["Pretty", "Raw", "Headers", "Preview", "Visualize"] as ResponseSubTab[]).map((t) => (
-          <button key={t} onClick={() => setSubTab(t)} style={subTabStyle(t)}>
-            {t}
-          </button>
-        ))}
+        <div style={{ display: "flex", padding: "0 4px", flex: 1 }}>
+          {RESPONSE_TABS.map((t) => (
+            <button key={t} onClick={() => setSubTab(t)} style={subTabStyle(t)}>
+              {t}
+            </button>
+          ))}
+        </div>
+        {subTab === "Pretty" && (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              padding: "0 8px",
+              flexShrink: 0,
+            }}
+          >
+            <button
+              onClick={() => setWordWrap((w) => (w === "on" ? "off" : "on"))}
+              aria-label={wordWrap === "on" ? "Disable word wrap" : "Enable word wrap"}
+              title={wordWrap === "on" ? "Disable word wrap" : "Enable word wrap"}
+              style={toolBtnStyle(wordWrap === "on")}
+            >
+              Wrap
+            </button>
+            <button
+              onClick={() => editorRef.current?.getAction("actions.find")?.run()}
+              aria-label="Search in response (Ctrl+F)"
+              title="Search in response (Ctrl+F)"
+              style={toolBtnStyle(false)}
+            >
+              Search
+            </button>
+          </div>
+        )}
       </div>
       {subTab === "Pretty" && (
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <PrettyBody response={response} />
+        <div style={{ flex: 1, overflow: "hidden", position: "relative" }}>
+          <PrettyBody
+            response={response}
+            wordWrap={wordWrap}
+            onEditorMount={(editor) => {
+              editorRef.current = editor
+            }}
+          />
         </div>
       )}
       {subTab === "Raw" && (

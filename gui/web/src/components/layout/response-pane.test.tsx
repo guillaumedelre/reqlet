@@ -8,7 +8,7 @@ vi.mock("@monaco-editor/react", () => ({
 }))
 
 import { guessExt } from "@/lib/response"
-import { useTabsStore, type ResponseData } from "@/store/tabs"
+import { useTabsStore, type HttpTimings, type ResponseData } from "@/store/tabs"
 import { ResponsePane } from "./response-pane"
 
 const makeResponse = (patch: Partial<ResponseData> = {}): ResponseData => ({
@@ -223,6 +223,133 @@ describe("ResponsePane — Visualize tab", () => {
     render(<ResponsePane />)
     fireEvent.click(screen.getByRole("button", { name: "Visualize" }))
     expect(screen.getByText(/pm\.visualizer\.set/)).toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — timing popover", () => {
+  it("does not show popover on hover when timings are absent", () => {
+    setResponse({ time: 50 })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.queryByText("DNS Lookup")).not.toBeInTheDocument()
+  })
+
+  it("shows all waterfall phases on hover when timings are present", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("DNS Lookup")).toBeInTheDocument()
+    expect(screen.getByText("TCP Handshake")).toBeInTheDocument()
+    expect(screen.getByText("TLS Handshake")).toBeInTheDocument()
+    expect(screen.getByText(/TTFB/)).toBeInTheDocument()
+    expect(screen.getByText("Download")).toBeInTheDocument()
+  })
+
+  it("shows phase durations formatted to 2 decimal places", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("3.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("6.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("12.00 ms")).toBeInTheDocument()
+    expect(screen.getByText("29.00 ms")).toBeInTheDocument()
+  })
+
+  it("shows the correct total in the popover", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText("50.00 ms")).toBeInTheDocument()
+  })
+
+  it("hides the popover on mouse leave", () => {
+    const timings: HttpTimings = { dns: 3, tcp: 6, tls: 12, ttfb: 29, download: 0 }
+    setResponse({ time: 50, timings })
+    render(<ResponsePane />)
+    const timeEl = screen.getByText("50 ms")
+    fireEvent.mouseEnter(timeEl)
+    expect(screen.getByText("DNS Lookup")).toBeInTheDocument()
+    fireEvent.mouseLeave(timeEl)
+    expect(screen.queryByText("DNS Lookup")).not.toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Copy button", () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it("Copy button is present in the status bar", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+  })
+
+  it("clicking Copy writes the response body to clipboard", async () => {
+    setResponse({ body: '{"x":1}', contentType: "application/json" })
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await Promise.resolve()
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{"x":1}')
+  })
+})
+
+describe("ResponsePane — Word wrap toggle", () => {
+  it("shows Wrap toggle button on Pretty tab", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(
+      screen.getByRole("button", { name: /disable word wrap|enable word wrap/i }),
+    ).toBeInTheDocument()
+  })
+
+  it("hides Wrap toggle on non-Pretty tabs", () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+    expect(
+      screen.queryByRole("button", { name: /disable word wrap|enable word wrap/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("toggling Wrap changes its title", () => {
+    setResponse()
+    render(<ResponsePane />)
+    const btn = screen.getByRole("button", { name: "Disable word wrap" })
+    fireEvent.click(btn)
+    expect(screen.getByRole("button", { name: "Enable word wrap" })).toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Search button", () => {
+  it("shows Search button on Pretty tab", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(screen.getByRole("button", { name: "Search in response (Ctrl+F)" })).toBeInTheDocument()
+  })
+
+  it("hides Search button on non-Pretty tabs", () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }))
+    expect(
+      screen.queryByRole("button", { name: "Search in response (Ctrl+F)" }),
+    ).not.toBeInTheDocument()
+  })
+
+  it("clicking Search does not throw when editor is not mounted", () => {
+    setResponse()
+    render(<ResponsePane />)
+    expect(() =>
+      fireEvent.click(screen.getByRole("button", { name: "Search in response (Ctrl+F)" })),
+    ).not.toThrow()
   })
 })
 

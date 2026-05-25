@@ -1,4 +1,4 @@
-import Editor from "@monaco-editor/react"
+import Editor, { type OnMount } from "@monaco-editor/react"
 
 import { useTheme } from "@/hooks/use-theme"
 
@@ -8,6 +8,8 @@ interface Props {
   language?: string
   readOnly?: boolean
   height?: number | string
+  wordWrap?: "on" | "off"
+  onMount?: OnMount
 }
 
 export function CodeEditor({
@@ -16,6 +18,8 @@ export function CodeEditor({
   language = "plaintext",
   readOnly = false,
   height = "100%",
+  wordWrap = "on",
+  onMount,
 }: Props) {
   const { theme } = useTheme()
   const isDark =
@@ -30,6 +34,7 @@ export function CodeEditor({
       theme={isDark ? "vs-dark" : "vs"}
       loading={null}
       onChange={readOnly ? undefined : (v) => onChange?.(v ?? "")}
+      onMount={onMount}
       options={{
         readOnly,
         minimap: { enabled: false },
@@ -38,7 +43,7 @@ export function CodeEditor({
         lineNumbers: "off",
         folding: false,
         scrollBeyondLastLine: false,
-        wordWrap: "on",
+        wordWrap,
         renderLineHighlight: "none",
         overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true,
