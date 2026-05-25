@@ -10,6 +10,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    // Forward /api/* to reqlet-agent when running alongside `docker compose up agent`
+    proxy: {
+      "/api": "http://localhost:3001",
+    },
+  },
   test: {
     globals: true,
     environment: "jsdom",

@@ -32,27 +32,48 @@ flowchart LR
     Q{"Working on..."}
     Go["Go code
     engine/ · cli/ · agent/"]
-    Web["React UI
-    gui/web/"]
+    Web["React UI only
+    (no API calls)"]
     FS["Full stack
-    React + Go API"]
+    React + API"]
 
-    Q --> Go    --> GoC["make shell-go
+    Q --> Go  --> GoC["make shell-go
     make test-all · go-lint"]
-    Q --> Web   --> WebC["make dev-web
-    localhost:5173"]
-    Q --> FS    --> FSC["make dev-agent
-    localhost:3001"]
+    Q --> Web --> WebC["make dev-web
+    localhost:5173 — HMR"]
+    Q --> FS  --> FSC["make dev-stack
+    localhost:5173 — HMR + API"]
 ```
+
+### Choisir son workflow frontend
+
+`gui/web/` est du code source React — pas un déployable. Il est embarqué à build time dans `reqlet-gui` et `reqlet-agent`. Trois workflows sont disponibles :
+
+| Commande | URL | Quand l'utiliser |
+|---|---|---|
+| `make dev-web` | `localhost:5173` | Composants, styles, UI pure — HMR, aucun appel API |
+| `make dev-agent` | `localhost:3001` | Environnement identique à la prod, pas de HMR |
+| `make dev-stack` | `localhost:5173` | HMR + vrais appels API via proxy |
+
+**`make dev-stack`** lance Vite et `reqlet-agent` en parallèle. Le proxy configuré dans
+`vite.config.ts` forward automatiquement `/api/*` de Vite (5173) vers l'agent (3001).
+C'est le workflow recommandé dès que Phase 2.14 sera disponible.
+
+> En mode `dev-stack`, ouvrir `localhost:5173` (Vite, HMR). Ne pas ouvrir `localhost:3001` :
+> l'agent y sert le placeholder HTML embarqué au dernier `make build-web`, pas le frontend en cours de développement.
+
+> `make dev-agent` reconstruit l'image Docker si les sources ont changé. Pas de HMR :
+> chaque modification frontend nécessite `make build-web` puis de relancer le service.
 
 ```bash
 make help            # list all targets
 make build-cli       # build dist/reqlet-cli
 make build-web       # build gui/web/dist/
 make build-agent     # build Docker image reqlet-agent
-make dev-web         # start Vite dev server at http://localhost:5173
-make dev-agent       # start web agent at http://localhost:3001
-make test-all        # full test suite (engine/ + cli/)
+make dev-web         # start Vite dev server at http://localhost:5173 (HMR, no API)
+make dev-agent       # start web agent at http://localhost:3001 (prod-like, no HMR)
+make dev-stack       # start Vite + agent in parallel (HMR + API via proxy)
+make test-all        # full test suite (engine/ + cli/ + agent/)
 make test-unit       # unit tests only
 make test-integration
 make test-coverage   # generates coverage.html
@@ -66,10 +87,10 @@ make shell-web       # interactive shell in web container (gui/web/)
 
 ### Go test scope
 
-Tests cover `./engine/...` and `./cli/...` only. `gui/` requires GTK headers
+Tests cover `./engine/...`, `./cli/...`, and `./agent/...`. `gui/` requires GTK headers
 and is compiled separately via `Dockerfile.gui`.
 
-### Go (engine/, cli/) — direct docker compose commands
+### Go (engine/, cli/, agent/) — direct docker compose commands
 
 ```bash
 # Interactive Go shell
@@ -79,13 +100,13 @@ docker compose run --rm go sh
 docker compose run --rm test
 
 # Run tests with coverage report
-docker compose run --rm test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/...
+docker compose run --rm test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/...
 
 # Run unit tests only (exclude integration)
-docker compose run --rm test gotestsum -- -tags=!integration ./engine/... ./cli/...
+docker compose run --rm test gotestsum -- -tags=!integration ./engine/... ./cli/... ./agent/...
 
 # Run integration tests only
-docker compose run --rm test gotestsum -- -tags=integration ./engine/... ./cli/...
+docker compose run --rm test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/...
 
 # Lint (golangci-lint via official image)
 docker compose run --rm lint
@@ -373,9 +394,14 @@ docker build -f Dockerfile.agent .
 
 ## Web agent (reqlet-agent)
 
-`reqlet-agent` is a standalone Go binary that embeds the React frontend and
-exposes a REST API. It allows testing the full stack (Send button, script
-engine) without needing a display server or `wails dev`.
+`reqlet-agent` is the self-hosted deployment target for reqlet. It bundles
+the React frontend, the Go API, and the node-runner script engine in a single
+Docker image.
+
+The REST API (`/api/...`) is in progress (Phase 2.14) — request execution and
+script engine are not yet wired. Only `GET /api/health` is implemented.
+The image exposes a Docker HEALTHCHECK on that endpoint, so orchestrators and
+`depends_on: condition: service_healthy` work out of the box.
 
 ```bash
 # Build and start the agent at http://localhost:3001
@@ -400,9 +426,9 @@ reqlet/
 ├── engine/          # Shared Go library (business logic)
 ├── cli/             # CLI binary → binary: reqlet-cli
 ├── gui/             # Wails desktop app → binary: reqlet
-│   └── web/         # React + TypeScript (Vite, Tailwind v4, shadcn/ui, Zustand)
-├── agent/           # Web agent → binary: reqlet-agent
-├── node-runner/     # Node.js pm.* sandbox
+│   └── web/         # React source (Vite, Tailwind v4, shadcn/ui, Zustand) — embedded in gui and agent at build time
+├── agent/           # Web agent → binary: reqlet-agent (embeds gui/web/dist/ + node-runner SEA)
+├── node-runner/     # Node.js pm.* sandbox — compiled as Node SEA, embedded in all Go binaries via engine/sandbox
 ├── docs/            # This documentation
 ├── .github/         # CI workflows, issue templates, dependabot
 ├── compose.yaml     # Dev environment

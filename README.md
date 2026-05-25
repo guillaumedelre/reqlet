@@ -16,10 +16,10 @@ Reqlet is a self-hostable API client designed to replace Postman desktop. It shi
 ## Features
 
 - **Desktop GUI** — native app built with [Wails v2][wails], no Electron
+- **Self-hosted web UI** — single Docker image (`reqlet-agent`) with the UI, API, and script engine bundled
 - **CLI** — run Postman collections from the terminal, CI/CD ready
-- **Postman compatible** — imports Collection v2.1, v2.0, v1.0; exports v2.1
+- **Postman compatible** — imports Collection v2.1, v2.0, v1.0; exports v2.1; runs `pm.*` scripts
 - **Offline-first** — works entirely without an internet connection
-- **Self-hostable** — no mandatory third-party services
 - **MIT licensed** — fully open source, no feature-gating
 
 ## Installation
@@ -49,7 +49,30 @@ Verify the download with the provided `checksums.txt` and cosign signature.
 docker run --rm -v $(pwd):/workspace ghcr.io/guillaumedelre/reqlet run collection.json
 ```
 
-## Quick start
+### Self-hosted web UI
+
+`reqlet-agent` is a single Docker image that bundles the React UI, the Go API, and the script engine. No separate frontend image is needed.
+
+```yaml
+# compose.yaml
+services:
+  reqlet:
+    image: ghcr.io/guillaumedelre/reqlet-agent
+    ports:
+      - "3001:8080"
+    volumes:
+      - reqlet-data:/data
+
+volumes:
+  reqlet-data:
+```
+
+```bash
+docker compose up
+# Open http://localhost:3001
+```
+
+## Quick start (CLI)
 
 ```bash
 # Run a collection
@@ -58,7 +81,7 @@ reqlet run collection.json --environment prod.json
 # Run with iteration data
 reqlet run collection.json --data data.csv --reporters cli,junit
 
-# Run a single request
+# Run a single folder
 reqlet run collection.json --folder "Auth" --reporters cli
 ```
 

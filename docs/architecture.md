@@ -21,7 +21,7 @@ graph TD
     GUI["gui/ → reqlet"]
     Agent["agent/ → reqlet-agent"]
     NodeRunner["node-runner/
-    npm.* sandbox"]
+    pm.* sandbox"]
     WebUI["gui/web/
     React SPA"]
 
@@ -71,16 +71,36 @@ back via those bindings and via `runtime.EventsEmit` / `runtime.EventsOn`.
 The WebView is provided by the OS (WKWebView on macOS, WebView2 on Windows,
 WebKit2GTK on Linux) — no Chromium bundled.
 
+`gui/web/` contains the React TypeScript frontend (Vite, Tailwind v4, shadcn/ui,
+Zustand). It is **not a standalone deployable** — it is a build artefact consumed
+by two targets:
+
+- `gui/` embeds `gui/web/dist/` directly via `//go:embed all:web/dist` (Wails)
+- `agent/` receives a copy of `gui/web/dist/` during its Docker build, then
+  embeds it via `//go:embed all:web`
+
+Both targets run the same React codebase; `gui/web/src/lib/backend.ts` detects
+at runtime whether it is running inside the Wails WebView or served by
+`reqlet-agent`.
+
 ### `agent/`
 
 Standalone Go HTTP server (`reqlet-agent` binary). It:
 
 - Embeds `agent/web/` via `go:embed all:web` and serves the React SPA at `/`
   (`agent/web/` is populated from `gui/web/dist/` during the Docker build)
-- Exposes a REST API (`/api/...`) equivalent to the Wails bindings in `gui/`
-- Delegates request execution to `engine/http` and script execution to `engine/sandbox`
+- Exposes a REST API (`/api/...`) equivalent to the Wails bindings in `gui/` (Phase 2.14 — in progress)
+- Will delegate request execution to `engine/http` and script execution to `engine/sandbox`
 - Stores data in a SQLite file at `/data/reqlet.db` (Docker) or `~/.reqlet/reqlet.db` (standalone)
 - Listens on `:8080` internally; exposed on host port `3001` via Docker Compose (`"3001:8080"`)
+
+**Implemented endpoints:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/health` | Liveness probe — returns `{"status":"ok"}` (HTTP 200) |
+| `GET` | `/` | Serves the embedded React SPA (`index.html`) |
+| `ANY` | `/api/*` | 404 — placeholder for Phase 2.14 REST routes |
 
 The frontend auto-detects its runtime context via `gui/web/src/lib/backend.ts`: when
 running inside the Wails WebView it calls `window.go.*`, when served by
@@ -97,8 +117,9 @@ between both.
 A Node.js process that implements the [Postman sandbox][pm-sandbox] (`pm.*`
 API). Go starts it as a child process (`os/exec`) and communicates via
 newline-delimited JSON over stdio. Packaged as a [Node SEA][node-sea] and
-embedded into the Go binary via `go:embed` — no Node.js installation required
-on the end user's machine.
+embedded into `engine/sandbox` via `go:embed` — which means the SEA is bundled
+into all three Go binaries (`reqlet-cli`, `reqlet`, `reqlet-agent`). No
+Node.js installation is required on the end user's machine.
 
 ## Data flow (request execution)
 
@@ -141,14 +162,16 @@ flowchart TD
 
 ## Frontend transport abstraction
 
-`gui/web/src/lib/backend.ts` provides a unified call interface used by
-all React components. It detects the runtime context at startup:
+_(Phase 2.14 — not yet implemented)_
+
+`gui/web/src/lib/backend.ts` will provide a unified call interface for all React
+components. It will detect the runtime context at call time:
 
 ```mermaid
 flowchart TD
     B["gui/web/src/lib/backend.ts"]
-    Q{"Running in
-    Wails WebView?"}
+    Q{"window.go present?
+    (Wails WebView)"}
     W["window.go.main.App.*
     Wails IPC binding"]
     F["fetch('/api/...')
@@ -159,7 +182,8 @@ flowchart TD
     Q -- no --> F
 ```
 
-This keeps the React codebase identical regardless of the host.
+This will keep the React codebase identical regardless of whether it runs inside
+the Wails desktop app or is served by `reqlet-agent`.
 
 ## Storage
 

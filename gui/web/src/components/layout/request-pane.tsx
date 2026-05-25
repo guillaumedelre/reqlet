@@ -15,7 +15,6 @@ import {
   type RequestSubTab,
   type Tab,
 } from "@/store/tabs"
-
 const RAW_CONTENT_TYPE_TO_MONACO: Record<RawContentType, string> = {
   JSON: "json",
   XML: "xml",

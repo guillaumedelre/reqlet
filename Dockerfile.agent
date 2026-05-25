@@ -20,4 +20,6 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates
 COPY --from=go-builder /dist/reqlet-agent /usr/local/bin/reqlet-agent
 EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost:8080/api/health || exit 1
 ENTRYPOINT ["reqlet-agent"]
