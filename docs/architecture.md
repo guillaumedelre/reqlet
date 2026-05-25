@@ -13,6 +13,26 @@ agent/        ← web agent (Go HTTP server) → binary: reqlet-agent
 node-runner/  ← Node.js process (pm.* sandbox), communicates via stdio JSON
 ```
 
+```mermaid
+graph TD
+    Engine["engine/
+    shared library"]
+    CLI["cli/ → reqlet-cli"]
+    GUI["gui/ → reqlet"]
+    Agent["agent/ → reqlet-agent"]
+    NodeRunner["node-runner/
+    npm.* sandbox"]
+    WebUI["gui/web/
+    React SPA"]
+
+    CLI --> Engine
+    GUI --> Engine
+    Agent --> Engine
+    Engine --> NodeRunner
+    GUI -. embeds .-> WebUI
+    Agent -. embeds .-> WebUI
+```
+
 ## Component breakdown
 
 ### `engine/`
@@ -82,24 +102,41 @@ on the end user's machine.
 
 ## Data flow (request execution)
 
-```
-User (GUI, CLI, or web agent)
-     │
-     ▼
-engine/loader          ← LoadCollection / LoadEnvironment / LoadData
-     ├── engine/parser     parse + validate against JSON Schema (per format)
-     └── engine/migration  transform v1.0 / v2.0 → v2.1 internal model
-     │
-     ▼
-engine/runner ──── resolves variables ──── engine/variables
-     │
-     ├── pre-request script ──── engine/sandbox ──── node-runner process
-     │
-     ├── sends HTTP request ─────────────────────── engine/http
-     │
-     ├── post-response script ── engine/sandbox ──── node-runner process
-     │
-     └── persists history ────────────────────────── engine/storage
+```mermaid
+flowchart TD
+    U["User
+    GUI / CLI / Agent"]
+    L["engine/loader
+    LoadCollection · LoadEnvironment · LoadData"]
+    P["engine/parser
+    validation JSON Schema"]
+    M["engine/migration
+    v1.0 / v2.0 → v2.1"]
+    R["engine/runner
+    orchestration"]
+    V["engine/variables
+    {{var}} resolution"]
+    Pre["engine/sandbox
+    pre-request script"]
+    H["engine/http
+    HTTP request"]
+    Post["engine/sandbox
+    post-response script"]
+    S["engine/storage
+    SQLite history"]
+    NR["node-runner
+    pm.* API"]
+
+    U --> L
+    L --> P & M
+    P & M --> R
+    R <--> V
+    R --> Pre
+    Pre <--> NR
+    R --> H
+    R --> Post
+    Post <--> NR
+    R --> S
 ```
 
 ## Frontend transport abstraction
@@ -107,12 +144,19 @@ engine/runner ──── resolves variables ──── engine/variables
 `gui/web/src/lib/backend.ts` provides a unified call interface used by
 all React components. It detects the runtime context at startup:
 
-```
-Running in Wails WebView?
-  → window.go.main.App.SendRequest(...)   (Wails IPC binding)
+```mermaid
+flowchart TD
+    B["gui/web/src/lib/backend.ts"]
+    Q{"Running in
+    Wails WebView?"}
+    W["window.go.main.App.*
+    Wails IPC binding"]
+    F["fetch('/api/...')
+    reqlet-agent REST API"]
 
-Running in browser (served by reqlet-agent)?
-  → fetch("/api/send", { method: "POST", body: ... })
+    B --> Q
+    Q -- yes --> W
+    Q -- no --> F
 ```
 
 This keeps the React codebase identical regardless of the host.

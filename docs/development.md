@@ -27,6 +27,24 @@ docker compose run --rm web npm install
 The **Makefile** is the primary entry point. It wraps `docker compose run --rm`
 for every operation:
 
+```mermaid
+flowchart LR
+    Q{"Working on..."}
+    Go["Go code
+    engine/ · cli/ · agent/"]
+    Web["React UI
+    gui/web/"]
+    FS["Full stack
+    React + Go API"]
+
+    Q --> Go    --> GoC["make shell-go
+    make test-all · go-lint"]
+    Q --> Web   --> WebC["make dev-web
+    localhost:5173"]
+    Q --> FS    --> FSC["make dev-agent
+    localhost:3001"]
+```
+
 ```bash
 make help            # list all targets
 make build-cli       # build dist/reqlet-cli
