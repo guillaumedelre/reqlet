@@ -19,8 +19,18 @@ function makeTab(patch: Partial<Tab> = {}): Tab {
     dirty: false,
     activeSubTab: "Params",
     followRedirects: true,
+    followOriginalMethod: false,
+    followAuthorizationHeader: false,
+    removeRefererOnRedirect: false,
+    maxRedirects: 0,
     sslVerification: true,
+    encodeUrl: true,
+    disableCookieJar: false,
+    httpVersion: "http1",
     timeout: 0,
+    ignoreProxy: false,
+    preRequestScript: "",
+    testScript: "",
     ...patch,
   }
 }
