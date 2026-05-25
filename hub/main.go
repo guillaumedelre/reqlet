@@ -12,7 +12,7 @@ func main() {
 	}
 
 	s := NewServer(addr)
-	log.Printf("reqlet-hub listening on %s", addr)
+	log.Printf("reqlet-hub listening on %s", addr) //nolint:gosec // addr is from env var under user control
 	if err := s.Start(); err != nil {
 		log.Fatal(err)
 	}
