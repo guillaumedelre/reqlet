@@ -687,3 +687,4 @@ describe("RequestPane — Auth tab placeholder", () => {
     expect(screen.getByText("Auth — coming soon.")).toBeInTheDocument()
   })
 })
+

@@ -29,7 +29,7 @@ jobs:
             -v ${{ github.workspace }}:/app \
             -w /app \
             golangci/golangci-lint:latest \
-            golangci-lint run ./engine/... ./cli/...
+            golangci-lint run ./engine/... ./cli/... ./agent/...
 
       - uses: actions/setup-node@v4
         with:
@@ -44,7 +44,7 @@ jobs:
       - name: Test
         run: |
           go install gotest.tools/gotestsum@latest
-          gotestsum --junitfile report.xml -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/...
+          gotestsum --junitfile report.xml -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

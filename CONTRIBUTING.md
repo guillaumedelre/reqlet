@@ -18,7 +18,7 @@ cd reqlet
 All commands run inside Docker containers:
 
 ```bash
-# Go dev shell (engine/, cli/)
+# Go dev shell (engine/, cli/, agent/)
 docker compose run --rm go sh
 
 # Run tests

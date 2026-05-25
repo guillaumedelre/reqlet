@@ -16,7 +16,7 @@ DC      := docker compose run --rm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-web test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
+.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-web dev-stack test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
 
 help: ## Show this help message
 	@printf "\n$(BOLD)Reqlet — build & dev targets$(RESET)\n\n"
@@ -51,23 +51,27 @@ dev-agent: ## Start the web agent at http://localhost:3001 (full stack: React + 
 	$(INFO) @printf "Starting reqlet-agent at $(CYAN)http://localhost:3001$(RESET)\n"
 	docker compose up agent --remove-orphans
 
+dev-stack: ## Start Vite (HMR) + agent (API) in parallel — open http://localhost:5173
+	$(INFO) @printf "Starting Vite + reqlet-agent — open $(CYAN)http://localhost:5173$(RESET) ($(CYAN)/api/*$(RESET) proxied to port 3001)\n"
+	docker compose up web agent --remove-orphans
+
 test-all: ## Run the full test suite
 	$(INFO) @printf "Running tests...\n"
 	$(DC) test
 
 test-coverage: ## Run tests with coverage report (coverage.out + coverage.html)
 	$(INFO) @printf "Running tests with coverage...\n"
-	$(DC) test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/...
+	$(DC) test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/...
 	$(DC) go go tool cover -html=coverage.out -o coverage.html
 	$(OK) @printf "Coverage report: $(BOLD)coverage.html$(RESET)\n"
 
 test-unit: ## Run unit tests only (excludes integration tag)
 	$(INFO) @printf "Running unit tests...\n"
-	$(DC) test gotestsum -- -tags='!integration' ./engine/... ./cli/...
+	$(DC) test gotestsum -- -tags='!integration' ./engine/... ./cli/... ./agent/...
 
 test-integration: ## Run integration tests only
 	$(INFO) @printf "Running integration tests...\n"
-	$(DC) test gotestsum -- -tags=integration ./engine/... ./cli/...
+	$(DC) test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/...
 
 go-lint: ## Run golangci-lint
 	$(INFO) @printf "Running linter...\n"
