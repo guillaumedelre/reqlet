@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 vi.mock("@monaco-editor/react", () => ({
@@ -396,5 +396,114 @@ describe("guessExt", () => {
     ["", "txt"],
   ])("guessExt(%s) === %s", (ct, expected) => {
     expect(guessExt(ct)).toBe(expected)
+  })
+})
+
+describe("ResponsePane — layout", () => {
+  it("root element has height 100% in empty state to fill the resizable panel", () => {
+    const { container } = render(<ResponsePane />)
+    expect(container.firstChild).toHaveStyle({ height: "100%" })
+  })
+
+  it("root element has height 100% when a response is present", () => {
+    setResponse()
+    const { container } = render(<ResponsePane />)
+    expect(container.firstChild).toHaveStyle({ height: "100%" })
+  })
+})
+
+describe("ResponsePane — status bar (additional)", () => {
+  it("renders a 1xx informational status without crashing", () => {
+    setResponse({ status: 100, statusText: "Continue" })
+    render(<ResponsePane />)
+    expect(screen.getByText("100")).toBeInTheDocument()
+  })
+
+  it("formats size as B when exactly 999 bytes (boundary below KB)", () => {
+    setResponse({ size: 999 })
+    render(<ResponsePane />)
+    expect(screen.getByText("999 B")).toBeInTheDocument()
+  })
+
+  it("formats size as KB at the exact 1 000-byte boundary", () => {
+    setResponse({ size: 1000 })
+    render(<ResponsePane />)
+    expect(screen.getByText("1.00 KB")).toBeInTheDocument()
+  })
+
+  it("formats size as MB at the exact 1 000 000-byte boundary", () => {
+    setResponse({ size: 1_000_000 })
+    render(<ResponsePane />)
+    expect(screen.getByText("1.00 MB")).toBeInTheDocument()
+  })
+})
+
+describe("ResponsePane — Pretty tab (additional)", () => {
+  it("pretty-prints application/ld+json (a +json media type variant)", () => {
+    setResponse({ body: '{"@context":"https://schema.org"}', contentType: "application/ld+json" })
+    render(<ResponsePane />)
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.defaultValue).toBe('{\n  "@context": "https://schema.org"\n}')
+  })
+
+  it("pretty-prints application/vnd.api+json (another +json variant)", () => {
+    setResponse({ body: '{"data":null}', contentType: "application/vnd.api+json" })
+    render(<ResponsePane />)
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.defaultValue).toBe('{\n  "data": null\n}')
+  })
+})
+
+describe("ResponsePane — timing popover (additional)", () => {
+  it("shows placeholder text referencing Bloc C on hover when timings are absent", () => {
+    setResponse({ time: 50 })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("50 ms"))
+    expect(screen.getByText(/Bloc C/)).toBeInTheDocument()
+  })
+
+  it("popover shows 0.00 ms for every phase when all durations are zero", () => {
+    const timings: HttpTimings = { dns: 0, tcp: 0, tls: 0, ttfb: 0, download: 0 }
+    setResponse({ time: 0, timings })
+    render(<ResponsePane />)
+    fireEvent.mouseEnter(screen.getByText("0 ms"))
+    const zeros = screen.getAllByText("0.00 ms")
+    expect(zeros.length).toBeGreaterThanOrEqual(6)
+  })
+})
+
+describe("ResponsePane — Copy button (additional)", () => {
+  beforeEach(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it("shows 'Copied!' feedback immediately after click", async () => {
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument()
+  })
+
+  it("reverts back to 'Copy' after 1500 ms", async () => {
+    vi.useFakeTimers()
+    setResponse()
+    render(<ResponsePane />)
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    await act(async () => {
+      await Promise.resolve()
+    })
+    expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument()
+    act(() => {
+      vi.advanceTimersByTime(1500)
+    })
+    expect(screen.getByRole("button", { name: "Copy" })).toBeInTheDocument()
+    vi.useRealTimers()
   })
 })

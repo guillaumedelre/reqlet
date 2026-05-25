@@ -50,25 +50,35 @@ function tryPrettyJson(body: string): string {
   }
 }
 
-function TimingPopover({ timings }: { timings: HttpTimings }) {
+function TimingPopover({ timings }: { timings: HttpTimings | undefined }) {
+  const popoverStyle: React.CSSProperties = {
+    position: "absolute",
+    top: "calc(100% + 4px)",
+    right: 0,
+    background: "var(--bg-panel)",
+    border: "1px solid var(--border)",
+    borderRadius: 4,
+    padding: "8px 12px",
+    zIndex: 100,
+    minWidth: 240,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+  }
+
+  if (!timings) {
+    return (
+      <div style={popoverStyle}>
+        <p style={{ margin: 0, fontSize: 10, color: "var(--fg-muted)" }}>
+          Detailed timings available once the HTTP engine is wired up (Bloc C).
+        </p>
+      </div>
+    )
+  }
+
   const total = TIMELINE_PHASES.reduce((sum, { key }) => sum + timings[key], 0)
   let offset = 0
 
   return (
-    <div
-      style={{
-        position: "absolute",
-        top: "calc(100% + 4px)",
-        right: 0,
-        background: "var(--bg-panel)",
-        border: "1px solid var(--border)",
-        borderRadius: 4,
-        padding: "8px 12px",
-        zIndex: 100,
-        minWidth: 240,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
-      }}
-    >
+    <div style={popoverStyle}>
       {TIMELINE_PHASES.map(({ key, label, color }) => {
         const duration = timings[key]
         const leftPct = total > 0 ? (offset / total) * 100 : 0
@@ -204,15 +214,15 @@ function StatusBar({ response, url }: { response: ResponseData; url: string }) {
         <span
           style={{
             position: "relative",
-            cursor: response.timings ? "pointer" : "default",
-            textDecoration: response.timings ? "underline dotted" : "none",
+            cursor: "pointer",
+            textDecoration: "underline dotted",
           }}
-          onMouseEnter={() => response.timings && setShowTimings(true)}
+          onMouseEnter={() => setShowTimings(true)}
           onMouseLeave={() => setShowTimings(false)}
-          aria-label={response.timings ? "Show timing breakdown" : undefined}
+          aria-label="Show timing breakdown"
         >
           {response.time} ms
-          {showTimings && response.timings && <TimingPopover timings={response.timings} />}
+          {showTimings && <TimingPopover timings={response.timings} />}
         </span>
       </span>
       <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>{formatSize(response.size)}</span>
@@ -377,7 +387,7 @@ export function ResponsePane() {
     return (
       <div
         style={{
-          flex: 1,
+          height: "100%",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -396,7 +406,7 @@ export function ResponsePane() {
   return (
     <div
       style={{
-        flex: 1,
+        height: "100%",
         display: "flex",
         flexDirection: "column",
         background: "var(--bg-panel)",

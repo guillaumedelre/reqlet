@@ -49,6 +49,11 @@ export function CodeEditor({
         hideCursorInOverviewRuler: true,
         automaticLayout: true,
         padding: { top: 8, bottom: 8 },
+        scrollbar: {
+          verticalScrollbarSize: 6,
+          horizontalScrollbarSize: 6,
+          useShadows: false,
+        },
       }}
     />
   )
