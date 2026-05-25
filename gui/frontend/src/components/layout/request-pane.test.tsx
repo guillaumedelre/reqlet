@@ -627,3 +627,63 @@ describe("RequestPane — bulk edit state preservation across sub-tabs", () => {
     expect(screen.getByRole("button", { name: "Key-Value Edit" })).toBeInTheDocument()
   })
 })
+
+describe("RequestPane — method selector click-outside", () => {
+  it("closes the dropdown when clicking outside", () => {
+    render(<RequestPane />)
+    fireEvent.click(screen.getByRole("button", { name: /^GET/ }))
+    expect(screen.getByRole("button", { name: "POST" })).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole("button", { name: "POST" })).not.toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Code tab", () => {
+  it("Copy button calls clipboard.writeText with generated code", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, writable: true })
+    render(<RequestPane />)
+    goToSubTab("Code")
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    expect(writeText).toHaveBeenCalled()
+  })
+})
+
+describe("RequestPane — Settings hover", () => {
+  it("hovering over each settings row fires enter and leave handlers without crashing", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    const labels = [
+      "Encode URL Automatically",
+      "Follow Redirects",
+      "Follow Original HTTP Method",
+      "Follow Authorization Header",
+      "Remove Referer Header on Redirect",
+      "SSL Certificate Verification",
+      "Disable Cookie Jar",
+      "Ignore Proxy Settings",
+    ]
+    for (const label of labels) {
+      const row = screen.getByText(label).closest("div")!.parentElement!.parentElement!
+      fireEvent.mouseEnter(row)
+      fireEvent.mouseLeave(row)
+    }
+    expect(screen.getByText("Encode URL Automatically")).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — no active tab", () => {
+  it("renders empty state when there is no active tab", () => {
+    useTabsStore.setState({ tabs: [], activeTabId: null, closedTabHistory: [] })
+    render(<RequestPane />)
+    expect(screen.getByText("No tab open.")).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Auth tab placeholder", () => {
+  it("shows coming soon message for the Auth sub-tab", () => {
+    render(<RequestPane />)
+    goToSubTab("Auth")
+    expect(screen.getByText("Auth — coming soon.")).toBeInTheDocument()
+  })
+})
