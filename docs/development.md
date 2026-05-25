@@ -181,6 +181,39 @@ Colors are used as text and as a 10 % opacity background tint (`color + "1a"`).
 Any new UI surface that displays an HTTP method must import `HTTP_METHOD_COLORS`
 from `@/lib/http-methods` rather than defining its own palette.
 
+#### Monaco Editor (`src/components/ui/code-editor.tsx`)
+
+All code editing surfaces use the shared `CodeEditor` wrapper around `@monaco-editor/react`.
+It reads the current theme via `useTheme()` and selects `vs-dark` or `vs` accordingly.
+
+```tsx
+<CodeEditor
+  value={code}
+  onChange={(v) => updateTab(id, { bodyRaw: v })}
+  language="json"   // json | xml | javascript | go | plaintext
+  readOnly={false}
+  height="100%"     // default — fills the flex container
+/>
+```
+
+To fill available vertical space, wrap `<CodeEditor>` in a flex child with `overflow: hidden`:
+
+```tsx
+<div style={{ flex: 1, overflow: "hidden" }}>
+  <CodeEditor value={...} height="100%" />
+</div>
+```
+
+In tests, mock the module at the top of the file — Monaco uses Web Workers unavailable in jsdom:
+
+```ts
+vi.mock("@monaco-editor/react", () => ({
+  default: ({ value, onChange }: { value: string; onChange?: (v: string) => void }) => (
+    <textarea data-testid="monaco-editor" value={value ?? ""} onChange={(e) => onChange?.(e.target.value)} />
+  ),
+}))
+```
+
 #### Body editor
 
 The Body sub-tab renders a type selector bar (none / form-data / urlencoded / raw / binary / GraphQL)
@@ -189,12 +222,67 @@ followed by a type-specific editor:
 | Type | Editor |
 |---|---|
 | `none` | Informational message |
-| `raw` | `<textarea>` + content-type picker (JSON / XML / Text / HTML / JavaScript) |
+| `raw` | `CodeEditor` (Monaco) + content-type picker (JSON / XML / Text / HTML / JavaScript) — language follows the selected content type |
 | `form-data` / `urlencoded` | `KeyValueEditor` |
 | `binary` / `GraphQL` | "coming soon" placeholder |
 
 Body state is stored per-tab: `bodyType`, `bodyRaw`, `bodyRawContentType`, `bodyFormData`,
 `bodyUrlencoded`. The Body tab label shows a filled dot (`●`) when a non-empty body is set.
+
+#### Pre-request Script and Tests tabs
+
+Each request exposes two JavaScript editor tabs (matching the Postman model):
+
+- **Pre-request Script** — runs before the request is sent. Language: JavaScript.
+- **Tests** — runs after the response is received. Language: JavaScript.
+
+Both use `CodeEditor` in JavaScript mode. Their content is stored in `preRequestScript` and
+`testScript` on the tab (Zustand store, persisted). Execution requires the node-runner
+(section 2.14 — GUI-Go bindings, not yet wired).
+
+#### Settings tab
+
+Per-request settings are grouped into five sections in the Settings sub-tab.
+
+**HTTP**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `httpVersion` | `"auto" \| "http1" \| "http2"` | `"http1"` | Rendered as a button group (Auto / HTTP/1.x / HTTP/2) |
+| `encodeUrl` | `boolean` | `true` | Percent-encode special characters in the URL before sending |
+| `disableCookieJar` | `boolean` | `false` | Opt out of the shared cookie jar for this request |
+
+**Redirects**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `followRedirects` | `boolean` | `true` | Follow `3xx` responses automatically |
+| `followOriginalMethod` | `boolean` | `false` | Re-send with the original method instead of downgrading to `GET` |
+| `followAuthorizationHeader` | `boolean` | `false` | Forward the `Authorization` header to the redirect target |
+| `removeRefererOnRedirect` | `boolean` | `false` | Strip the `Referer` header on redirect |
+| `maxRedirects` | `number` | `0` | Maximum hops (`0` = unlimited, matching `timeout` semantics) |
+
+**Security**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `sslVerification` | `boolean` | `true` | Validate the server TLS certificate |
+
+TLS cipher/protocol controls map to `engine/http` `tls.Config` and are not yet exposed in the frontend (section 2.11 in the roadmap).
+
+**Timeout**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `timeout` | `number` | `0` | Request timeout in milliseconds (`0` = no timeout) |
+
+**Proxy**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `ignoreProxy` | `boolean` | `false` | Bypass the global proxy for this request (maps to Postman `proxy-config.disabled`) |
+
+Global proxy configuration (host, port, credentials) is stored in SQLite and applies to all requests unless `ignoreProxy` is set. The CLI exposes it via a `--proxy` flag. Implementation is tracked in section 2.12 of the roadmap.
 
 #### Response pane
 

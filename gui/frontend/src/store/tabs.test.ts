@@ -28,6 +28,35 @@ describe("openTab", () => {
     expect(tabs[0].bodyUrlencoded).toEqual([])
     expect(tabs[0].response).toBeNull()
     expect(tabs[0].dirty).toBe(false)
+    expect(tabs[0].preRequestScript).toBe("")
+    expect(tabs[0].testScript).toBe("")
+    expect(tabs[0].followRedirects).toBe(true)
+    expect(tabs[0].followOriginalMethod).toBe(false)
+    expect(tabs[0].followAuthorizationHeader).toBe(false)
+    expect(tabs[0].removeRefererOnRedirect).toBe(false)
+    expect(tabs[0].maxRedirects).toBe(0)
+    expect(tabs[0].sslVerification).toBe(true)
+    expect(tabs[0].encodeUrl).toBe(true)
+    expect(tabs[0].disableCookieJar).toBe(false)
+    expect(tabs[0].httpVersion).toBe("http1")
+    expect(tabs[0].timeout).toBe(0)
+    expect(tabs[0].ignoreProxy).toBe(false)
+  })
+})
+
+describe("activateTab", () => {
+  it("sets the active tab to the given id", () => {
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().activateTab(tabs[0].id)
+    expect(useTabsStore.getState().activeTabId).toBe(tabs[0].id)
+  })
+
+  it("switching active tab does not change tab count", () => {
+    useTabsStore.getState().openTab()
+    const { tabs } = useTabsStore.getState()
+    useTabsStore.getState().activateTab(tabs[0].id)
+    expect(useTabsStore.getState().tabs).toHaveLength(2)
   })
 })
 

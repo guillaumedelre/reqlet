@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 
+import { CodeEditor } from "@/components/ui/code-editor"
 import { KeyValueEditor } from "@/components/ui/key-value-editor"
 import { generateCode, type CodeLanguage } from "@/lib/code-generators"
 import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
@@ -15,28 +16,19 @@ import {
   type Tab,
 } from "@/store/tabs"
 
-const RAW_CONTENT_TYPE_MAP: Record<RawContentType, string> = {
-  JSON: "application/json",
-  XML: "application/xml",
-  Text: "text/plain",
-  HTML: "text/html",
-  JavaScript: "application/javascript",
+const RAW_CONTENT_TYPE_TO_MONACO: Record<RawContentType, string> = {
+  JSON: "json",
+  XML: "xml",
+  HTML: "html",
+  JavaScript: "javascript",
+  Text: "plaintext",
 }
 
-function computeAutoHeaders(
-  bodyType: BodyType,
-  bodyRawContentType: RawContentType,
-): Array<{ key: string; value: string }> {
-  if (bodyType === "raw") {
-    return [{ key: "Content-Type", value: RAW_CONTENT_TYPE_MAP[bodyRawContentType] }]
-  }
-  if (bodyType === "urlencoded") {
-    return [{ key: "Content-Type", value: "application/x-www-form-urlencoded" }]
-  }
-  if (bodyType === "form-data") {
-    return [{ key: "Content-Type", value: "multipart/form-data; boundary=<generated>" }]
-  }
-  return []
+const CODE_LANG_TO_MONACO: Record<CodeLanguage, string> = {
+  cURL: "shell",
+  Python: "python",
+  JavaScript: "javascript",
+  Go: "go",
 }
 
 const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
@@ -45,7 +37,8 @@ const REQUEST_TABS: RequestSubTab[] = [
   "Auth",
   "Headers",
   "Body",
-  "Scripts",
+  "Pre-request Script",
+  "Tests",
   "Settings",
   "Code",
 ]
@@ -248,24 +241,13 @@ function BodyEditor({
       )}
 
       {bodyType === "raw" && (
-        <textarea
-          value={bodyRaw}
-          onChange={(e) => onBodyRawChange(e.target.value)}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            resize: "none",
-            border: "none",
-            outline: "none",
-            padding: "8px 10px",
-            fontSize: 11,
-            fontFamily: "monospace",
-            background: "var(--bg-panel)",
-            color: "var(--fg)",
-            lineHeight: 1.5,
-          }}
-          placeholder={`Enter ${bodyRawContentType} body`}
-        />
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <CodeEditor
+            value={bodyRaw}
+            onChange={onBodyRawChange}
+            language={RAW_CONTENT_TYPE_TO_MONACO[bodyRawContentType]}
+          />
+        </div>
       )}
 
       {bodyType === "form-data" && (
@@ -361,23 +343,37 @@ function CodePanel({ tab }: { tab: Tab }) {
           {copied ? "Copied!" : "Copy"}
         </button>
       </div>
-      <pre
-        style={{
-          flex: 1,
-          margin: 0,
-          padding: "10px 12px",
-          fontSize: 11,
-          fontFamily: "monospace",
-          lineHeight: 1.6,
-          overflowY: "auto",
-          background: "var(--bg-panel)",
-          color: "var(--fg)",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-all",
-        }}
-      >
-        {generateCode(tab, codeLang)}
-      </pre>
+      <div style={{ flex: 1, overflow: "hidden" }}>
+        <CodeEditor
+          value={generateCode(tab, codeLang)}
+          language={CODE_LANG_TO_MONACO[codeLang]}
+          readOnly
+        />
+      </div>
+    </div>
+  )
+}
+
+function ScriptPanel({
+  value,
+  onChange,
+  eventName,
+}: {
+  value: string
+  onChange: (v: string) => void
+  eventName: "prerequest" | "test"
+}) {
+  const hint =
+    eventName === "prerequest"
+      ? "// Runs before the request is sent.\n// pm.environment.set('token', '...')\n// pm.request.headers.add({ key: 'X-Custom', value: '...' })"
+      : "// Runs after the response is received.\n// pm.test('Status is 200', () => pm.expect(pm.response.code).to.equal(200))"
+  return (
+    <div style={{ flex: 1, overflow: "hidden" }}>
+      <CodeEditor
+        value={value || hint}
+        onChange={(v) => onChange(v === hint ? "" : v)}
+        language="javascript"
+      />
     </div>
   )
 }
@@ -440,11 +436,27 @@ function SubTabContent({
   onFormDataBulkModeChange,
   onUrlencodedBulkModeChange,
   followRedirects,
+  followOriginalMethod,
+  followAuthorizationHeader,
+  removeRefererOnRedirect,
+  maxRedirects,
   sslVerification,
+  encodeUrl,
+  disableCookieJar,
+  httpVersion,
   timeout,
+  ignoreProxy,
   onFollowRedirectsChange,
+  onFollowOriginalMethodChange,
+  onFollowAuthorizationHeaderChange,
+  onRemoveRefererOnRedirectChange,
+  onMaxRedirectsChange,
   onSslVerificationChange,
+  onEncodeUrlChange,
+  onDisableCookieJarChange,
+  onHttpVersionChange,
   onTimeoutChange,
+  onIgnoreProxyChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
@@ -472,11 +484,27 @@ function SubTabContent({
   onFormDataBulkModeChange: (v: boolean) => void
   onUrlencodedBulkModeChange: (v: boolean) => void
   followRedirects: boolean
+  followOriginalMethod: boolean
+  followAuthorizationHeader: boolean
+  removeRefererOnRedirect: boolean
+  maxRedirects: number
   sslVerification: boolean
+  encodeUrl: boolean
+  disableCookieJar: boolean
+  httpVersion: "auto" | "http1" | "http2"
   timeout: number
+  ignoreProxy: boolean
   onFollowRedirectsChange: (v: boolean) => void
+  onFollowOriginalMethodChange: (v: boolean) => void
+  onFollowAuthorizationHeaderChange: (v: boolean) => void
+  onRemoveRefererOnRedirectChange: (v: boolean) => void
+  onMaxRedirectsChange: (v: number) => void
   onSslVerificationChange: (v: boolean) => void
+  onEncodeUrlChange: (v: boolean) => void
+  onDisableCookieJarChange: (v: boolean) => void
+  onHttpVersionChange: (v: "auto" | "http1" | "http2") => void
   onTimeoutChange: (v: number) => void
+  onIgnoreProxyChange: (v: boolean) => void
 }) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
 
@@ -511,7 +539,6 @@ function SubTabContent({
     )
   }
   if (subTab === "Headers") {
-    const autoHeaders = computeAutoHeaders(bodyType, bodyRawContentType)
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
         <KeyValueEditor
@@ -523,54 +550,6 @@ function SubTabContent({
           onBulkModeChange={onHeadersBulkModeChange}
           keyAutocomplete={HTTP_HEADER_NAMES}
         />
-        {autoHeaders.length > 0 && (
-          <>
-            <div
-              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
-            >
-              Auto-generated
-            </div>
-            {autoHeaders.map((h) => (
-              <div
-                key={h.key}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "20px 1fr 1fr 20px",
-                  alignItems: "center",
-                  gap: 4,
-                  padding: "3px 8px",
-                  borderBottom: "1px solid var(--border)",
-                }}
-              >
-                <span />
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontStyle: "italic",
-                    color: "var(--fg-muted)",
-                    padding: "2px 6px",
-                  }}
-                >
-                  {h.key}
-                </span>
-                <span
-                  style={{
-                    fontSize: 11,
-                    fontStyle: "italic",
-                    color: "var(--fg-muted)",
-                    padding: "2px 6px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {h.value}
-                </span>
-                <span />
-              </div>
-            ))}
-          </>
-        )}
       </div>
     )
   }
@@ -615,8 +594,61 @@ function SubTabContent({
     }
     const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
     const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
+    const inputStyle: React.CSSProperties = {
+      padding: "3px 8px",
+      fontSize: 11,
+      border: "1px solid var(--border)",
+      borderRadius: 3,
+      background: "var(--bg)",
+      color: "var(--fg)",
+      outline: "none",
+    }
+    const HTTP_VERSIONS: { value: "auto" | "http1" | "http2"; label: string }[] = [
+      { value: "auto", label: "Auto" },
+      { value: "http1", label: "HTTP/1.x" },
+      { value: "http2", label: "HTTP/2" },
+    ]
     return (
       <div style={{ overflowY: "auto", flex: 1 }}>
+        {/* HTTP */}
+        <div style={plainRowStyle}>
+          <div>
+            <div style={labelStyle}>HTTP Version</div>
+            <div style={descStyle}>Protocol version used to send the request</div>
+          </div>
+          <div style={{ display: "flex", gap: 2 }}>
+            {HTTP_VERSIONS.map(({ value, label }) => (
+              <button
+                key={value}
+                onClick={() => onHttpVersionChange(value)}
+                style={{
+                  padding: "2px 8px",
+                  fontSize: 11,
+                  border: "1px solid var(--border)",
+                  borderRadius: 3,
+                  background: httpVersion === value ? "var(--accent)" : "var(--bg)",
+                  color: httpVersion === value ? "#fff" : "var(--fg-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div
+          style={boolRow("encode-url")}
+          onClick={() => onEncodeUrlChange(!encodeUrl)}
+          onMouseEnter={() => setHoveredRow("encode-url")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Encode URL Automatically</div>
+            <div style={descStyle}>Encode path, query parameters, and auth fields</div>
+          </div>
+          <SettingsCheckbox checked={encodeUrl} />
+        </div>
+        {/* Redirects */}
         <div
           style={boolRow("redirects")}
           onClick={() => onFollowRedirectsChange(!followRedirects)}
@@ -630,6 +662,62 @@ function SubTabContent({
           <SettingsCheckbox checked={followRedirects} />
         </div>
         <div
+          style={boolRow("original-method")}
+          onClick={() => onFollowOriginalMethodChange(!followOriginalMethod)}
+          onMouseEnter={() => setHoveredRow("original-method")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Follow Original HTTP Method</div>
+            <div style={descStyle}>Redirect with the original method instead of GET</div>
+          </div>
+          <SettingsCheckbox checked={followOriginalMethod} />
+        </div>
+        <div
+          style={boolRow("follow-auth")}
+          onClick={() => onFollowAuthorizationHeaderChange(!followAuthorizationHeader)}
+          onMouseEnter={() => setHoveredRow("follow-auth")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Follow Authorization Header</div>
+            <div style={descStyle}>
+              Retain the Authorization header when redirecting to a different hostname
+            </div>
+          </div>
+          <SettingsCheckbox checked={followAuthorizationHeader} />
+        </div>
+        <div
+          style={boolRow("remove-referer")}
+          onClick={() => onRemoveRefererOnRedirectChange(!removeRefererOnRedirect)}
+          onMouseEnter={() => setHoveredRow("remove-referer")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Remove Referer Header on Redirect</div>
+            <div style={descStyle}>Strip the Referer header when a redirect occurs</div>
+          </div>
+          <SettingsCheckbox checked={removeRefererOnRedirect} />
+        </div>
+        <div style={plainRowStyle}>
+          <div>
+            <div style={labelStyle}>Maximum Number of Redirects</div>
+            <div style={descStyle}>Cap on consecutive redirects — 0 means unlimited</div>
+          </div>
+          <input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            value={String(maxRedirects)}
+            onChange={(e) => {
+              const raw = e.target.value.replace(/\D/g, "")
+              onMaxRedirectsChange(raw === "" ? 0 : parseInt(raw, 10))
+            }}
+            style={{ ...inputStyle, width: 56, textAlign: "right" }}
+          />
+        </div>
+        {/* Security */}
+        <div
           style={boolRow("ssl")}
           onClick={() => onSslVerificationChange(!sslVerification)}
           onMouseEnter={() => setHoveredRow("ssl")}
@@ -641,6 +729,19 @@ function SubTabContent({
           </div>
           <SettingsCheckbox checked={sslVerification} />
         </div>
+        <div
+          style={boolRow("cookie-jar")}
+          onClick={() => onDisableCookieJarChange(!disableCookieJar)}
+          onMouseEnter={() => setHoveredRow("cookie-jar")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Disable Cookie Jar</div>
+            <div style={descStyle}>Cookies will not be stored or sent for this request</div>
+          </div>
+          <SettingsCheckbox checked={disableCookieJar} />
+        </div>
+        {/* Timeout */}
         <div style={plainRowStyle}>
           <div>
             <div style={labelStyle}>Request Timeout</div>
@@ -656,20 +757,23 @@ function SubTabContent({
                 const raw = e.target.value.replace(/\D/g, "")
                 onTimeoutChange(raw === "" ? 0 : parseInt(raw, 10))
               }}
-              style={{
-                width: 72,
-                padding: "3px 8px",
-                fontSize: 11,
-                border: "1px solid var(--border)",
-                borderRadius: 3,
-                background: "var(--bg)",
-                color: "var(--fg)",
-                outline: "none",
-                textAlign: "right",
-              }}
+              style={{ ...inputStyle, width: 72, textAlign: "right" }}
             />
             <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
           </div>
+        </div>
+        {/* Proxy */}
+        <div
+          style={boolRow("ignore-proxy")}
+          onClick={() => onIgnoreProxyChange(!ignoreProxy)}
+          onMouseEnter={() => setHoveredRow("ignore-proxy")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
+          <div>
+            <div style={labelStyle}>Ignore Proxy Settings</div>
+            <div style={descStyle}>Bypass the global proxy configuration for this request</div>
+          </div>
+          <SettingsCheckbox checked={ignoreProxy} />
         </div>
       </div>
     )
@@ -773,13 +877,35 @@ export function RequestPane() {
   function handleFollowRedirectsChange(followRedirects: boolean) {
     updateTab(tab!.id, { followRedirects })
   }
-
+  function handleFollowOriginalMethodChange(followOriginalMethod: boolean) {
+    updateTab(tab!.id, { followOriginalMethod })
+  }
+  function handleFollowAuthorizationHeaderChange(followAuthorizationHeader: boolean) {
+    updateTab(tab!.id, { followAuthorizationHeader })
+  }
+  function handleRemoveRefererOnRedirectChange(removeRefererOnRedirect: boolean) {
+    updateTab(tab!.id, { removeRefererOnRedirect })
+  }
+  function handleMaxRedirectsChange(maxRedirects: number) {
+    updateTab(tab!.id, { maxRedirects })
+  }
   function handleSslVerificationChange(sslVerification: boolean) {
     updateTab(tab!.id, { sslVerification })
   }
-
+  function handleEncodeUrlChange(encodeUrl: boolean) {
+    updateTab(tab!.id, { encodeUrl })
+  }
+  function handleDisableCookieJarChange(disableCookieJar: boolean) {
+    updateTab(tab!.id, { disableCookieJar })
+  }
+  function handleHttpVersionChange(httpVersion: "auto" | "http1" | "http2") {
+    updateTab(tab!.id, { httpVersion })
+  }
   function handleTimeoutChange(timeout: number) {
     updateTab(tab!.id, { timeout })
+  }
+  function handleIgnoreProxyChange(ignoreProxy: boolean) {
+    updateTab(tab!.id, { ignoreProxy })
   }
 
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
@@ -879,6 +1005,18 @@ export function RequestPane() {
       <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         {tab.activeSubTab === "Code" ? (
           <CodePanel tab={tab} />
+        ) : tab.activeSubTab === "Pre-request Script" ? (
+          <ScriptPanel
+            value={tab.preRequestScript}
+            onChange={(v) => updateTab(tab.id, { preRequestScript: v })}
+            eventName="prerequest"
+          />
+        ) : tab.activeSubTab === "Tests" ? (
+          <ScriptPanel
+            value={tab.testScript}
+            onChange={(v) => updateTab(tab.id, { testScript: v })}
+            eventName="test"
+          />
         ) : (
           <SubTabContent
             key={tab.id}
@@ -908,11 +1046,27 @@ export function RequestPane() {
             onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
             onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
             followRedirects={tab.followRedirects}
+            followOriginalMethod={tab.followOriginalMethod}
+            followAuthorizationHeader={tab.followAuthorizationHeader}
+            removeRefererOnRedirect={tab.removeRefererOnRedirect}
+            maxRedirects={tab.maxRedirects}
             sslVerification={tab.sslVerification}
+            encodeUrl={tab.encodeUrl}
+            disableCookieJar={tab.disableCookieJar}
+            httpVersion={tab.httpVersion}
             timeout={tab.timeout}
+            ignoreProxy={tab.ignoreProxy}
             onFollowRedirectsChange={handleFollowRedirectsChange}
+            onFollowOriginalMethodChange={handleFollowOriginalMethodChange}
+            onFollowAuthorizationHeaderChange={handleFollowAuthorizationHeaderChange}
+            onRemoveRefererOnRedirectChange={handleRemoveRefererOnRedirectChange}
+            onMaxRedirectsChange={handleMaxRedirectsChange}
             onSslVerificationChange={handleSslVerificationChange}
+            onEncodeUrlChange={handleEncodeUrlChange}
+            onDisableCookieJarChange={handleDisableCookieJarChange}
+            onHttpVersionChange={handleHttpVersionChange}
             onTimeoutChange={handleTimeoutChange}
+            onIgnoreProxyChange={handleIgnoreProxyChange}
           />
         )}
       </div>

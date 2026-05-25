@@ -2,7 +2,15 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab = "Params" | "Auth" | "Headers" | "Body" | "Scripts" | "Settings" | "Code"
+export type RequestSubTab =
+  | "Params"
+  | "Auth"
+  | "Headers"
+  | "Body"
+  | "Pre-request Script"
+  | "Tests"
+  | "Settings"
+  | "Code"
 export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
 export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
 
@@ -39,9 +47,19 @@ export interface Tab {
   response: ResponseData | null
   dirty: boolean
   activeSubTab: RequestSubTab
+  preRequestScript: string
+  testScript: string
   followRedirects: boolean
+  followOriginalMethod: boolean
+  followAuthorizationHeader: boolean
+  removeRefererOnRedirect: boolean
+  maxRedirects: number
   sslVerification: boolean
+  encodeUrl: boolean
+  disableCookieJar: boolean
+  httpVersion: "auto" | "http1" | "http2"
   timeout: number
+  ignoreProxy: boolean
 }
 
 function newTab(patch?: Partial<Tab>): Tab {
@@ -60,9 +78,19 @@ function newTab(patch?: Partial<Tab>): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    preRequestScript: "",
+    testScript: "",
     followRedirects: true,
+    followOriginalMethod: false,
+    followAuthorizationHeader: false,
+    removeRefererOnRedirect: false,
+    maxRedirects: 0,
     sslVerification: true,
+    encodeUrl: true,
+    disableCookieJar: false,
+    httpVersion: "http1",
     timeout: 0,
+    ignoreProxy: false,
     ...patch,
   }
 }
@@ -174,7 +202,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 5,
+      version: 9,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -189,9 +217,19 @@ export const useTabsStore = create<TabsState>()(
             bodyFormData: [],
             bodyUrlencoded: [],
             response: null,
+            preRequestScript: "",
+            testScript: "",
             followRedirects: true,
+            followOriginalMethod: false,
+            followAuthorizationHeader: false,
+            removeRefererOnRedirect: false,
+            maxRedirects: 0,
             sslVerification: true,
+            encodeUrl: true,
+            disableCookieJar: false,
+            httpVersion: "http1",
             timeout: 0,
+            ignoreProxy: false,
             ...(t as object),
           })),
         }

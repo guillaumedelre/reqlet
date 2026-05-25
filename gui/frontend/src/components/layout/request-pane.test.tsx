@@ -1,5 +1,15 @@
 import { act, fireEvent, render, screen } from "@testing-library/react"
-import { beforeEach, describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+
+vi.mock("@monaco-editor/react", () => ({
+  default: ({ value, onChange }: { value: string; onChange?: (v: string) => void }) => (
+    <textarea
+      data-testid="monaco-editor"
+      value={value ?? ""}
+      onChange={(e) => onChange?.(e.target.value)}
+    />
+  ),
+}))
 
 import { useTabsStore, type Tab } from "@/store/tabs"
 import { RequestPane } from "./request-pane"
@@ -20,9 +30,19 @@ function makeTab(): Tab {
     response: null,
     dirty: false,
     activeSubTab: "Params",
+    preRequestScript: "",
+    testScript: "",
     followRedirects: true,
+    followOriginalMethod: false,
+    followAuthorizationHeader: false,
+    removeRefererOnRedirect: false,
+    maxRedirects: 0,
     sslVerification: true,
+    encodeUrl: true,
+    disableCookieJar: false,
+    httpVersion: "http1",
     timeout: 0,
+    ignoreProxy: false,
   }
 }
 
@@ -69,15 +89,15 @@ describe("RequestPane — Body tab", () => {
     expect(screen.getByText("This request has no body.")).toBeInTheDocument()
   })
 
-  it("switching body type to raw shows textarea", () => {
+  it("switching body type to raw shows Monaco editor", () => {
     render(<RequestPane />)
     goToSubTab("Body")
     fireEvent.click(screen.getByRole("button", { name: "raw" }))
     expect(useTabsStore.getState().tabs[0].bodyType).toBe("raw")
-    expect(screen.getByPlaceholderText(/Enter JSON body/)).toBeInTheDocument()
+    expect(screen.getByTestId("monaco-editor")).toBeInTheDocument()
   })
 
-  it("typing in raw body textarea updates the store", () => {
+  it("typing in raw body Monaco editor updates the store", () => {
     const tab = makeTab()
     useTabsStore.setState({
       tabs: [{ ...tab, bodyType: "raw" }],
@@ -86,7 +106,7 @@ describe("RequestPane — Body tab", () => {
     })
     render(<RequestPane />)
     goToSubTab("Body")
-    fireEvent.change(screen.getByPlaceholderText(/Enter JSON body/), {
+    fireEvent.change(screen.getByTestId("monaco-editor"), {
       target: { value: '{"key":"value"}' },
     })
     expect(useTabsStore.getState().tabs[0].bodyRaw).toBe('{"key":"value"}')
@@ -120,6 +140,188 @@ describe("RequestPane — Body tab", () => {
     expect(useTabsStore.getState().tabs[0].bodyType).toBe("urlencoded")
     expect(screen.getByRole("button", { name: "+ Add" })).toBeInTheDocument()
   })
+
+  it("switching body type to binary updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "binary" }))
+    expect(useTabsStore.getState().tabs[0].bodyType).toBe("binary")
+  })
+
+  it("switching body type to GraphQL updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "GraphQL" }))
+    expect(useTabsStore.getState().tabs[0].bodyType).toBe("GraphQL")
+  })
+
+  it("enabling bulk mode on urlencoded body is tracked independently", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, bodyType: "urlencoded" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "Bulk Edit" }))
+    expect(screen.getByRole("button", { name: "Key-Value Edit" })).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Params tab key-value changes", () => {
+  it("adding a param row via + Add updates the store", () => {
+    render(<RequestPane />)
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    expect(useTabsStore.getState().tabs[0].params).toHaveLength(1)
+  })
+
+  it("typing a param key marks the tab dirty", () => {
+    render(<RequestPane />)
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    fireEvent.change(screen.getAllByPlaceholderText("Key")[0], { target: { value: "page" } })
+    expect(useTabsStore.getState().tabs[0].params[0].key).toBe("page")
+    expect(useTabsStore.getState().tabs[0].dirty).toBe(true)
+  })
+})
+
+describe("RequestPane — Headers tab key-value changes", () => {
+  it("adding a header row via + Add updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    expect(useTabsStore.getState().tabs[0].headers).toHaveLength(1)
+  })
+
+  it("typing a header key marks the tab dirty", () => {
+    render(<RequestPane />)
+    goToSubTab("Headers")
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    fireEvent.change(screen.getAllByPlaceholderText("Key")[0], {
+      target: { value: "Authorization" },
+    })
+    expect(useTabsStore.getState().tabs[0].headers[0].key).toBe("Authorization")
+    expect(useTabsStore.getState().tabs[0].dirty).toBe(true)
+  })
+})
+
+describe("RequestPane — Path variables key-value changes", () => {
+  it("changing a path variable value updates the store", () => {
+    const tab = makeTab()
+    const pathVar = { id: "pv1", key: "id", value: "", enabled: true }
+    useTabsStore.setState({
+      tabs: [{ ...tab, url: "https://api.example.com/users/:id", pathVars: [pathVar] }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    fireEvent.change(screen.getAllByPlaceholderText("Value")[0], { target: { value: "42" } })
+    expect(useTabsStore.getState().tabs[0].pathVars[0].value).toBe("42")
+  })
+})
+
+describe("RequestPane — Body form-data key-value changes", () => {
+  it("adding a form-data row updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "form-data" }))
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    expect(useTabsStore.getState().tabs[0].bodyFormData).toHaveLength(1)
+  })
+
+  it("typing a form-data key marks the tab dirty", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "form-data" }))
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    fireEvent.change(screen.getAllByPlaceholderText("Key")[0], { target: { value: "file" } })
+    expect(useTabsStore.getState().tabs[0].bodyFormData[0].key).toBe("file")
+    expect(useTabsStore.getState().tabs[0].dirty).toBe(true)
+  })
+})
+
+describe("RequestPane — Body urlencoded key-value changes", () => {
+  it("adding a urlencoded row updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "x-www-form-urlencoded" }))
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    expect(useTabsStore.getState().tabs[0].bodyUrlencoded).toHaveLength(1)
+  })
+
+  it("typing a urlencoded key marks the tab dirty", () => {
+    render(<RequestPane />)
+    goToSubTab("Body")
+    fireEvent.click(screen.getByRole("button", { name: "x-www-form-urlencoded" }))
+    fireEvent.click(screen.getByRole("button", { name: "+ Add" }))
+    fireEvent.change(screen.getAllByPlaceholderText("Key")[0], { target: { value: "grant_type" } })
+    expect(useTabsStore.getState().tabs[0].bodyUrlencoded[0].key).toBe("grant_type")
+    expect(useTabsStore.getState().tabs[0].dirty).toBe(true)
+  })
+})
+
+describe("RequestPane — Pre-request Script tab", () => {
+  it("navigating to Pre-request Script tab shows a Monaco editor", () => {
+    render(<RequestPane />)
+    goToSubTab("Pre-request Script")
+    expect(screen.getByTestId("monaco-editor")).toBeInTheDocument()
+  })
+
+  it("typing in Pre-request Script editor updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Pre-request Script")
+    fireEvent.change(screen.getByTestId("monaco-editor"), {
+      target: { value: "pm.environment.set('token', 'abc')" },
+    })
+    expect(useTabsStore.getState().tabs[0].preRequestScript).toBe(
+      "pm.environment.set('token', 'abc')",
+    )
+  })
+
+  it("pre-populates with existing preRequestScript value", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, preRequestScript: "pm.globals.set('x', 1)" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Pre-request Script")
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toBe("pm.globals.set('x', 1)")
+  })
+})
+
+describe("RequestPane — Tests tab", () => {
+  it("navigating to Tests tab shows a Monaco editor", () => {
+    render(<RequestPane />)
+    goToSubTab("Tests")
+    expect(screen.getByTestId("monaco-editor")).toBeInTheDocument()
+  })
+
+  it("typing in Tests editor updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Tests")
+    fireEvent.change(screen.getByTestId("monaco-editor"), {
+      target: { value: "pm.test('ok', () => pm.expect(pm.response.code).to.equal(200))" },
+    })
+    expect(useTabsStore.getState().tabs[0].testScript).toBe(
+      "pm.test('ok', () => pm.expect(pm.response.code).to.equal(200))",
+    )
+  })
+
+  it("pre-populates with existing testScript value", () => {
+    const tab = makeTab()
+    useTabsStore.setState({
+      tabs: [{ ...tab, testScript: "pm.test('status', () => {})" }],
+      activeTabId: tab.id,
+      closedTabHistory: [],
+    })
+    render(<RequestPane />)
+    goToSubTab("Tests")
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toBe("pm.test('status', () => {})")
+  })
 })
 
 describe("RequestPane — Code tab", () => {
@@ -147,7 +349,8 @@ describe("RequestPane — Code tab", () => {
     })
     render(<RequestPane />)
     goToSubTab("Code")
-    expect(screen.getByText(/curl -X GET/)).toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/curl -X GET/)
   })
 
   it("switching to Python updates the snippet", () => {
@@ -160,7 +363,8 @@ describe("RequestPane — Code tab", () => {
     render(<RequestPane />)
     goToSubTab("Code")
     fireEvent.click(screen.getByRole("button", { name: "Python" }))
-    expect(screen.getByText(/import requests/)).toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/import requests/)
   })
 
   it("switching to Go updates the snippet", () => {
@@ -173,89 +377,12 @@ describe("RequestPane — Code tab", () => {
     render(<RequestPane />)
     goToSubTab("Code")
     fireEvent.click(screen.getByRole("button", { name: "Go" }))
-    expect(screen.getByText(/package main/)).toBeInTheDocument()
-  })
-})
-
-describe("RequestPane — auto-generated headers", () => {
-  it("shows Content-Type for raw JSON body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "JSON" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("Content-Type")).toBeInTheDocument()
-    expect(screen.getByText("application/json")).toBeInTheDocument()
-  })
-
-  it("shows application/xml for raw XML body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "raw", bodyRawContentType: "XML" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("application/xml")).toBeInTheDocument()
-  })
-
-  it("shows urlencoded Content-Type for urlencoded body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "urlencoded" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText("application/x-www-form-urlencoded")).toBeInTheDocument()
-  })
-
-  it("shows multipart/form-data Content-Type for form-data body", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "form-data" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.getByText(/multipart\/form-data/)).toBeInTheDocument()
-  })
-
-  it("shows no auto-generated section for bodyType none", () => {
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
-    expect(screen.queryByText("Content-Type")).not.toBeInTheDocument()
-  })
-
-  it("shows no auto-generated section for bodyType binary", () => {
-    const tab = makeTab()
-    useTabsStore.setState({
-      tabs: [{ ...tab, bodyType: "binary" }],
-      activeTabId: tab.id,
-      closedTabHistory: [],
-    })
-    render(<RequestPane />)
-    goToSubTab("Headers")
-    expect(screen.queryByText("Auto-generated")).not.toBeInTheDocument()
+    const editor = screen.getByTestId("monaco-editor") as HTMLTextAreaElement
+    expect(editor.value).toMatch(/package main/)
   })
 })
 
 describe("RequestPane — Settings tab", () => {
-  it("shows all three setting controls", () => {
-    render(<RequestPane />)
-    goToSubTab("Settings")
-    expect(screen.getByText("Follow Redirects")).toBeInTheDocument()
-    expect(screen.getByText("SSL Certificate Verification")).toBeInTheDocument()
-    expect(screen.getByText("Request Timeout")).toBeInTheDocument()
-  })
-
   it("clicking Follow Redirects row toggles the store value", () => {
     const tab = makeTab()
     useTabsStore.setState({
@@ -285,17 +412,117 @@ describe("RequestPane — Settings tab", () => {
   it("timeout input filters non-numeric characters and updates the store", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    const input = screen.getByDisplayValue("0")
-    fireEvent.change(input, { target: { value: "3000" } })
+    // timeout is the second "0"-valued input; maxRedirects is the first
+    fireEvent.change(screen.getAllByDisplayValue("0")[1], { target: { value: "3000" } })
     expect(useTabsStore.getState().tabs[0].timeout).toBe(3000)
   })
 
   it("timeout input ignores non-numeric characters", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    const input = screen.getByDisplayValue("0")
-    fireEvent.change(input, { target: { value: "abc" } })
+    fireEvent.change(screen.getAllByDisplayValue("0")[1], { target: { value: "abc" } })
     expect(useTabsStore.getState().tabs[0].timeout).toBe(0)
+  })
+
+  it("shows all three setting controls", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByText("Follow Redirects")).toBeInTheDocument()
+    expect(screen.getByText("SSL Certificate Verification")).toBeInTheDocument()
+    expect(screen.getByText("Request Timeout")).toBeInTheDocument()
+  })
+
+  it("shows HTTP version buttons", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByRole("button", { name: "Auto" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "HTTP/1.x" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "HTTP/2" })).toBeInTheDocument()
+  })
+
+  it("clicking HTTP/2 updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByRole("button", { name: "HTTP/2" }))
+    expect(useTabsStore.getState().tabs[0].httpVersion).toBe("http2")
+  })
+
+  it("clicking Encode URL Automatically row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Encode URL Automatically"))
+    expect(useTabsStore.getState().tabs[0].encodeUrl).toBe(false)
+  })
+
+  it("clicking Follow Original HTTP Method row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Follow Original HTTP Method"))
+    expect(useTabsStore.getState().tabs[0].followOriginalMethod).toBe(true)
+  })
+
+  it("clicking Follow Authorization Header row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Follow Authorization Header"))
+    expect(useTabsStore.getState().tabs[0].followAuthorizationHeader).toBe(true)
+  })
+
+  it("clicking Remove Referer Header on Redirect row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Remove Referer Header on Redirect"))
+    expect(useTabsStore.getState().tabs[0].removeRefererOnRedirect).toBe(true)
+  })
+
+  it("max redirects input updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    // maxRedirects is the first "0"-valued input; timeout is the second
+    fireEvent.change(screen.getAllByDisplayValue("0")[0], { target: { value: "5" } })
+    expect(useTabsStore.getState().tabs[0].maxRedirects).toBe(5)
+  })
+
+  it("clicking Disable Cookie Jar row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Disable Cookie Jar"))
+    expect(useTabsStore.getState().tabs[0].disableCookieJar).toBe(true)
+  })
+
+  it("HTTP version defaults to HTTP/1.x", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    // HTTP/1.x button should have the accent background (selected state)
+    expect(screen.getByRole("button", { name: "HTTP/1.x" })).toBeInTheDocument()
+    expect(useTabsStore.getState().tabs[0].httpVersion).toBe("http1")
+  })
+
+  it("clicking Auto HTTP version updates the store", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByRole("button", { name: "Auto" }))
+    expect(useTabsStore.getState().tabs[0].httpVersion).toBe("auto")
+  })
+
+  it("max redirects ignores non-numeric characters", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.change(screen.getAllByDisplayValue("0")[0], { target: { value: "abc" } })
+    expect(useTabsStore.getState().tabs[0].maxRedirects).toBe(0)
+  })
+
+  it("shows Ignore Proxy Settings toggle", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    expect(screen.getByText("Ignore Proxy Settings")).toBeInTheDocument()
+  })
+
+  it("clicking Ignore Proxy Settings row toggles the store value", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    fireEvent.click(screen.getByText("Ignore Proxy Settings"))
+    expect(useTabsStore.getState().tabs[0].ignoreProxy).toBe(true)
   })
 })
 
@@ -398,5 +625,65 @@ describe("RequestPane — bulk edit state preservation across sub-tabs", () => {
     fireEvent.click(screen.getByRole("button", { name: "form-data" }))
     // form-data should still be in bulk mode
     expect(screen.getByRole("button", { name: "Key-Value Edit" })).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — method selector click-outside", () => {
+  it("closes the dropdown when clicking outside", () => {
+    render(<RequestPane />)
+    fireEvent.click(screen.getByRole("button", { name: /^GET/ }))
+    expect(screen.getByRole("button", { name: "POST" })).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByRole("button", { name: "POST" })).not.toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Code tab", () => {
+  it("Copy button calls clipboard.writeText with generated code", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, writable: true })
+    render(<RequestPane />)
+    goToSubTab("Code")
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }))
+    expect(writeText).toHaveBeenCalled()
+  })
+})
+
+describe("RequestPane — Settings hover", () => {
+  it("hovering over each settings row fires enter and leave handlers without crashing", () => {
+    render(<RequestPane />)
+    goToSubTab("Settings")
+    const labels = [
+      "Encode URL Automatically",
+      "Follow Redirects",
+      "Follow Original HTTP Method",
+      "Follow Authorization Header",
+      "Remove Referer Header on Redirect",
+      "SSL Certificate Verification",
+      "Disable Cookie Jar",
+      "Ignore Proxy Settings",
+    ]
+    for (const label of labels) {
+      const row = screen.getByText(label).closest("div")!.parentElement!.parentElement!
+      fireEvent.mouseEnter(row)
+      fireEvent.mouseLeave(row)
+    }
+    expect(screen.getByText("Encode URL Automatically")).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — no active tab", () => {
+  it("renders empty state when there is no active tab", () => {
+    useTabsStore.setState({ tabs: [], activeTabId: null, closedTabHistory: [] })
+    render(<RequestPane />)
+    expect(screen.getByText("No tab open.")).toBeInTheDocument()
+  })
+})
+
+describe("RequestPane — Auth tab placeholder", () => {
+  it("shows coming soon message for the Auth sub-tab", () => {
+    render(<RequestPane />)
+    goToSubTab("Auth")
+    expect(screen.getByText("Auth — coming soon.")).toBeInTheDocument()
   })
 })

@@ -1,5 +1,6 @@
 import { useState } from "react"
 
+import { CodeEditor } from "@/components/ui/code-editor"
 import { useTabsStore, type ResponseData } from "@/store/tabs"
 
 type ResponseSubTab = "Pretty" | "Raw" | "Headers"
@@ -16,6 +17,15 @@ function formatSize(bytes: number): string {
   if (bytes < 1000) return `${bytes} B`
   if (bytes < 1_000_000) return `${(bytes / 1000).toFixed(2)} KB`
   return `${(bytes / 1_000_000).toFixed(2)} MB`
+}
+
+function contentTypeToMonacoLang(ct: string): string {
+  if (ct.includes("json")) return "json"
+  if (ct.includes("xml")) return "xml"
+  if (ct.includes("html")) return "html"
+  if (ct.includes("javascript")) return "javascript"
+  if (ct.includes("css")) return "css"
+  return "plaintext"
 }
 
 function tryPrettyJson(body: string): string {
@@ -81,21 +91,16 @@ function PrettyBody({ response }: { response: ResponseData }) {
     response.contentType.includes("application/json") || response.contentType.includes("+json")
   const content = isJson ? tryPrettyJson(response.body) : response.body
 
+  if (!content) {
+    return (
+      <p style={{ padding: "10px 12px", fontSize: 11, color: "var(--fg-muted)" }}>
+        Empty response body.
+      </p>
+    )
+  }
+
   return (
-    <pre
-      style={{
-        margin: 0,
-        padding: "10px 12px",
-        fontSize: 11,
-        fontFamily: "monospace",
-        whiteSpace: "pre-wrap",
-        wordBreak: "break-all",
-        color: "var(--fg)",
-        lineHeight: 1.6,
-      }}
-    >
-      {content || <span style={{ color: "var(--fg-muted)" }}>Empty response body.</span>}
-    </pre>
+    <CodeEditor value={content} language={contentTypeToMonacoLang(response.contentType)} readOnly />
   )
 }
 
@@ -213,11 +218,16 @@ export function ResponsePane() {
           </button>
         ))}
       </div>
-      <div style={{ flex: 1, overflowY: "auto" }}>
-        {subTab === "Pretty" && <PrettyBody response={response} />}
-        {subTab === "Raw" && <RawBody body={response.body} />}
-        {subTab === "Headers" && <HeadersList headers={response.headers} />}
-      </div>
+      {subTab === "Pretty" ? (
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          <PrettyBody response={response} />
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {subTab === "Raw" && <RawBody body={response.body} />}
+          {subTab === "Headers" && <HeadersList headers={response.headers} />}
+        </div>
+      )}
     </div>
   )
 }

@@ -276,4 +276,58 @@ describe("KeyValueEditor — autocomplete", () => {
     // None of our completions should appear
     COMPLETIONS.forEach((c) => expect(screen.queryByText(c)).not.toBeInTheDocument())
   })
+
+  it("clicking a suggestion with mouseDown selects it", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "auth" } })
+    const suggestion = screen.getByText("Authorization")
+    fireEvent.mouseDown(suggestion)
+    expect((input as HTMLInputElement).value).toBe("Authorization")
+    expect(screen.queryByText("X-Auth-Token")).not.toBeInTheDocument()
+  })
+
+  it("focusing an input that already has a value reopens the dropdown", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    // Type something then close dropdown
+    fireEvent.change(input, { target: { value: "acc" } })
+    fireEvent.keyDown(input, { key: "Escape" })
+    expect(screen.queryByText("Accept")).not.toBeInTheDocument()
+    // Re-focus → dropdown should reopen
+    fireEvent.focus(input)
+    expect(screen.getByText("Accept")).toBeInTheDocument()
+  })
+
+  it("ArrowUp decrements the highlighted index (clamped at 0)", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "acc" } })
+    // Suggestions: ["Accept", "Accept-Encoding"] — first is highlighted by default
+    // ArrowDown to index 1 then ArrowUp back to index 0 → Enter selects "Accept"
+    fireEvent.keyDown(input, { key: "ArrowDown" })
+    fireEvent.keyDown(input, { key: "ArrowUp" })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect((input as HTMLInputElement).value).toBe("Accept")
+  })
+
+  it("ArrowUp at index 0 stays at index 0", () => {
+    render(<AutocompleteEditor completions={COMPLETIONS} />)
+    const input = screen.getByPlaceholderText("Key")
+    fireEvent.change(input, { target: { value: "acc" } })
+    // Already at index 0; ArrowUp should not go below 0 → Enter still selects first
+    fireEvent.keyDown(input, { key: "ArrowUp" })
+    fireEvent.keyDown(input, { key: "Enter" })
+    expect((input as HTMLInputElement).value).toBe("Accept")
+  })
+})
+
+describe("KeyValueEditor — file type", () => {
+  it("toggles item type from File back to Text", () => {
+    const onChange = vi.fn()
+    const fileItem = { id: "r1", key: "upload", value: "", enabled: true, type: "file" as const }
+    render(<KeyValueEditor items={[fileItem]} onChange={onChange} allowFileType />)
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(onChange).toHaveBeenCalledWith([expect.objectContaining({ type: "text", value: "" })])
+  })
 })
