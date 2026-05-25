@@ -12,20 +12,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// nodeRunnerPath resolves the node-runner entry point relative to this file.
-func nodeRunnerPath(t *testing.T) string {
+// runnerPath resolves the Node.js runner entry point relative to this file.
+func runnerPath(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
-	return filepath.Join(filepath.Dir(file), "..", "..", "node-runner", "src", "index.js")
+	return filepath.Join(filepath.Dir(file), "..", "..", "runner", "src", "index.js")
 }
 
-func newRunner(t *testing.T) *NodeRunner {
+func newRunner(t *testing.T) *nodeRunner {
 	t.Helper()
-	r, err := NewNodeRunner(nodeRunnerPath(t))
+	r, err := NewRunner(runnerPath(t))
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = r.Close() })
-	return r
+	return r.(*nodeRunner)
 }
 
 func baseCtx() *ScriptContext {
@@ -270,12 +270,12 @@ func TestExecute_ContextCancelled(t *testing.T) {
 
 func TestExecute_NodeDies(t *testing.T) {
 	// Node starts but exits immediately because the script path does not exist.
-	r, err := NewNodeRunner("/nonexistent/index.js")
+	r, err := NewRunner("/nonexistent/index.js")
 	require.NoError(t, err)
 	defer func() { _ = r.Close() }()
 
 	// Wait for readLoop to detect node exited.
-	<-r.done
+	<-r.(*nodeRunner).done
 
 	// Execute must return an error (either write error or "node process exited").
 	_, err = r.Execute(context.Background(), `pm.test("x", () => {})`, "test", baseCtx())
@@ -296,7 +296,7 @@ func TestExecute_DoneWhileWaiting(t *testing.T) {
 	stdinR, stdinW := io.Pipe()
 	_, stdoutW := io.Pipe()
 
-	r := &NodeRunner{
+	r := &nodeRunner{
 		stdin:    stdinW,
 		inflight: make(map[string]chan response),
 		done:     make(chan struct{}),
@@ -320,7 +320,7 @@ func TestExecute_DoneWhileWaiting(t *testing.T) {
 
 func TestReadLoop_InvalidJSON(t *testing.T) {
 	pr, pw := io.Pipe()
-	r := &NodeRunner{
+	r := &nodeRunner{
 		inflight: make(map[string]chan response),
 		done:     make(chan struct{}),
 	}
@@ -336,7 +336,7 @@ func TestReadLoop_InvalidJSON(t *testing.T) {
 
 func TestReadLoop_ErrorResponse(t *testing.T) {
 	pr, pw := io.Pipe()
-	r := &NodeRunner{
+	r := &nodeRunner{
 		inflight: make(map[string]chan response),
 		done:     make(chan struct{}),
 	}

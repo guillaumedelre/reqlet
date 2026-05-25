@@ -15,7 +15,7 @@ containers.
 # Install Go module dependencies (writes go.sum)
 docker compose run --rm go go mod download
 
-# Install Node.js dependencies for node-runner/
+# Install Node.js dependencies for runner/
 docker compose run --rm node npm install
 
 # Install Node.js dependencies for gui/web/
@@ -81,7 +81,7 @@ make go-lint         # golangci-lint
 make go-fmt          # apply gofumpt
 make go-check        # check formatting without modifying
 make shell-go        # interactive Go shell
-make shell-node      # interactive Node.js shell (node-runner/)
+make shell-node      # interactive Node.js shell (runner/)
 make shell-web       # interactive shell in web container (gui/web/)
 ```
 
@@ -127,7 +127,7 @@ docker compose run --rm go mockgen \
   -package=runner
 ```
 
-### Node.js (node-runner/)
+### Node.js (runner/)
 
 ```bash
 # Interactive Node.js shell
@@ -281,7 +281,7 @@ Each request exposes two JavaScript editor tabs (matching the Postman model):
 - **Tests** — runs after the response is received. Language: JavaScript.
 
 Both use `CodeEditor` in JavaScript mode. Their content is stored in `preRequestScript` and
-`testScript` on the tab (Zustand store, persisted). Execution requires the node-runner
+`testScript` on the tab (Zustand store, persisted). Execution requires the runner
 (section 2.14 — GUI-Go bindings, not yet wired).
 
 #### Settings tab
@@ -381,7 +381,7 @@ docker compose run --rm web npm run lint
 docker compose run --rm web npm run build
 docker compose run --rm web npm run test:ci
 
-# 3. node-runner — lint + tests
+# 3. runner — lint + tests
 docker compose run --rm node npm run lint
 docker compose run --rm node npm test
 
@@ -395,7 +395,7 @@ docker build -f Dockerfile.agent .
 ## Web agent (reqlet-agent)
 
 `reqlet-agent` is the self-hosted deployment target for reqlet. It bundles
-the React frontend, the Go API, and the node-runner script engine in a single
+the React frontend, the Go API, and the runner script engine in a single
 Docker image.
 
 The REST API (`/api/...`) is in progress (Phase 2.14) — request execution and
@@ -427,8 +427,8 @@ reqlet/
 ├── cli/             # CLI binary → binary: reqlet-cli
 ├── gui/             # Wails desktop app → binary: reqlet
 │   └── web/         # React source (Vite, Tailwind v4, shadcn/ui, Zustand) — embedded in gui and agent at build time
-├── agent/           # Web agent → binary: reqlet-agent (embeds gui/web/dist/ + node-runner SEA)
-├── node-runner/     # Node.js pm.* sandbox — compiled as Node SEA, embedded in all Go binaries via engine/sandbox
+├── agent/           # Web agent → binary: reqlet-agent (embeds gui/web/dist/ + runner SEA)
+├── runner/     # Node.js pm.* sandbox — compiled as Node SEA, embedded in all Go binaries via engine/sandbox
 ├── docs/            # This documentation
 ├── .github/         # CI workflows, issue templates, dependabot
 ├── compose.yaml     # Dev environment

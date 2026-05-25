@@ -156,43 +156,43 @@ func TestLoadData_UnsupportedExtension(t *testing.T) {
 	require.Error(t, err)
 }
 
-// ── resolveNodeRunner ─────────────────────────────────────────────────────────
+// ── resolveRunner ─────────────────────────────────────────────────────────────
 
-func TestResolveNodeRunner_ExplicitFlag(t *testing.T) {
-	path, err := resolveNodeRunner("/custom/path/index.js")
+func TestResolveRunner_ExplicitFlag(t *testing.T) {
+	path, err := resolveRunner("/custom/path/index.js")
 	require.NoError(t, err)
 	assert.Equal(t, "/custom/path/index.js", path)
 }
 
-func TestResolveNodeRunner_EnvVar(t *testing.T) {
-	t.Setenv("REQLET_NODE_RUNNER", "/env/path/index.js")
-	path, err := resolveNodeRunner("")
+func TestResolveRunner_EnvVar(t *testing.T) {
+	t.Setenv("REQLET_RUNNER", "/env/path/index.js")
+	path, err := resolveRunner("")
 	require.NoError(t, err)
 	assert.Equal(t, "/env/path/index.js", path)
 }
 
-func TestResolveNodeRunner_FlagTakesPrecedenceOverEnv(t *testing.T) {
-	t.Setenv("REQLET_NODE_RUNNER", "/env/path/index.js")
-	path, err := resolveNodeRunner("/flag/path/index.js")
+func TestResolveRunner_FlagTakesPrecedenceOverEnv(t *testing.T) {
+	t.Setenv("REQLET_RUNNER", "/env/path/index.js")
+	path, err := resolveRunner("/flag/path/index.js")
 	require.NoError(t, err)
 	assert.Equal(t, "/flag/path/index.js", path)
 }
 
-func TestResolveNodeRunner_NotFound(t *testing.T) {
-	t.Setenv("REQLET_NODE_RUNNER", "")
+func TestResolveRunner_NotFound(t *testing.T) {
+	t.Setenv("REQLET_RUNNER", "")
 	orig, err := os.Getwd()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 	require.NoError(t, os.Chdir(t.TempDir()))
 
-	_, err = resolveNodeRunner("")
+	_, err = resolveRunner("")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "node runner not found")
+	assert.Contains(t, err.Error(), "runner not found")
 }
 
-func TestResolveNodeRunner_CWDRelativePath(t *testing.T) {
+func TestResolveRunner_CWDRelativePath(t *testing.T) {
 	dir := t.TempDir()
-	nrPath := filepath.Join(dir, "node-runner", "src", "index.js")
+	nrPath := filepath.Join(dir, "runner", "src", "index.js")
 	require.NoError(t, os.MkdirAll(filepath.Dir(nrPath), 0o750)) //nolint:gosec // test-only temp dir
 	require.NoError(t, os.WriteFile(nrPath, []byte(""), 0o600))
 
@@ -201,9 +201,9 @@ func TestResolveNodeRunner_CWDRelativePath(t *testing.T) {
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 	require.NoError(t, os.Chdir(dir))
 
-	t.Setenv("REQLET_NODE_RUNNER", "")
+	t.Setenv("REQLET_RUNNER", "")
 
-	path, err := resolveNodeRunner("")
+	path, err := resolveRunner("")
 	require.NoError(t, err)
-	assert.Equal(t, filepath.Join("node-runner", "src", "index.js"), path)
+	assert.Equal(t, filepath.Join("runner", "src", "index.js"), path)
 }
