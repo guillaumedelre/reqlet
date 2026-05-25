@@ -87,3 +87,6 @@ ignore:
   - "**/*_test.go"
   - "docs/**"
   - "gui/web/src/test/**"
+  - "cli/main.go"
+  - "agent/main.go"
+  - "hub/main.go"
