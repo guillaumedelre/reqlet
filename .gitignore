@@ -14,15 +14,22 @@ npm-debug.log*
 node-runner/*.blob
 
 # Frontend build output
-gui/frontend/dist/
+gui/web/dist/
 node-runner/dist/
 
 # Frontend test artifacts
-gui/frontend/coverage/
-gui/frontend/junit.xml
+gui/web/coverage/
+gui/web/junit.xml
+
+# Frontend dev server cache
+gui/web/.vite/
 
 # Wails generated bindings
-gui/frontend/wailsjs/
+gui/web/wailsjs/
+
+# Agent embedded web placeholder (keep index.html, ignore real dist)
+agent/web/*
+!agent/web/index.html
 
 # Build artifacts (binaries go to dist/, not build/)
 dist/reqlet*

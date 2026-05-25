@@ -2,28 +2,50 @@
 
 ## Overview
 
-Reqlet is a monorepo with a single `go.mod`. The codebase is split into four
+Reqlet is a monorepo with a single `go.mod`. The codebase is split into five
 distinct layers that share no circular dependencies:
 
 ```
 engine/       ← shared Go library (business logic)
 cli/          ← CLI binary (cobra) → binary: reqlet-cli
 gui/          ← Wails v2 desktop app → binary: reqlet
+agent/        ← web agent (Go HTTP server) → binary: reqlet-agent
 node-runner/  ← Node.js process (pm.* sandbox), communicates via stdio JSON
+```
+
+```mermaid
+graph TD
+    Engine["engine/
+    shared library"]
+    CLI["cli/ → reqlet-cli"]
+    GUI["gui/ → reqlet"]
+    Agent["agent/ → reqlet-agent"]
+    NodeRunner["node-runner/
+    npm.* sandbox"]
+    WebUI["gui/web/
+    React SPA"]
+
+    CLI --> Engine
+    GUI --> Engine
+    Agent --> Engine
+    Engine --> NodeRunner
+    GUI -. embeds .-> WebUI
+    Agent -. embeds .-> WebUI
 ```
 
 ## Component breakdown
 
 ### `engine/`
 
-The core library. All business logic lives here and is reused by both the CLI
-and the GUI backend. Sub-packages follow a single responsibility principle:
+The core library. All business logic lives here and is reused by the CLI,
+the GUI backend, and the web agent. Sub-packages follow a single
+responsibility principle:
 
 | Package | Responsibility |
 |---------|---------------|
 | `engine/parser` | Read and validate Postman collection files; detect format version (v1.0/v2.0/v2.1); enforce official JSON Schema for v2.0 and v2.1 (schemas embedded via `go:embed`) |
 | `engine/migration` | Transform parsed v1.0 and v2.0 collections into the v2.1 internal model |
-| `engine/loader` | Single entry point for callers (CLI, GUI): `LoadCollection` (parse + migrate → v2.1), `LoadEnvironment`, `LoadData` (CSV/JSON → `[]map[string]string`) |
+| `engine/loader` | Single entry point for callers (CLI, GUI, agent): `LoadCollection` (parse + migrate → v2.1), `LoadEnvironment`, `LoadData` (CSV/JSON → `[]map[string]string`) |
 | `engine/runner` | Orchestrate request execution (ordering, iterations, data injection) |
 | `engine/reporter` | Output formatters: terminal (ANSI colours), JSON, JUnit/XML |
 | `engine/http` | Execute HTTP requests (`net/http`, redirects, TLS, proxy, client certificates) |
@@ -49,6 +71,27 @@ back via those bindings and via `runtime.EventsEmit` / `runtime.EventsOn`.
 The WebView is provided by the OS (WKWebView on macOS, WebView2 on Windows,
 WebKit2GTK on Linux) — no Chromium bundled.
 
+### `agent/`
+
+Standalone Go HTTP server (`reqlet-agent` binary). It:
+
+- Embeds `agent/web/` via `go:embed all:web` and serves the React SPA at `/`
+  (`agent/web/` is populated from `gui/web/dist/` during the Docker build)
+- Exposes a REST API (`/api/...`) equivalent to the Wails bindings in `gui/`
+- Delegates request execution to `engine/http` and script execution to `engine/sandbox`
+- Stores data in a SQLite file at `/data/reqlet.db` (Docker) or `~/.reqlet/reqlet.db` (standalone)
+- Listens on `:8080` internally; exposed on host port `3001` via Docker Compose (`"3001:8080"`)
+
+The frontend auto-detects its runtime context via `gui/web/src/lib/backend.ts`: when
+running inside the Wails WebView it calls `window.go.*`, when served by
+`reqlet-agent` it calls `fetch("/api/...")`. The React codebase is shared
+between both.
+
+`reqlet-agent` is distributed as:
+
+- Platform binaries (GitHub Releases): Linux x64/arm64, macOS Intel/ARM, Windows x64
+- Docker image: `ghcr.io/guillaumedelre/reqlet-agent`
+
 ### `node-runner/`
 
 A Node.js process that implements the [Postman sandbox][pm-sandbox] (`pm.*`
@@ -59,30 +102,75 @@ on the end user's machine.
 
 ## Data flow (request execution)
 
+```mermaid
+flowchart TD
+    U["User
+    GUI / CLI / Agent"]
+    L["engine/loader
+    LoadCollection · LoadEnvironment · LoadData"]
+    P["engine/parser
+    validation JSON Schema"]
+    M["engine/migration
+    v1.0 / v2.0 → v2.1"]
+    R["engine/runner
+    orchestration"]
+    V["engine/variables
+    {{var}} resolution"]
+    Pre["engine/sandbox
+    pre-request script"]
+    H["engine/http
+    HTTP request"]
+    Post["engine/sandbox
+    post-response script"]
+    S["engine/storage
+    SQLite history"]
+    NR["node-runner
+    pm.* API"]
+
+    U --> L
+    L --> P & M
+    P & M --> R
+    R <--> V
+    R --> Pre
+    Pre <--> NR
+    R --> H
+    R --> Post
+    Post <--> NR
+    R --> S
 ```
-User (GUI or CLI)
-     │
-     ▼
-engine/loader          ← LoadCollection / LoadEnvironment / LoadData
-     ├── engine/parser     parse + validate against JSON Schema (per format)
-     └── engine/migration  transform v1.0 / v2.0 → v2.1 internal model
-     │
-     ▼
-engine/runner ──── resolves variables ──── engine/variables
-     │
-     ├── pre-request script ──── engine/sandbox ──── node-runner process
-     │
-     ├── sends HTTP request ─────────────────────── engine/http
-     │
-     ├── post-response script ── engine/sandbox ──── node-runner process
-     │
-     └── persists history ────────────────────────── engine/storage
+
+## Frontend transport abstraction
+
+`gui/web/src/lib/backend.ts` provides a unified call interface used by
+all React components. It detects the runtime context at startup:
+
+```mermaid
+flowchart TD
+    B["gui/web/src/lib/backend.ts"]
+    Q{"Running in
+    Wails WebView?"}
+    W["window.go.main.App.*
+    Wails IPC binding"]
+    F["fetch('/api/...')
+    reqlet-agent REST API"]
+
+    B --> Q
+    Q -- yes --> W
+    Q -- no --> F
 ```
+
+This keeps the React codebase identical regardless of the host.
 
 ## Storage
 
 All local data (collections, environments, history, settings) lives in a single
-SQLite file at `~/.reqlet/reqlet.db` (or `$XDG_DATA_HOME/reqlet/` on Linux).
+SQLite file:
+
+| Context | Path |
+|---------|------|
+| Desktop GUI / CLI | `~/.reqlet/reqlet.db` (or `$XDG_DATA_HOME/reqlet/` on Linux) |
+| reqlet-agent (Docker) | `/data/reqlet.db` (mount a named volume) |
+| reqlet-agent (standalone) | `~/.reqlet/reqlet.db` |
 
 Schema migrations are versioned with [golang-migrate][golang-migrate] and run
 automatically at startup. Queries are type-safe Go code generated by
@@ -98,6 +186,9 @@ simplify cross-compilation.
 | CLI — Linux x64/arm64 | GitHub Actions `ubuntu-latest` |
 | CLI — macOS Intel/ARM | GitHub Actions `macos-latest` |
 | CLI — Windows x64 | GitHub Actions `windows-latest` |
+| Agent — Linux x64/arm64 | `Dockerfile.agent` (multi-arch) |
+| Agent — macOS Intel/ARM | GitHub Actions `macos-latest` |
+| Agent — Windows x64 | GitHub Actions `windows-latest` |
 | GUI — Linux | `Dockerfile.gui` (WebKit2GTK in container) |
 | GUI — macOS | GitHub Actions `macos-latest` (Wails) |
 | GUI — Windows | GitHub Actions `windows-latest` (Wails) |

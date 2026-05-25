@@ -48,18 +48,28 @@ services:
       - node-runner-modules:/app/node_modules
     working_dir: /app
 
-  frontend:
+  web:
     image: node:22-alpine
     volumes:
-      - ./gui/frontend:/app
-      - frontend-modules:/app/node_modules
+      - ./gui/web:/app
+      - web-modules:/app/node_modules
     working_dir: /app
     ports:
       - "5173:5173"
     command: npm run dev -- --host
 
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.agent
+    ports:
+      - "3001:8080"
+    volumes:
+      - reqlet-data:/data
+
 volumes:
   go-cache:
   go-mod-cache:
   node-runner-modules:
-  frontend-modules:
+  web-modules:
+  reqlet-data:
