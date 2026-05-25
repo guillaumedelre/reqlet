@@ -51,7 +51,7 @@ jobs:
             ./engine/...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: reqlet-engine
@@ -87,7 +87,7 @@ jobs:
             ./cli/...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: reqlet-cli
@@ -133,7 +133,7 @@ jobs:
             ./agent/...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: reqlet-agent
@@ -170,7 +170,7 @@ jobs:
         run: npm run test:ci
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: gui/web/coverage/lcov.info
           flags: reqlet-web
@@ -201,7 +201,7 @@ jobs:
         run: npm run test:ci
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: runner/coverage/lcov.info
           flags: reqlet-runner
@@ -237,7 +237,7 @@ jobs:
             ./hub/...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: reqlet-hub
