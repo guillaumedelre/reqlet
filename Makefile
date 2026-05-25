@@ -16,7 +16,7 @@ DC      := docker compose run --rm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-cli build-gui build-frontend frontend-dev test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-frontend
+.PHONY: help build-cli build-agent build-gui build-web dev-agent dev-web test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
 
 help: ## Show this help message
 	@printf "\n$(BOLD)Reqlet — build & dev targets$(RESET)\n\n"
@@ -28,19 +28,28 @@ build-cli: ## Build the reqlet-cli binary into dist/
 	$(DC) build-cli
 	$(OK) @printf "Binary available at $(BOLD)dist/reqlet-cli$(RESET)\n"
 
-build-frontend: ## Build the React frontend into gui/frontend/dist/
-	$(INFO) @printf "Building frontend...\n"
-	$(DC) frontend npm run build
-	$(OK) @printf "Frontend built in $(BOLD)gui/frontend/dist/$(RESET)\n"
+build-web: ## Build the React frontend into gui/web/dist/
+	$(INFO) @printf "Building web UI...\n"
+	$(DC) web npm run build
+	$(OK) @printf "Frontend built in $(BOLD)gui/web/dist/$(RESET)\n"
+
+build-agent: ## Build the reqlet-agent Docker image (node build → go:embed → alpine)
+	$(INFO) @printf "Building reqlet-agent image...\n"
+	docker build -f Dockerfile.agent -t reqlet-agent .
+	$(OK) @printf "Image $(BOLD)reqlet-agent$(RESET) built.\n"
 
 build-gui: ## Build the GUI Linux image via Dockerfile.gui (macOS/Windows require native runners)
 	$(INFO) @printf "Building GUI (Linux) via Dockerfile.gui...\n"
 	docker build -f Dockerfile.gui -t reqlet-gui .
 	$(OK) @printf "Image $(BOLD)reqlet-gui$(RESET) built.\n"
 
-frontend-dev: ## Start the React dev server at http://localhost:5173 (UI only, no Go backend)
+dev-web: ## Start the React dev server at http://localhost:5173 (UI only, no Go backend)
 	$(INFO) @printf "Starting Vite dev server at $(CYAN)http://localhost:5173$(RESET)\n"
-	docker compose up frontend --remove-orphans
+	docker compose up web --remove-orphans
+
+dev-agent: ## Start the web agent at http://localhost:3001 (full stack: React + Go API)
+	$(INFO) @printf "Starting reqlet-agent at $(CYAN)http://localhost:3001$(RESET)\n"
+	docker compose up agent --remove-orphans
 
 test-all: ## Run the full test suite
 	$(INFO) @printf "Running tests...\n"
@@ -73,7 +82,7 @@ go-check: ## Check formatting without modifying files
 	$(INFO) @printf "Checking formatting...\n"
 	$(DC) go gofumpt -l .
 
-shell-go: ## Open an interactive Go dev shell (engine/, cli/)
+shell-go: ## Open an interactive Go dev shell (engine/, cli/, agent/)
 	$(INFO) @printf "Opening Go shell...\n"
 	$(DC) go sh
 
@@ -81,6 +90,6 @@ shell-node: ## Open an interactive Node.js shell (node-runner/)
 	$(INFO) @printf "Opening Node.js shell...\n"
 	$(DC) node sh
 
-shell-frontend: ## Open an interactive shell in the frontend container (gui/frontend/)
-	$(INFO) @printf "Opening frontend shell...\n"
-	$(DC) frontend sh
+shell-web: ## Open an interactive shell in the web container (gui/web/)
+	$(INFO) @printf "Opening web shell...\n"
+	$(DC) web sh

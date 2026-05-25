@@ -18,8 +18,8 @@ docker compose run --rm go go mod download
 # Install Node.js dependencies for node-runner/
 docker compose run --rm node npm install
 
-# Install Node.js dependencies for gui/frontend/
-docker compose run --rm frontend npm install
+# Install Node.js dependencies for gui/web/
+docker compose run --rm web npm install
 ```
 
 ## Daily commands
@@ -30,6 +30,10 @@ for every operation:
 ```bash
 make help            # list all targets
 make build-cli       # build dist/reqlet-cli
+make build-web       # build gui/web/dist/
+make build-agent     # build Docker image reqlet-agent
+make dev-web         # start Vite dev server at http://localhost:5173
+make dev-agent       # start web agent at http://localhost:3001
 make test-all        # full test suite (engine/ + cli/)
 make test-unit       # unit tests only
 make test-integration
@@ -39,6 +43,7 @@ make go-fmt          # apply gofumpt
 make go-check        # check formatting without modifying
 make shell-go        # interactive Go shell
 make shell-node      # interactive Node.js shell (node-runner/)
+make shell-web       # interactive shell in web container (gui/web/)
 ```
 
 ### Go test scope
@@ -96,35 +101,35 @@ docker compose run --rm node npm run lint
 docker compose run --rm node npm test
 ```
 
-### Frontend (gui/frontend/)
+### Web UI (gui/web/)
 
 ```bash
 # Start Vite dev server (accessible at http://localhost:5173)
-docker compose up frontend
+docker compose up web
 
 # Format (apply)
-docker compose run --rm frontend npm run format
+docker compose run --rm web npm run format
 
 # Format (check only, no changes)
-docker compose run --rm frontend npm run format:check
+docker compose run --rm web npm run format:check
 
 # Lint
-docker compose run --rm frontend npm run lint
+docker compose run --rm web npm run lint
 
 # Type-check and build
-docker compose run --rm frontend npm run build
+docker compose run --rm web npm run build
 
 # Run tests
-docker compose run --rm frontend npm test
+docker compose run --rm web npm test
 
 # Run tests in watch mode
-docker compose run --rm frontend npm run test:watch
+docker compose run --rm web npm run test:watch
 
 # Run tests with coverage report (html + lcov in coverage/)
-docker compose run --rm frontend npm run test:coverage
+docker compose run --rm web npm run test:coverage
 
 # Add a shadcn/ui component
-docker compose run --rm frontend npx shadcn@latest add <name>
+docker compose run --rm web npx shadcn@latest add <name>
 ```
 
 #### Code style
@@ -149,7 +154,7 @@ container.
 
 The recommended workflow:
 
-1. Run `docker compose up frontend` for the React side (Vite on port 5173).
+1. Run `docker compose up web` for the React side (Vite on port 5173).
    The Wails bindings (`window.go.*`) are mocked in the frontend so it works
    without the Go backend.
 2. Develop Go backend code in the `go` container as usual.
@@ -165,7 +170,7 @@ run on native GitHub Actions runners.
 #### HTTP method colors
 
 HTTP methods are color-coded throughout the UI (tab badges, method selector) using the
-[Swagger UI][swagger-ui] palette, defined in `gui/frontend/src/lib/http-methods.ts`:
+[Swagger UI][swagger-ui] palette, defined in `gui/web/src/lib/http-methods.ts`:
 
 | Method  | Color     | Hex       |
 |---------|-----------|-----------|
@@ -331,11 +336,11 @@ docker compose run --rm go gofumpt -l . | tee /tmp/gofumpt.out && test ! -s /tmp
 docker compose run --rm lint
 docker compose run --rm test
 
-# 2. frontend — format, lint, build, tests
-docker compose run --rm frontend npm run format:check
-docker compose run --rm frontend npm run lint
-docker compose run --rm frontend npm run build
-docker compose run --rm frontend npm run test:ci
+# 2. web — format, lint, build, tests
+docker compose run --rm web npm run format:check
+docker compose run --rm web npm run lint
+docker compose run --rm web npm run build
+docker compose run --rm web npm run test:ci
 
 # 3. node-runner — lint + tests
 docker compose run --rm node npm run lint
@@ -345,7 +350,30 @@ docker compose run --rm node npm test
 docker build -f Dockerfile.dev .
 docker build -f Dockerfile .
 docker build -f Dockerfile.gui .
+docker build -f Dockerfile.agent .
 ```
+
+## Web agent (reqlet-agent)
+
+`reqlet-agent` is a standalone Go binary that embeds the React frontend and
+exposes a REST API. It allows testing the full stack (Send button, script
+engine) without needing a display server or `wails dev`.
+
+```bash
+# Build and start the agent at http://localhost:3001
+docker compose up agent
+
+# Or via make
+make dev-agent
+```
+
+The `agent` service builds from `Dockerfile.agent` (multi-stage: Node.js
+builds the frontend, Go embeds it via `go:embed`, final image is alpine). Data
+is persisted in the `reqlet-data` named volume at `/data/reqlet.db`.
+
+The React frontend uses `gui/web/src/lib/backend.ts` to detect its runtime context:
+inside the Wails WebView it calls `window.go.*`, when served by reqlet-agent
+it calls `fetch("/api/...")`.
 
 ## Project structure
 
@@ -354,7 +382,8 @@ reqlet/
 ├── engine/          # Shared Go library (business logic)
 ├── cli/             # CLI binary → binary: reqlet-cli
 ├── gui/             # Wails desktop app → binary: reqlet
-│   └── frontend/    # React + TypeScript (Vite, Tailwind v4, shadcn/ui, Zustand)
+│   └── web/         # React + TypeScript (Vite, Tailwind v4, shadcn/ui, Zustand)
+├── agent/           # Web agent → binary: reqlet-agent
 ├── node-runner/     # Node.js pm.* sandbox
 ├── docs/            # This documentation
 ├── .github/         # CI workflows, issue templates, dependabot
@@ -362,7 +391,8 @@ reqlet/
 ├── Makefile         # Local build & dev shortcuts (wraps docker compose)
 ├── Dockerfile       # CLI production image
 ├── Dockerfile.dev   # Dev image (Go + Node.js + tools)
-└── Dockerfile.gui   # GUI Linux build (WebKit2GTK + Wails, builds frontend first)
+├── Dockerfile.gui   # GUI Linux build (WebKit2GTK + Wails, builds frontend first)
+└── Dockerfile.agent # Web agent image (node build → go:embed → alpine)
 ```
 
 See [architecture.md](architecture.md) for a deeper look at the component model.

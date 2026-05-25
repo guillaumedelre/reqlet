@@ -34,7 +34,10 @@ docker compose run --rm build-cli
 docker compose run --rm node sh
 
 # Frontend dev server — accessible at http://localhost:5173
-docker compose up frontend
+docker compose up web
+
+# Web agent (full stack, embedded web UI) — accessible at http://localhost:3001
+docker compose up agent
 ```
 
 See [docs/development.md](docs/development.md) for a full guide.

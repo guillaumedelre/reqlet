@@ -54,12 +54,12 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  frontend:
-    name: frontend
+  web:
+    name: web
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: gui/frontend
+        working-directory: gui/web
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +67,7 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: gui/frontend/package-lock.json
+          cache-dependency-path: gui/web/package-lock.json
 
       - run: npm ci
 
@@ -86,8 +86,8 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
-          files: gui/frontend/coverage/lcov.info
-          flags: frontend
+          files: gui/web/coverage/lcov.info
+          flags: web
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
@@ -139,4 +139,11 @@ jobs:
         with:
           context: .
           file: Dockerfile.gui
+          push: false
+
+      - name: Build Dockerfile.agent
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.agent
           push: false
