@@ -142,4 +142,57 @@ describe("sendRequest", () => {
     const body = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
     expect(body.url).toBe("https://example.com?q=hello")
   })
+
+  it("sends all tab settings fields in the payload", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          status: 200,
+          statusText: "OK",
+          time: 1,
+          size: 0,
+          headers: {},
+          body: "",
+          contentType: "",
+        }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      ),
+    )
+
+    const tab = {
+      ...baseTab,
+      method: "POST" as const,
+      followRedirects: false,
+      sslVerification: false,
+      timeout: 3000,
+      ignoreProxy: true,
+      headers: [{ id: "h1", key: "X-Foo", value: "bar", enabled: true }],
+      bodyType: "raw" as const,
+      bodyRaw: '{"x":1}',
+      bodyRawContentType: "JSON" as const,
+    }
+
+    await sendRequest(tab)
+
+    const payload = JSON.parse((vi.mocked(fetch).mock.calls[0][1] as RequestInit).body as string)
+    expect(payload.method).toBe("POST")
+    expect(payload.followRedirects).toBe(false)
+    expect(payload.sslVerification).toBe(false)
+    expect(payload.timeout).toBe(3000)
+    expect(payload.ignoreProxy).toBe(true)
+    expect(payload.headers).toEqual(tab.headers)
+    expect(payload.bodyType).toBe("raw")
+    expect(payload.bodyRaw).toBe('{"x":1}')
+  })
+
+  it("throws SendError when in Wails context", async () => {
+    ;(window as Window & { go?: unknown }).go = {}
+    try {
+      const err = await sendRequest(baseTab).catch((e) => e)
+      expect(err).toBeInstanceOf(SendError)
+      expect(err.code).toBe("not_implemented")
+    } finally {
+      delete (window as Window & { go?: unknown }).go
+    }
+  })
 })

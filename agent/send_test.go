@@ -120,6 +120,190 @@ func TestBuildParserReq_DisabledHeadersSkipped(t *testing.T) {
 	assert.Equal(t, "Accept", pr.Header[0].Key)
 }
 
+func TestHandleSend_RawBody(t *testing.T) {
+	var receivedBody, receivedCT string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		receivedBody = buf.String()
+		receivedCT = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:             "POST",
+		URL:                target.URL,
+		BodyType:           "raw",
+		BodyRaw:            `{"key":"val"}`,
+		BodyRawContentType: "JSON",
+		FollowRedirects:    true,
+		SslVerification:    true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, `{"key":"val"}`, receivedBody)
+	assert.Contains(t, receivedCT, "application/json")
+}
+
+func TestHandleSend_FormDataBody(t *testing.T) {
+	var receivedField string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseMultipartForm(1 << 20) //nolint:gosec // test-only, controlled size
+		receivedField = r.FormValue("name")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:   "POST",
+		URL:      target.URL,
+		BodyType: "form-data",
+		BodyFormData: []kvItem{
+			{Key: "name", Value: "reqlet", Enabled: true},
+			{Key: "skip", Value: "x", Enabled: false},
+		},
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "reqlet", receivedField)
+}
+
+func TestHandleSend_UrlencodedBody(t *testing.T) {
+	var receivedField string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		receivedField = r.FormValue("q")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:   "POST",
+		URL:      target.URL,
+		BodyType: "urlencoded",
+		BodyUrlencoded: []kvItem{
+			{Key: "q", Value: "hello", Enabled: true},
+			{Key: "skip", Value: "x", Enabled: false},
+		},
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "hello", receivedField)
+}
+
+func TestHandleSend_Timeout(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// respond normally — we just want to verify the timeout field is accepted
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		Timeout:         5000, // 5 s — non-zero branch
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestBuildParserReq_RawBody(t *testing.T) {
+	req := sendReq{
+		Method:             "POST",
+		URL:                "https://example.com",
+		BodyType:           "raw",
+		BodyRaw:            `{"x":1}`,
+		BodyRawContentType: "JSON",
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "raw", string(pr.Body.Mode))
+	assert.Equal(t, `{"x":1}`, pr.Body.Raw)
+	assert.Equal(t, "json", pr.Body.Options.Raw.Language)
+}
+
+func TestBuildParserReq_FormDataBody(t *testing.T) {
+	req := sendReq{
+		Method:   "POST",
+		URL:      "https://example.com",
+		BodyType: "form-data",
+		BodyFormData: []kvItem{
+			{Key: "a", Value: "1", Enabled: true},
+			{Key: "b", Value: "2", Enabled: false},
+			{Key: "", Value: "3", Enabled: true},
+		},
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "formdata", string(pr.Body.Mode))
+	require.Len(t, pr.Body.FormData, 1)
+	assert.Equal(t, "a", pr.Body.FormData[0].Key)
+}
+
+func TestBuildParserReq_UrlencodedBody(t *testing.T) {
+	req := sendReq{
+		Method:   "POST",
+		URL:      "https://example.com",
+		BodyType: "urlencoded",
+		BodyUrlencoded: []kvItem{
+			{Key: "x", Value: "1", Enabled: true},
+			{Key: "y", Value: "2", Enabled: false},
+		},
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "urlencoded", string(pr.Body.Mode))
+	require.Len(t, pr.Body.URLEncoded, 1)
+	assert.Equal(t, "x", pr.Body.URLEncoded[0].Key)
+}
+
+func TestBuildParserReq_NoneBody(t *testing.T) {
+	req := sendReq{Method: "GET", URL: "https://example.com", BodyType: "none"}
+	pr := buildParserReq(req)
+	assert.Nil(t, pr.Body)
+}
+
+func TestNetworkErrorCode(t *testing.T) {
+	cases := []struct {
+		msg      string
+		expected string
+	}{
+		{"connection timeout", "timeout"},
+		{"context deadline exceeded", "timeout"},
+		{"tls handshake error", "tls_error"},
+		{"certificate signed by unknown authority", "tls_error"},
+		{"no such host: example.invalid", "dns_error"},
+		{"connection refused", "network_error"},
+		{"EOF", "network_error"},
+	}
+	for _, tc := range cases {
+		assert.Equal(t, tc.expected, networkErrorCode(fmt.Errorf("%s", tc.msg)), "msg: %s", tc.msg)
+	}
+}
+
 func TestRawLang(t *testing.T) {
 	cases := map[string]string{
 		"JSON":       "json",
