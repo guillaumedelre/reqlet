@@ -59,9 +59,7 @@ export interface Tab {
   disableCookieJar: boolean
   httpVersion: "auto" | "http1" | "http2"
   timeout: number
-  proxyUrl: string
-  proxyUsername: string
-  proxyPassword: string
+  ignoreProxy: boolean
 }
 
 function newTab(patch?: Partial<Tab>): Tab {
@@ -92,9 +90,7 @@ function newTab(patch?: Partial<Tab>): Tab {
     disableCookieJar: false,
     httpVersion: "http1",
     timeout: 0,
-    proxyUrl: "",
-    proxyUsername: "",
-    proxyPassword: "",
+    ignoreProxy: false,
     ...patch,
   }
 }
@@ -206,7 +202,7 @@ export const useTabsStore = create<TabsState>()(
     }),
     {
       name: "reqlet-tabs",
-      version: 8,
+      version: 9,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
@@ -233,9 +229,7 @@ export const useTabsStore = create<TabsState>()(
             disableCookieJar: false,
             httpVersion: "http1",
             timeout: 0,
-            proxyUrl: "",
-            proxyUsername: "",
-            proxyPassword: "",
+            ignoreProxy: false,
             ...(t as object),
           })),
         }

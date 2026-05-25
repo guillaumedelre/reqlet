@@ -445,9 +445,7 @@ function SubTabContent({
   disableCookieJar,
   httpVersion,
   timeout,
-  proxyUrl,
-  proxyUsername,
-  proxyPassword,
+  ignoreProxy,
   onFollowRedirectsChange,
   onFollowOriginalMethodChange,
   onFollowAuthorizationHeaderChange,
@@ -458,9 +456,7 @@ function SubTabContent({
   onDisableCookieJarChange,
   onHttpVersionChange,
   onTimeoutChange,
-  onProxyUrlChange,
-  onProxyUsernameChange,
-  onProxyPasswordChange,
+  onIgnoreProxyChange,
 }: {
   subTab: RequestSubTab
   params: KeyValueItem[]
@@ -497,9 +493,7 @@ function SubTabContent({
   disableCookieJar: boolean
   httpVersion: "auto" | "http1" | "http2"
   timeout: number
-  proxyUrl: string
-  proxyUsername: string
-  proxyPassword: string
+  ignoreProxy: boolean
   onFollowRedirectsChange: (v: boolean) => void
   onFollowOriginalMethodChange: (v: boolean) => void
   onFollowAuthorizationHeaderChange: (v: boolean) => void
@@ -510,9 +504,7 @@ function SubTabContent({
   onDisableCookieJarChange: (v: boolean) => void
   onHttpVersionChange: (v: "auto" | "http1" | "http2") => void
   onTimeoutChange: (v: number) => void
-  onProxyUrlChange: (v: string) => void
-  onProxyUsernameChange: (v: string) => void
-  onProxyPasswordChange: (v: string) => void
+  onIgnoreProxyChange: (v: boolean) => void
 }) {
   const [hoveredRow, setHoveredRow] = useState<string | null>(null)
 
@@ -771,34 +763,17 @@ function SubTabContent({
           </div>
         </div>
         {/* Proxy */}
-        <div style={{ ...plainRowStyle, flexDirection: "column", alignItems: "stretch", gap: 6 }}>
+        <div
+          style={boolRow("ignore-proxy")}
+          onClick={() => onIgnoreProxyChange(!ignoreProxy)}
+          onMouseEnter={() => setHoveredRow("ignore-proxy")}
+          onMouseLeave={() => setHoveredRow(null)}
+        >
           <div>
-            <div style={labelStyle}>Proxy</div>
-            <div style={descStyle}>Override system proxy for this request</div>
+            <div style={labelStyle}>Ignore Proxy Settings</div>
+            <div style={descStyle}>Bypass the global proxy configuration for this request</div>
           </div>
-          <input
-            type="text"
-            placeholder="http://proxy.example.com:8080"
-            value={proxyUrl}
-            onChange={(e) => onProxyUrlChange(e.target.value)}
-            style={{ ...inputStyle, width: "100%" }}
-          />
-          <div style={{ display: "flex", gap: 6 }}>
-            <input
-              type="text"
-              placeholder="Username"
-              value={proxyUsername}
-              onChange={(e) => onProxyUsernameChange(e.target.value)}
-              style={{ ...inputStyle, flex: 1 }}
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={proxyPassword}
-              onChange={(e) => onProxyPasswordChange(e.target.value)}
-              style={{ ...inputStyle, flex: 1 }}
-            />
-          </div>
+          <SettingsCheckbox checked={ignoreProxy} />
         </div>
       </div>
     )
@@ -929,14 +904,8 @@ export function RequestPane() {
   function handleTimeoutChange(timeout: number) {
     updateTab(tab!.id, { timeout })
   }
-  function handleProxyUrlChange(proxyUrl: string) {
-    updateTab(tab!.id, { proxyUrl })
-  }
-  function handleProxyUsernameChange(proxyUsername: string) {
-    updateTab(tab!.id, { proxyUsername })
-  }
-  function handleProxyPasswordChange(proxyPassword: string) {
-    updateTab(tab!.id, { proxyPassword })
+  function handleIgnoreProxyChange(ignoreProxy: boolean) {
+    updateTab(tab!.id, { ignoreProxy })
   }
 
   const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
@@ -1086,9 +1055,7 @@ export function RequestPane() {
             disableCookieJar={tab.disableCookieJar}
             httpVersion={tab.httpVersion}
             timeout={tab.timeout}
-            proxyUrl={tab.proxyUrl}
-            proxyUsername={tab.proxyUsername}
-            proxyPassword={tab.proxyPassword}
+            ignoreProxy={tab.ignoreProxy}
             onFollowRedirectsChange={handleFollowRedirectsChange}
             onFollowOriginalMethodChange={handleFollowOriginalMethodChange}
             onFollowAuthorizationHeaderChange={handleFollowAuthorizationHeaderChange}
@@ -1099,9 +1066,7 @@ export function RequestPane() {
             onDisableCookieJarChange={handleDisableCookieJarChange}
             onHttpVersionChange={handleHttpVersionChange}
             onTimeoutChange={handleTimeoutChange}
-            onProxyUrlChange={handleProxyUrlChange}
-            onProxyUsernameChange={handleProxyUsernameChange}
-            onProxyPasswordChange={handleProxyPasswordChange}
+            onIgnoreProxyChange={handleIgnoreProxyChange}
           />
         )}
       </div>

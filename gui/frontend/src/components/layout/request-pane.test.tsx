@@ -42,9 +42,7 @@ function makeTab(): Tab {
     disableCookieJar: false,
     httpVersion: "http1",
     timeout: 0,
-    proxyUrl: "",
-    proxyUsername: "",
-    proxyPassword: "",
+    ignoreProxy: false,
   }
 }
 
@@ -310,39 +308,17 @@ describe("RequestPane — Settings tab", () => {
     expect(useTabsStore.getState().tabs[0].disableCookieJar).toBe(true)
   })
 
-  it("shows proxy URL, username and password inputs", () => {
+  it("shows Ignore Proxy Settings toggle", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    expect(screen.getByPlaceholderText("http://proxy.example.com:8080")).toBeInTheDocument()
-    expect(screen.getByPlaceholderText("Username")).toBeInTheDocument()
-    expect(screen.getByPlaceholderText("Password")).toBeInTheDocument()
+    expect(screen.getByText("Ignore Proxy Settings")).toBeInTheDocument()
   })
 
-  it("typing proxy URL updates the store", () => {
+  it("clicking Ignore Proxy Settings row toggles the store value", () => {
     render(<RequestPane />)
     goToSubTab("Settings")
-    fireEvent.change(screen.getByPlaceholderText("http://proxy.example.com:8080"), {
-      target: { value: "http://proxy.corp.com:3128" },
-    })
-    expect(useTabsStore.getState().tabs[0].proxyUrl).toBe("http://proxy.corp.com:3128")
-  })
-
-  it("typing proxy username updates the store", () => {
-    render(<RequestPane />)
-    goToSubTab("Settings")
-    fireEvent.change(screen.getByPlaceholderText("Username"), {
-      target: { value: "admin" },
-    })
-    expect(useTabsStore.getState().tabs[0].proxyUsername).toBe("admin")
-  })
-
-  it("typing proxy password updates the store", () => {
-    render(<RequestPane />)
-    goToSubTab("Settings")
-    fireEvent.change(screen.getByPlaceholderText("Password"), {
-      target: { value: "s3cr3t" },
-    })
-    expect(useTabsStore.getState().tabs[0].proxyPassword).toBe("s3cr3t")
+    fireEvent.click(screen.getByText("Ignore Proxy Settings"))
+    expect(useTabsStore.getState().tabs[0].ignoreProxy).toBe(true)
   })
 })
 
