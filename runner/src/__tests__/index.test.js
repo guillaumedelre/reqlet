@@ -117,3 +117,35 @@ describe("handleLine", () => {
     expect(mockExecute).toHaveBeenCalledWith("", "test", {});
   });
 });
+
+// Integration test: spawns the script as a subprocess to cover the isMain stdin loop.
+describe("isMain stdin loop", () => {
+  it("reads execute messages from stdin and writes responses to stdout", async () => {
+    const { spawn } = await import("node:child_process");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, resolve } = await import("node:path");
+
+    const scriptPath = resolve(dirname(fileURLToPath(import.meta.url)), "../index.js");
+    const proc = spawn(process.execPath, [scriptPath]);
+
+    const msg = JSON.stringify({
+      id: "integration-1",
+      method: "execute",
+      params: { script: "", event: "test", context: {} },
+    });
+
+    let stdout = "";
+    proc.stdout.on("data", (d) => {
+      stdout += d.toString();
+    });
+
+    proc.stdin.write(msg + "\n");
+    proc.stdin.end();
+
+    await new Promise((resolve) => proc.on("close", resolve));
+
+    const response = JSON.parse(stdout.trim());
+    expect(response.id).toBe("integration-1");
+    expect(response.error).toBeNull();
+  });
+});

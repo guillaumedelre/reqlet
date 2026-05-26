@@ -85,6 +85,10 @@ comment:
 
 ignore:
   - "**/*_test.go"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.test.js"
+  - "**/__tests__/**"
   - "docs/**"
   - "gui/web/src/test/**"
   - "cli/main.go"
