@@ -2,8 +2,9 @@
 *.exe
 *.test
 *.prof
-coverage.out
-coverage.html
+coverage*.out
+coverage*.html
+cov_*.out
 
 # Node
 node_modules/
