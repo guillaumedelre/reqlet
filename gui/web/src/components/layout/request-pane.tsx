@@ -8,6 +8,8 @@ import { generateCode, type CodeLanguage } from "@/lib/code-generators"
 import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
 import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
+import { resolveVariables } from "@/lib/variables"
+import { useEnvironmentsStore } from "@/store/environments"
 import {
   useTabsStore,
   type BodyType,
@@ -788,6 +790,7 @@ function SubTabContent({
 
 export function RequestPane() {
   const { tabs, activeTabId, updateTab } = useTabsStore()
+  const { environments, globals, activeEnvironmentId } = useEnvironmentsStore()
   const tab = tabs.find((t) => t.id === activeTabId)
   const [sending, setSending] = useState(false)
 
@@ -914,7 +917,22 @@ export function RequestPane() {
     if (!tab || sending || !tab.url) return
     setSending(true)
     try {
-      const response = await sendRequest(tab)
+      const activeEnvVars =
+        environments.find((e) => e.id === activeEnvironmentId)?.variables ?? []
+      const resolve = (s: string) => resolveVariables(s, globals, activeEnvVars)
+      const resolveItems = (items: KeyValueItem[]) =>
+        items.map((item) => ({ ...item, key: resolve(item.key), value: resolve(item.value) }))
+      const resolvedTab: Tab = {
+        ...tab,
+        url: resolve(tab.url),
+        params: resolveItems(tab.params),
+        headers: resolveItems(tab.headers),
+        pathVars: resolveItems(tab.pathVars),
+        bodyRaw: resolve(tab.bodyRaw),
+        bodyFormData: resolveItems(tab.bodyFormData),
+        bodyUrlencoded: resolveItems(tab.bodyUrlencoded),
+      }
+      const response = await sendRequest(resolvedTab)
       updateTab(tab.id, { response })
     } catch (err) {
       toast.error(err instanceof SendError ? err.message : "Unexpected error", {

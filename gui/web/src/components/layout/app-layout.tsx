@@ -3,11 +3,16 @@ import { Sidebar } from "./sidebar"
 import { TabBar } from "./tab-bar"
 import { RequestPane } from "./request-pane"
 import { ResponsePane } from "./response-pane"
+import { EnvPane } from "./env-pane"
 import { StatusBar } from "./status-bar"
 import { useUIStore } from "@/store/ui"
+import { useTabsStore } from "@/store/tabs"
 
 export function AppLayout() {
   const { sidebarCollapsed } = useUIStore()
+  const { tabs, activeTabId } = useTabsStore()
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const isEnvTab = activeTab?.type === "environment" || activeTab?.type === "globals"
 
   return (
     <div
@@ -25,7 +30,7 @@ export function AppLayout() {
           id="sidebar"
           defaultSize="20%"
           minSize={sidebarCollapsed ? "3%" : "12%"}
-          maxSize="40%"
+          maxSize={sidebarCollapsed ? "3%" : "40%"}
           style={{ borderRight: "1px solid var(--border)" }}
         >
           <Sidebar />
@@ -36,17 +41,23 @@ export function AppLayout() {
         <Panel id="main-content" style={{ overflow: "hidden" }}>
           <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
             <TabBar />
-            <Group id="content" orientation="vertical" style={{ flex: 1 }}>
-              <Panel id="request" defaultSize="45%" minSize="20%" style={{ overflow: "hidden" }}>
-                <RequestPane />
-              </Panel>
+            {isEnvTab ? (
+              <div style={{ flex: 1, overflow: "hidden" }}>
+                <EnvPane />
+              </div>
+            ) : (
+              <Group id="content" orientation="vertical" style={{ flex: 1 }}>
+                <Panel id="request" defaultSize="45%" minSize="20%" style={{ overflow: "hidden" }}>
+                  <RequestPane />
+                </Panel>
 
-              <Separator style={{ height: 3, background: "transparent" }} />
+                <Separator style={{ height: 3, background: "transparent" }} />
 
-              <Panel id="response" minSize="20%" style={{ overflow: "hidden" }}>
-                <ResponsePane />
-              </Panel>
-            </Group>
+                <Panel id="response" minSize="20%" style={{ overflow: "hidden" }}>
+                  <ResponsePane />
+                </Panel>
+              </Group>
+            )}
           </div>
         </Panel>
       </Group>

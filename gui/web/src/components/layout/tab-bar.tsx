@@ -2,7 +2,36 @@ import { useEffect, useRef, useState } from "react"
 
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
+import { useEnvironmentsStore } from "@/store/environments"
 import { useTabsStore, type Tab } from "@/store/tabs"
+
+function EnvTabBadge({ type }: { type: "environment" | "globals" }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinecap="round"
+      style={{ flexShrink: 0, color: type === "globals" ? "#a78bfa" : "#60a5fa" }}
+    >
+      <circle cx="8" cy="8" r="5.5" />
+      <ellipse cx="8" cy="8" rx="2.5" ry="5.5" />
+      <line x1="2.5" y1="8" x2="13.5" y2="8" />
+    </svg>
+  )
+}
+
+function useEnvTabLabel(tab: Tab): string {
+  const { environments } = useEnvironmentsStore()
+  if (tab.type === "globals") return "Globals"
+  if (tab.type === "environment" && tab.envId) {
+    return environments.find((e) => e.id === tab.envId)?.name ?? "Environment"
+  }
+  return "Environment"
+}
 
 function getTabTitle(url: string): string {
   if (!url) return "New Request"
@@ -114,6 +143,8 @@ function TabItem({
   onDragEnd: () => void
 }) {
   const { activateTab, closeTab } = useTabsStore()
+  const envLabel = useEnvTabLabel(tab)
+  const isEnvTab = tab.type === "environment" || tab.type === "globals"
   const methodColor = HTTP_METHOD_COLORS[tab.method]
 
   return (
@@ -147,20 +178,24 @@ function TabItem({
         boxShadow: dragOver ? "inset 2px 0 0 var(--accent)" : undefined,
       }}
     >
-      <span
-        style={{
-          fontSize: 9,
-          fontWeight: 700,
-          color: methodColor,
-          background: `${methodColor}1a`,
-          flexShrink: 0,
-          letterSpacing: "0.02em",
-          padding: "1px 4px",
-          borderRadius: 3,
-        }}
-      >
-        {tab.method}
-      </span>
+      {isEnvTab ? (
+        <EnvTabBadge type={tab.type as "environment" | "globals"} />
+      ) : (
+        <span
+          style={{
+            fontSize: 9,
+            fontWeight: 700,
+            color: methodColor,
+            background: `${methodColor}1a`,
+            flexShrink: 0,
+            letterSpacing: "0.02em",
+            padding: "1px 4px",
+            borderRadius: 3,
+          }}
+        >
+          {tab.method}
+        </span>
+      )}
       <span
         style={{
           fontSize: 11,
@@ -170,9 +205,9 @@ function TabItem({
           whiteSpace: "nowrap",
         }}
       >
-        {getTabTitle(tab.url)}
+        {isEnvTab ? envLabel : getTabTitle(tab.url)}
       </span>
-      {tab.dirty && (
+      {!isEnvTab && tab.dirty && (
         <span
           style={{
             width: 5,
