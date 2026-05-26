@@ -36,6 +36,7 @@ import { RequestPane } from "./request-pane"
 function makeTab(): Tab {
   return {
     id: crypto.randomUUID(),
+    type: "request",
     method: "GET",
     url: "",
     params: [],

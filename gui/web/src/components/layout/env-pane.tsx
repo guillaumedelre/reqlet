@@ -106,9 +106,7 @@ export function EnvPane() {
               minWidth: 0,
             }}
           />
-          <span style={{ fontSize: 11, color: "var(--fg-muted)", flexShrink: 0 }}>
-            Environment
-          </span>
+          <span style={{ fontSize: 11, color: "var(--fg-muted)", flexShrink: 0 }}>Environment</span>
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
           <VariableEditor

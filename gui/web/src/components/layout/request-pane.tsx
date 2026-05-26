@@ -917,8 +917,7 @@ export function RequestPane() {
     if (!tab || sending || !tab.url) return
     setSending(true)
     try {
-      const activeEnvVars =
-        environments.find((e) => e.id === activeEnvironmentId)?.variables ?? []
+      const activeEnvVars = environments.find((e) => e.id === activeEnvironmentId)?.variables ?? []
       const resolve = (s: string) => resolveVariables(s, globals, activeEnvVars)
       const resolveItems = (items: KeyValueItem[]) =>
         items.map((item) => ({ ...item, key: resolve(item.key), value: resolve(item.value) }))

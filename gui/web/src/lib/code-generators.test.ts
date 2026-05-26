@@ -5,6 +5,7 @@ import { generateCurl, generateGo, generateJavaScript, generatePython } from "./
 function makeTab(patch: Partial<Tab> = {}): Tab {
   return {
     id: "test",
+    type: "request",
     method: "GET",
     url: "https://api.example.com/users",
     params: [],

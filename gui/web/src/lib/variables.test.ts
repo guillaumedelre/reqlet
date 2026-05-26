@@ -30,9 +30,7 @@ describe("resolveVariables", () => {
 
   it("falls back to global when env does not define the variable", () => {
     const globals = [makeVar("base_url", "https://prod.example.com")]
-    expect(resolveVariables("{{base_url}}/path", globals, [])).toBe(
-      "https://prod.example.com/path",
-    )
+    expect(resolveVariables("{{base_url}}/path", globals, [])).toBe("https://prod.example.com/path")
   })
 
   it("skips disabled variables", () => {

@@ -124,7 +124,9 @@ describe("globals", () => {
   it("updates a global variable", () => {
     useEnvironmentsStore.getState().addGlobal()
     const varId = useEnvironmentsStore.getState().globals[0].id
-    useEnvironmentsStore.getState().updateGlobal(varId, { key: "base_url", currentValue: "http://localhost" })
+    useEnvironmentsStore
+      .getState()
+      .updateGlobal(varId, { key: "base_url", currentValue: "http://localhost" })
     const g = useEnvironmentsStore.getState().globals[0]
     expect(g.key).toBe("base_url")
     expect(g.currentValue).toBe("http://localhost")

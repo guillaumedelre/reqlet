@@ -25,6 +25,7 @@ const makeResponse = (patch: Partial<ResponseData> = {}): ResponseData => ({
 beforeEach(() => {
   const tab = {
     id: "t1",
+    type: "request" as const,
     method: "GET" as const,
     url: "https://api.example.com/data",
     params: [],

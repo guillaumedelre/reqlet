@@ -94,8 +94,7 @@ export const useEnvironmentsStore = create<EnvironmentsState>()(
           globals: s.globals.map((v) => (v.id === varId ? { ...v, ...patch } : v)),
         })),
 
-      removeGlobal: (varId) =>
-        set((s) => ({ globals: s.globals.filter((v) => v.id !== varId) })),
+      removeGlobal: (varId) => set((s) => ({ globals: s.globals.filter((v) => v.id !== varId) })),
     }),
     { name: "reqlet-environments", version: 1 },
   ),

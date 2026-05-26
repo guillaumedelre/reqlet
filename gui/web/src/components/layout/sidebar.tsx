@@ -314,51 +314,51 @@ export function Sidebar() {
 
   return (
     <aside style={{ height: "100%", display: "flex", background: "var(--bg-sidebar)" }}>
-        {/* Icon rail */}
-        <div
-          style={{
-            width: 40,
-            flexShrink: 0,
-            display: "flex",
-            flexDirection: "column",
-            borderRight: sidebarCollapsed ? "none" : "1px solid var(--border)",
-            paddingTop: 4,
-          }}
+      {/* Icon rail */}
+      <div
+        style={{
+          width: 40,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          borderRight: sidebarCollapsed ? "none" : "1px solid var(--border)",
+          paddingTop: 4,
+        }}
+      >
+        <RailButton
+          section="collections"
+          activeSection={sidebarSection}
+          title="Collections"
+          onClick={() => handleSectionClick("collections")}
         >
-          <RailButton
-            section="collections"
-            activeSection={sidebarSection}
-            title="Collections"
-            onClick={() => handleSectionClick("collections")}
-          >
-            <IconCollections active={sidebarSection === "collections"} />
-          </RailButton>
-          <RailButton
-            section="environments"
-            activeSection={sidebarSection}
-            title="Environments"
-            onClick={() => handleSectionClick("environments")}
-          >
-            <IconEnvironments active={sidebarSection === "environments"} />
-          </RailButton>
-          <RailButton
-            section="history"
-            activeSection={sidebarSection}
-            title="History"
-            onClick={() => handleSectionClick("history")}
-          >
-            <IconHistory active={sidebarSection === "history"} />
-          </RailButton>
-        </div>
+          <IconCollections active={sidebarSection === "collections"} />
+        </RailButton>
+        <RailButton
+          section="environments"
+          activeSection={sidebarSection}
+          title="Environments"
+          onClick={() => handleSectionClick("environments")}
+        >
+          <IconEnvironments active={sidebarSection === "environments"} />
+        </RailButton>
+        <RailButton
+          section="history"
+          activeSection={sidebarSection}
+          title="History"
+          onClick={() => handleSectionClick("history")}
+        >
+          <IconHistory active={sidebarSection === "history"} />
+        </RailButton>
+      </div>
 
-        {/* Section content */}
-        {!sidebarCollapsed && (
-          <div style={{ flex: 1, overflow: "hidden" }}>
-            {sidebarSection === "collections" && <CollectionsPanel />}
-            {sidebarSection === "environments" && <EnvironmentsPanel />}
-            {sidebarSection === "history" && <HistoryPanel />}
-          </div>
-        )}
+      {/* Section content */}
+      {!sidebarCollapsed && (
+        <div style={{ flex: 1, overflow: "hidden" }}>
+          {sidebarSection === "collections" && <CollectionsPanel />}
+          {sidebarSection === "environments" && <EnvironmentsPanel />}
+          {sidebarSection === "history" && <HistoryPanel />}
+        </div>
+      )}
     </aside>
   )
 }
