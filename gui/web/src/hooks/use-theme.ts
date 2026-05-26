@@ -1,17 +1,28 @@
-import { createContext, useContext } from "react"
+import { useEffect, useState } from 'react';
 
-export type Theme = "light" | "dark" | "system"
+type Theme = 'light' | 'dark';
 
-export interface ThemeContextValue {
-  theme: Theme
-  setTheme: (theme: Theme) => void
+function readTheme(): Theme {
+  if (typeof window === 'undefined') return 'dark';
+  const stored = localStorage.getItem('reqlet-theme') as Theme | null;
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-export const ThemeContext = createContext<ThemeContextValue>({
-  theme: "system",
-  setTheme: () => {},
-})
-
 export function useTheme() {
-  return useContext(ThemeContext)
+  const [theme, setTheme] = useState<Theme>(readTheme);
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (theme === 'dark') {
+      html.classList.add('dark');
+    } else {
+      html.classList.remove('dark');
+    }
+    localStorage.setItem('reqlet-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
+
+  return { theme, setTheme, toggleTheme, isDark: theme === 'dark' };
 }

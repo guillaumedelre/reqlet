@@ -55,6 +55,9 @@ dist/reqlet-cli*
 *.swp
 *.swo
 
+# Claude Code
+.mcp.json
+
 # OS
 .DS_Store
 ._*

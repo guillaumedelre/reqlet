@@ -1,14 +1,14 @@
-import { Toaster } from "sonner"
-import { ThemeProvider } from "@/components/theme-provider"
-import { AppLayout } from "@/components/layout/app-layout"
-import { SearchModal } from "@/components/search-modal"
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { Toaster } from '@/components/ui/sonner';
+import { AppLayout } from '@/components/layout/app-layout';
+import { useTheme } from '@/hooks/use-theme';
 
-export function App() {
+export default function App() {
+  useTheme();
   return (
-    <ThemeProvider>
+    <TooltipProvider delayDuration={400} skipDelayDuration={100}>
       <AppLayout />
-      <SearchModal />
-      <Toaster position="bottom-right" richColors />
-    </ThemeProvider>
-  )
+      <Toaster position="bottom-right" />
+    </TooltipProvider>
+  );
 }

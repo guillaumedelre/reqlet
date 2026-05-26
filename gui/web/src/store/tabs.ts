@@ -1,275 +1,75 @@
-import { create } from "zustand"
-import { persist } from "zustand/middleware"
+import { create } from 'zustand';
+import type { Tab, HttpMethod, RequestItem } from '@/types';
 
-export type TabType = "request" | "environment" | "globals"
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab =
-  | "Params"
-  | "Auth"
-  | "Headers"
-  | "Body"
-  | "Pre-request Script"
-  | "Tests"
-  | "Settings"
-  | "Code"
-export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
-export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
+let _seq = 1;
+function nextId(): string { return `tab-${_seq++}`; }
 
-export interface KeyValueItem {
-  id: string
-  key: string
-  value: string
-  enabled: boolean
-  type?: "text" | "file"
-}
-
-export interface HttpTimings {
-  dns: number
-  tcp: number
-  tls: number
-  ttfb: number
-  download: number
-}
-
-export interface ResponseData {
-  status: number
-  statusText: string
-  time: number
-  size: number
-  headers: Record<string, string>
-  body: string
-  contentType: string
-  timings?: HttpTimings
-}
-
-export interface Tab {
-  id: string
-  type: TabType
-  envId?: string
-  method: HttpMethod
-  url: string
-  params: KeyValueItem[]
-  headers: KeyValueItem[]
-  pathVars: KeyValueItem[]
-  bodyType: BodyType
-  bodyRaw: string
-  bodyRawContentType: RawContentType
-  bodyFormData: KeyValueItem[]
-  bodyUrlencoded: KeyValueItem[]
-  response: ResponseData | null
-  dirty: boolean
-  activeSubTab: RequestSubTab
-  preRequestScript: string
-  testScript: string
-  followRedirects: boolean
-  followOriginalMethod: boolean
-  followAuthorizationHeader: boolean
-  removeRefererOnRedirect: boolean
-  maxRedirects: number
-  sslVerification: boolean
-  encodeUrl: boolean
-  disableCookieJar: boolean
-  httpVersion: "auto" | "http1" | "http2"
-  timeout: number
-  ignoreProxy: boolean
-}
-
-function newTab(patch?: Partial<Tab>): Tab {
-  return {
-    id: crypto.randomUUID(),
-    type: "request",
-    envId: undefined,
-    method: "GET",
-    url: "",
-    params: [],
-    headers: [],
-    pathVars: [],
-    bodyType: "none",
-    bodyRaw: "",
-    bodyRawContentType: "JSON",
-    bodyFormData: [],
-    bodyUrlencoded: [],
-    response: null,
-    dirty: false,
-    activeSubTab: "Params",
-    preRequestScript: "",
-    testScript: "",
-    followRedirects: true,
-    followOriginalMethod: false,
-    followAuthorizationHeader: false,
-    removeRefererOnRedirect: false,
-    maxRedirects: 0,
-    sslVerification: true,
-    encodeUrl: true,
-    disableCookieJar: false,
-    httpVersion: "http1",
-    timeout: 0,
-    ignoreProxy: false,
-    ...patch,
-  }
-}
+const INITIAL_TAB: Tab = {
+  id: 'tab-0',
+  type: 'request',
+  title: 'New Request',
+  method: 'GET',
+  dirty: false,
+};
 
 interface TabsState {
-  tabs: Tab[]
-  activeTabId: string | null
-  closedTabHistory: Tab[]
-  openTab: () => void
-  closeTab: (id: string) => void
-  closeOthers: (id: string) => void
-  closeToRight: (id: string) => void
-  activateTab: (id: string) => void
-  duplicateTab: (id: string) => void
-  reopenLastTab: () => void
-  reorderTabs: (fromId: string, toId: string) => void
-  updateTab: (id: string, patch: Partial<Omit<Tab, "id">>) => void
-  openEnvTab: (envId: string) => void
-  openGlobalsTab: () => void
+  tabs: Tab[];
+  activeTabId: string;
+  setActiveTab: (id: string) => void;
+  openRequestTab: (request: RequestItem) => void;
+  openNewTab: () => void;
+  closeTab: (id: string) => void;
+  updateTab: (id: string, patch: Partial<Tab>) => void;
 }
 
-const initial = newTab()
+export const useTabsStore = create<TabsState>((set, get) => ({
+  tabs: [INITIAL_TAB],
+  activeTabId: INITIAL_TAB.id,
 
-export const useTabsStore = create<TabsState>()(
-  persist(
-    (set) => ({
-      tabs: [initial],
-      activeTabId: initial.id,
-      closedTabHistory: [],
+  setActiveTab: (id) => set({ activeTabId: id }),
 
-      openTab: () =>
-        set((s) => {
-          const tab = newTab()
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
+  openRequestTab: (request: RequestItem) => {
+    const { tabs } = get();
+    const existing = tabs.find((t) => t.requestId === request.id);
+    if (existing) {
+      set({ activeTabId: existing.id });
+      return;
+    }
+    const tab: Tab = {
+      id: nextId(),
+      type: 'request',
+      title: request.name,
+      method: request.method as HttpMethod,
+      dirty: false,
+      requestId: request.id,
+    };
+    set({ tabs: [...tabs, tab], activeTabId: tab.id });
+  },
 
-      closeTab: (id) =>
-        set((s) => {
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          if (idx === -1) return s
-          const closed = s.tabs[idx]
-          const remaining = s.tabs.filter((t) => t.id !== id)
-          const history = [closed, ...s.closedTabHistory].slice(0, 20)
-          if (remaining.length === 0) {
-            const tab = newTab()
-            return { tabs: [tab], activeTabId: tab.id, closedTabHistory: history }
-          }
-          let activeTabId = s.activeTabId
-          if (activeTabId === id) {
-            activeTabId = (remaining[idx] ?? remaining[idx - 1]).id
-          }
-          return { tabs: remaining, activeTabId, closedTabHistory: history }
-        }),
+  openNewTab: () => {
+    const tab: Tab = {
+      id: nextId(),
+      type: 'request',
+      title: 'New Request',
+      method: 'GET',
+      dirty: false,
+    };
+    set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }));
+  },
 
-      closeOthers: (id) =>
-        set((s) => {
-          const tab = s.tabs.find((t) => t.id === id)
-          if (!tab) return s
-          const closing = s.tabs.filter((t) => t.id !== id)
-          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
-          return { tabs: [tab], activeTabId: id, closedTabHistory: history }
-        }),
+  closeTab: (id) => {
+    const { tabs, activeTabId } = get();
+    const idx = tabs.findIndex((t) => t.id === id);
+    const remaining = tabs.filter((t) => t.id !== id);
+    if (remaining.length === 0) {
+      const blank: Tab = { id: nextId(), type: 'request', title: 'New Request', method: 'GET', dirty: false };
+      set({ tabs: [blank], activeTabId: blank.id });
+      return;
+    }
+    const nextActive = activeTabId === id ? remaining[Math.min(idx, remaining.length - 1)].id : activeTabId;
+    set({ tabs: remaining, activeTabId: nextActive });
+  },
 
-      closeToRight: (id) =>
-        set((s) => {
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          if (idx === -1 || idx === s.tabs.length - 1) return s
-          const closing = s.tabs.slice(idx + 1)
-          const remaining = s.tabs.slice(0, idx + 1)
-          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
-          const activeTabId = remaining.find((t) => t.id === s.activeTabId)
-            ? s.activeTabId
-            : remaining[remaining.length - 1].id
-          return { tabs: remaining, activeTabId, closedTabHistory: history }
-        }),
-
-      activateTab: (id) => set({ activeTabId: id }),
-
-      duplicateTab: (id) =>
-        set((s) => {
-          const source = s.tabs.find((t) => t.id === id)
-          if (!source) return s
-          const dup = { ...source, id: crypto.randomUUID(), response: null }
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          const tabs = [...s.tabs.slice(0, idx + 1), dup, ...s.tabs.slice(idx + 1)]
-          return { tabs, activeTabId: dup.id }
-        }),
-
-      reopenLastTab: () =>
-        set((s) => {
-          const [tab, ...rest] = s.closedTabHistory
-          if (!tab) return s
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id, closedTabHistory: rest }
-        }),
-
-      reorderTabs: (fromId, toId) =>
-        set((s) => {
-          const fromIdx = s.tabs.findIndex((t) => t.id === fromId)
-          const toIdx = s.tabs.findIndex((t) => t.id === toId)
-          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return s
-          const tabs = [...s.tabs]
-          const [moved] = tabs.splice(fromIdx, 1)
-          tabs.splice(toIdx, 0, moved)
-          return { tabs }
-        }),
-
-      updateTab: (id, patch) =>
-        set((s) => ({
-          tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-        })),
-
-      openEnvTab: (envId) =>
-        set((s) => {
-          const existing = s.tabs.find((t) => t.type === "environment" && t.envId === envId)
-          if (existing) return { activeTabId: existing.id }
-          const tab = newTab({ type: "environment", envId })
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
-
-      openGlobalsTab: () =>
-        set((s) => {
-          const existing = s.tabs.find((t) => t.type === "globals")
-          if (existing) return { activeTabId: existing.id }
-          const tab = newTab({ type: "globals" })
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
-    }),
-    {
-      name: "reqlet-tabs",
-      version: 10,
-      migrate(persisted: unknown) {
-        const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
-        return {
-          ...s,
-          tabs: (s.tabs ?? []).map((t: unknown) => ({
-            type: "request",
-            envId: undefined,
-            params: [],
-            headers: [],
-            pathVars: [],
-            bodyType: "none",
-            bodyRaw: "",
-            bodyRawContentType: "JSON",
-            bodyFormData: [],
-            bodyUrlencoded: [],
-            dirty: false,
-            activeSubTab: "Params",
-            response: null,
-            preRequestScript: "",
-            testScript: "",
-            followRedirects: true,
-            followOriginalMethod: false,
-            followAuthorizationHeader: false,
-            removeRefererOnRedirect: false,
-            maxRedirects: 0,
-            sslVerification: true,
-            encodeUrl: true,
-            disableCookieJar: false,
-            httpVersion: "http1",
-            timeout: 0,
-            ignoreProxy: false,
-            ...(t as object),
-          })),
-        }
-      },
-    },
-  ),
-)
+  updateTab: (id, patch) =>
+    set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+}));

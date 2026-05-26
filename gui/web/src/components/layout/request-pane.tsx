@@ -1,1112 +1,565 @@
-import { useEffect, useRef, useState } from "react"
-import { toast } from "sonner"
+import { useEffect, useState, useCallback } from 'react';
+import { Send, Plus, Trash2, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Separator } from '@/components/ui/separator';
+import { MethodBadge } from '@/components/method-badge';
+import { cn } from '@/lib/utils';
+import { HTTP_METHODS } from '@/lib/http';
+import { useTabsStore } from '@/store/tabs';
+import { useUiStore } from '@/store/ui';
+import { useWorkspaceStore } from '@/store/workspace';
+import type { HttpMethod, KeyValuePair, RequestBody, AuthConfig, RawContentType } from '@/types';
 
-import { CodeEditor } from "@/components/ui/code-editor"
-import { KeyValueEditor } from "@/components/ui/key-value-editor"
-import { SendError, sendRequest } from "@/lib/backend"
-import { generateCode, type CodeLanguage } from "@/lib/code-generators"
-import { HTTP_HEADER_NAMES } from "@/lib/http-headers"
-import { HTTP_METHOD_COLORS } from "@/lib/http-methods"
-import { assembleUrl, extractPathVarNames, mergeParams, mergePathVars, parseUrl } from "@/lib/url"
-import { resolveVariables } from "@/lib/variables"
-import { useEnvironmentsStore } from "@/store/environments"
-import {
-  useTabsStore,
-  type BodyType,
-  type HttpMethod,
-  type KeyValueItem,
-  type RawContentType,
-  type RequestSubTab,
-  type Tab,
-} from "@/store/tabs"
-const RAW_CONTENT_TYPE_TO_MONACO: Record<RawContentType, string> = {
-  JSON: "json",
-  XML: "xml",
-  HTML: "html",
-  JavaScript: "javascript",
-  Text: "plaintext",
+// ---------- Key-Value Table ----------
+
+interface KVRow {
+  kv: KeyValuePair;
+  onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void;
+  onDelete: (id: string) => void;
 }
 
-const CODE_LANG_TO_MONACO: Record<CodeLanguage, string> = {
-  cURL: "shell",
-  Python: "python",
-  JavaScript: "javascript",
-  Go: "go",
-}
-
-const HTTP_METHODS: HttpMethod[] = ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]
-const REQUEST_TABS: RequestSubTab[] = [
-  "Params",
-  "Auth",
-  "Headers",
-  "Body",
-  "Pre-request Script",
-  "Tests",
-  "Settings",
-  "Code",
-]
-const CODE_LANGUAGES: CodeLanguage[] = ["cURL", "Python", "JavaScript", "Go"]
-const BODY_TYPES: BodyType[] = ["none", "form-data", "urlencoded", "raw", "binary", "GraphQL"]
-const RAW_CONTENT_TYPES: RawContentType[] = ["JSON", "XML", "Text", "HTML", "JavaScript"]
-
-function MethodSelect({
-  value,
-  onChange,
-}: {
-  value: HttpMethod
-  onChange: (m: HttpMethod) => void
-}) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    function onMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onMouseDown)
-    return () => document.removeEventListener("mousedown", onMouseDown)
-  }, [open])
-
+function KVRow({ kv, onChange, onDelete }: KVRow) {
   return (
-    <div ref={ref} style={{ position: "relative", flexShrink: 0 }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "3px 6px 3px 8px",
-          fontSize: 11,
-          fontWeight: 700,
-          borderRadius: 4,
-          border: "1px solid var(--border)",
-          background: "var(--bg)",
-          color: HTTP_METHOD_COLORS[value],
-          cursor: "pointer",
-          minWidth: 80,
-        }}
-      >
-        <span style={{ flex: 1 }}>{value}</span>
-        <span style={{ color: "var(--fg-muted)", fontSize: 9, lineHeight: 1 }}>▾</span>
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            top: "calc(100% + 3px)",
-            left: 0,
-            zIndex: 100,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            minWidth: 110,
-          }}
-        >
-          {HTTP_METHODS.map((m) => (
-            <button
-              key={m}
-              onClick={() => {
-                onChange(m)
-                setOpen(false)
-              }}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "5px 10px",
-                border: "none",
-                background: m === value ? `${HTTP_METHOD_COLORS[m]}1a` : "transparent",
-                color: HTTP_METHOD_COLORS[m],
-                fontWeight: 700,
-                fontSize: 11,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              {m}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-const sectionLabelStyle: React.CSSProperties = {
-  padding: "5px 8px 3px",
-  fontSize: 10,
-  fontWeight: 600,
-  color: "var(--fg-muted)",
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-}
-
-function bodyTypeLabel(t: BodyType): string {
-  if (t === "urlencoded") return "x-www-form-urlencoded"
-  return t
-}
-
-function BodyEditor({
-  bodyType,
-  bodyRaw,
-  bodyRawContentType,
-  bodyFormData,
-  bodyUrlencoded,
-  formDataBulkMode,
-  urlencodedBulkMode,
-  onBodyTypeChange,
-  onBodyRawChange,
-  onBodyRawContentTypeChange,
-  onBodyFormDataChange,
-  onBodyUrlencodedChange,
-  onFormDataBulkModeChange,
-  onUrlencodedBulkModeChange,
-}: {
-  bodyType: BodyType
-  bodyRaw: string
-  bodyRawContentType: RawContentType
-  bodyFormData: KeyValueItem[]
-  bodyUrlencoded: KeyValueItem[]
-  formDataBulkMode: boolean
-  urlencodedBulkMode: boolean
-  onBodyTypeChange: (t: BodyType) => void
-  onBodyRawChange: (v: string) => void
-  onBodyRawContentTypeChange: (t: RawContentType) => void
-  onBodyFormDataChange: (items: KeyValueItem[]) => void
-  onBodyUrlencodedChange: (items: KeyValueItem[]) => void
-  onFormDataBulkModeChange: (v: boolean) => void
-  onUrlencodedBulkModeChange: (v: boolean) => void
-}) {
-  const typeBtn = (t: BodyType): React.CSSProperties => ({
-    fontSize: 11,
-    border: "none",
-    background: bodyType === t ? "var(--bg)" : "transparent",
-    color: bodyType === t ? "var(--fg)" : "var(--fg-muted)",
-    cursor: "pointer",
-    padding: "4px 8px",
-    borderRadius: 3,
-  })
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 2,
-          padding: "4px 8px",
-          borderBottom: "1px solid var(--border)",
-          flexWrap: "wrap",
-        }}
-      >
-        {BODY_TYPES.map((t) => (
-          <button key={t} onClick={() => onBodyTypeChange(t)} style={typeBtn(t)}>
-            {bodyTypeLabel(t)}
-          </button>
-        ))}
-        {bodyType === "raw" && (
-          <div
-            style={{
-              marginLeft: "auto",
-              display: "flex",
-              gap: 1,
-              background: "var(--bg-sidebar)",
-              borderRadius: 3,
-              padding: 2,
-            }}
-          >
-            {RAW_CONTENT_TYPES.map((ct) => (
-              <button
-                key={ct}
-                onClick={() => onBodyRawContentTypeChange(ct)}
-                style={{
-                  fontSize: 10,
-                  border: "none",
-                  cursor: "pointer",
-                  padding: "2px 6px",
-                  borderRadius: 2,
-                  background: bodyRawContentType === ct ? "var(--bg)" : "transparent",
-                  color: bodyRawContentType === ct ? "var(--fg)" : "var(--fg-muted)",
-                }}
-              >
-                {ct}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {bodyType === "none" && (
-        <div style={{ padding: 16 }}>
-          <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>This request has no body.</p>
-        </div>
-      )}
-
-      {bodyType === "raw" && (
-        <div style={{ flex: 1, overflow: "hidden" }}>
-          <CodeEditor
-            value={bodyRaw}
-            onChange={onBodyRawChange}
-            language={RAW_CONTENT_TYPE_TO_MONACO[bodyRawContentType]}
-          />
-        </div>
-      )}
-
-      {bodyType === "form-data" && (
-        <KeyValueEditor
-          key="kve-form-data"
-          items={bodyFormData}
-          onChange={onBodyFormDataChange}
-          keyPlaceholder="Key"
-          valuePlaceholder="Value"
-          allowFileType
-          allowBulkEdit
-          defaultBulkMode={formDataBulkMode}
-          onBulkModeChange={onFormDataBulkModeChange}
-        />
-      )}
-
-      {bodyType === "urlencoded" && (
-        <KeyValueEditor
-          key="kve-urlencoded"
-          items={bodyUrlencoded}
-          onChange={onBodyUrlencodedChange}
-          keyPlaceholder="Key"
-          valuePlaceholder="Value"
-          allowBulkEdit
-          defaultBulkMode={urlencodedBulkMode}
-          onBulkModeChange={onUrlencodedBulkModeChange}
-        />
-      )}
-
-      {(bodyType === "binary" || bodyType === "GraphQL") && (
-        <div style={{ padding: 16 }}>
-          <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>
-            {bodyTypeLabel(bodyType)} — coming soon.
-          </p>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function CodePanel({ tab }: { tab: Tab }) {
-  const [codeLang, setCodeLang] = useState<CodeLanguage>("cURL")
-  const [copied, setCopied] = useState(false)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(generateCode(tab, codeLang))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "4px 8px",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        {CODE_LANGUAGES.map((lang) => (
-          <button
-            key={lang}
-            onClick={() => setCodeLang(lang)}
-            style={{
-              fontSize: 11,
-              border: "none",
-              background: codeLang === lang ? "var(--bg)" : "transparent",
-              color: codeLang === lang ? "var(--fg)" : "var(--fg-muted)",
-              cursor: "pointer",
-              padding: "4px 8px",
-              borderRadius: 3,
-            }}
-          >
-            {lang}
-          </button>
-        ))}
-        <button
-          onClick={handleCopy}
-          style={{
-            marginLeft: "auto",
-            fontSize: 11,
-            border: "1px solid var(--border)",
-            borderRadius: 3,
-            background: "transparent",
-            color: copied ? "var(--accent)" : "var(--fg-muted)",
-            cursor: "pointer",
-            padding: "2px 8px",
-          }}
-        >
-          {copied ? "Copied!" : "Copy"}
-        </button>
-      </div>
-      <div style={{ flex: 1, overflow: "hidden" }}>
-        <CodeEditor
-          value={generateCode(tab, codeLang)}
-          language={CODE_LANG_TO_MONACO[codeLang]}
-          readOnly
-        />
-      </div>
-    </div>
-  )
-}
-
-function ScriptPanel({
-  value,
-  onChange,
-  eventName,
-}: {
-  value: string
-  onChange: (v: string) => void
-  eventName: "prerequest" | "test"
-}) {
-  const hint =
-    eventName === "prerequest"
-      ? "// Runs before the request is sent.\n// pm.environment.set('token', '...')\n// pm.request.headers.add({ key: 'X-Custom', value: '...' })"
-      : "// Runs after the response is received.\n// pm.test('Status is 200', () => pm.expect(pm.response.code).to.equal(200))"
-  return (
-    <div style={{ flex: 1, overflow: "hidden" }}>
-      <CodeEditor
-        value={value || hint}
-        onChange={(v) => onChange(v === hint ? "" : v)}
-        language="javascript"
+    <div className="group flex items-center gap-1 px-2 py-0.5 hover:bg-muted/30 rounded transition-colors">
+      <Checkbox
+        checked={kv.enabled}
+        onCheckedChange={(v) => onChange(kv.id, 'enabled', !!v)}
+        className="h-3 w-3 shrink-0"
       />
+      <Input
+        value={kv.key}
+        onChange={(e) => onChange(kv.id, 'key', e.target.value)}
+        placeholder="Key"
+        className="h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+      />
+      <Input
+        value={kv.value}
+        onChange={(e) => onChange(kv.id, 'value', e.target.value)}
+        placeholder="Value"
+        className="h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+      />
+      <button
+        onClick={() => onDelete(kv.id)}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-0.5 rounded"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
     </div>
-  )
+  );
 }
 
-function SettingsCheckbox({ checked }: { checked: boolean }) {
+function KVTable({
+  pairs,
+  onChange,
+  onDelete,
+  onAdd,
+}: {
+  pairs: KeyValuePair[];
+  onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+}) {
   return (
-    <div
-      style={{
-        width: 15,
-        height: 15,
-        borderRadius: 3,
-        border: checked ? "none" : "1.5px solid var(--border)",
-        background: checked ? "var(--accent)" : "transparent",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        pointerEvents: "none",
-      }}
-    >
-      {checked && (
-        <svg width="10" height="7" viewBox="0 0 10 7" fill="none">
-          <path
-            d="M1 3.5L3.5 6L9 1"
-            stroke="white"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+        <span className="w-4 shrink-0" />
+        <span className="flex-1">Key</span>
+        <span className="flex-1">Value</span>
+        <span className="w-5 shrink-0" />
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="py-1">
+          {pairs.map((kv) => (
+            <KVRow key={kv.id} kv={kv} onChange={onChange} onDelete={onDelete} />
+          ))}
+          <div className="px-2 pt-1">
+            <button
+              onClick={onAdd}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Add row
+            </button>
+          </div>
+        </div>
+      </ScrollArea>
+    </div>
+  );
+}
+
+// ---------- Auth Tab ----------
+
+function AuthTab({ auth, onChange }: { auth: AuthConfig; onChange: (a: AuthConfig) => void }) {
+  return (
+    <div className="p-3 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted-foreground w-16 shrink-0">Type</span>
+        <Select value={auth.type} onValueChange={(v) => onChange({ ...auth, type: v as AuthConfig['type'] })}>
+          <SelectTrigger className="h-7 text-xs w-52">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="inherit" className="text-xs">Inherit from parent</SelectItem>
+            <SelectItem value="none" className="text-xs">No Auth</SelectItem>
+            <SelectItem value="bearer" className="text-xs">Bearer Token</SelectItem>
+            <SelectItem value="basic" className="text-xs">Basic Auth</SelectItem>
+            <SelectItem value="api-key" className="text-xs">API Key</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {auth.type === 'bearer' && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground w-16 shrink-0">Token</span>
+          <Input
+            value={auth.bearer?.token ?? ''}
+            onChange={(e) => onChange({ ...auth, bearer: { token: e.target.value } })}
+            placeholder="{{accessToken}}"
+            className="h-7 text-xs flex-1"
           />
-        </svg>
+        </div>
+      )}
+
+      {auth.type === 'basic' && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-16 shrink-0">Username</span>
+            <Input
+              value={auth.basic?.username ?? ''}
+              onChange={(e) => onChange({ ...auth, basic: { ...auth.basic, username: e.target.value, password: auth.basic?.password ?? '' } })}
+              className="h-7 text-xs flex-1"
+            />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-16 shrink-0">Password</span>
+            <Input
+              type="password"
+              value={auth.basic?.password ?? ''}
+              onChange={(e) => onChange({ ...auth, basic: { ...auth.basic, password: e.target.value, username: auth.basic?.username ?? '' } })}
+              className="h-7 text-xs flex-1"
+            />
+          </div>
+        </>
+      )}
+
+      {auth.type === 'api-key' && (
+        <>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-16 shrink-0">Key</span>
+            <Input value={auth.apiKey?.key ?? ''} placeholder="X-API-Key" className="h-7 text-xs flex-1" onChange={(e) => onChange({ ...auth, apiKey: { ...auth.apiKey!, key: e.target.value } })} />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground w-16 shrink-0">Value</span>
+            <Input value={auth.apiKey?.value ?? ''} className="h-7 text-xs flex-1" onChange={(e) => onChange({ ...auth, apiKey: { ...auth.apiKey!, value: e.target.value } })} />
+          </div>
+        </>
+      )}
+
+      {(auth.type === 'inherit' || auth.type === 'none') && (
+        <p className="text-xs text-muted-foreground">
+          {auth.type === 'inherit'
+            ? 'Authorization will be inherited from the parent collection or folder.'
+            : 'No authorization will be sent with this request.'}
+        </p>
       )}
     </div>
-  )
+  );
 }
 
-function SubTabContent({
-  subTab,
-  params,
-  headers,
-  pathVars,
-  bodyType,
-  bodyRaw,
-  bodyRawContentType,
-  bodyFormData,
-  bodyUrlencoded,
-  paramsBulkMode,
-  headersBulkMode,
-  formDataBulkMode,
-  urlencodedBulkMode,
-  onParamsChange,
-  onHeadersChange,
-  onPathVarsChange,
-  onBodyTypeChange,
-  onBodyRawChange,
-  onBodyRawContentTypeChange,
-  onBodyFormDataChange,
-  onBodyUrlencodedChange,
-  onParamsBulkModeChange,
-  onHeadersBulkModeChange,
-  onFormDataBulkModeChange,
-  onUrlencodedBulkModeChange,
-  followRedirects,
-  followOriginalMethod,
-  followAuthorizationHeader,
-  removeRefererOnRedirect,
-  maxRedirects,
-  sslVerification,
-  encodeUrl,
-  disableCookieJar,
-  httpVersion,
-  timeout,
-  ignoreProxy,
-  onFollowRedirectsChange,
-  onFollowOriginalMethodChange,
-  onFollowAuthorizationHeaderChange,
-  onRemoveRefererOnRedirectChange,
-  onMaxRedirectsChange,
-  onSslVerificationChange,
-  onEncodeUrlChange,
-  onDisableCookieJarChange,
-  onHttpVersionChange,
-  onTimeoutChange,
-  onIgnoreProxyChange,
-}: {
-  subTab: RequestSubTab
-  params: KeyValueItem[]
-  headers: KeyValueItem[]
-  pathVars: KeyValueItem[]
-  bodyType: BodyType
-  bodyRaw: string
-  bodyRawContentType: RawContentType
-  bodyFormData: KeyValueItem[]
-  bodyUrlencoded: KeyValueItem[]
-  paramsBulkMode: boolean
-  headersBulkMode: boolean
-  formDataBulkMode: boolean
-  urlencodedBulkMode: boolean
-  onParamsChange: (items: KeyValueItem[]) => void
-  onHeadersChange: (items: KeyValueItem[]) => void
-  onPathVarsChange: (items: KeyValueItem[]) => void
-  onBodyTypeChange: (t: BodyType) => void
-  onBodyRawChange: (v: string) => void
-  onBodyRawContentTypeChange: (t: RawContentType) => void
-  onBodyFormDataChange: (items: KeyValueItem[]) => void
-  onBodyUrlencodedChange: (items: KeyValueItem[]) => void
-  onParamsBulkModeChange: (v: boolean) => void
-  onHeadersBulkModeChange: (v: boolean) => void
-  onFormDataBulkModeChange: (v: boolean) => void
-  onUrlencodedBulkModeChange: (v: boolean) => void
-  followRedirects: boolean
-  followOriginalMethod: boolean
-  followAuthorizationHeader: boolean
-  removeRefererOnRedirect: boolean
-  maxRedirects: number
-  sslVerification: boolean
-  encodeUrl: boolean
-  disableCookieJar: boolean
-  httpVersion: "auto" | "http1" | "http2"
-  timeout: number
-  ignoreProxy: boolean
-  onFollowRedirectsChange: (v: boolean) => void
-  onFollowOriginalMethodChange: (v: boolean) => void
-  onFollowAuthorizationHeaderChange: (v: boolean) => void
-  onRemoveRefererOnRedirectChange: (v: boolean) => void
-  onMaxRedirectsChange: (v: number) => void
-  onSslVerificationChange: (v: boolean) => void
-  onEncodeUrlChange: (v: boolean) => void
-  onDisableCookieJarChange: (v: boolean) => void
-  onHttpVersionChange: (v: "auto" | "http1" | "http2") => void
-  onTimeoutChange: (v: number) => void
-  onIgnoreProxyChange: (v: boolean) => void
-}) {
-  const [hoveredRow, setHoveredRow] = useState<string | null>(null)
+// ---------- Body Tab ----------
 
-  if (subTab === "Params") {
-    return (
-      <div style={{ overflowY: "auto", flex: 1 }}>
-        {pathVars.length > 0 && (
-          <>
-            <div style={sectionLabelStyle}>Path Variables</div>
-            <KeyValueEditor
-              items={pathVars}
-              onChange={onPathVarsChange}
-              valuePlaceholder="Value"
-              readOnlyKeys
+const RAW_TYPES: RawContentType[] = [
+  'application/json',
+  'application/xml',
+  'text/plain',
+  'text/html',
+  'application/javascript',
+];
+
+const RAW_TYPE_LABELS: Record<RawContentType, string> = {
+  'application/json': 'JSON',
+  'application/xml': 'XML',
+  'text/plain': 'Text',
+  'text/html': 'HTML',
+  'application/javascript': 'JavaScript',
+};
+
+function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestBody) => void }) {
+  return (
+    <div className="flex flex-col h-full">
+      {/* Type selector */}
+      <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border shrink-0">
+        {(['none', 'raw', 'form-data', 'x-www-form-urlencoded'] as const).map((t) => (
+          <label key={t} className="flex items-center gap-1.5 cursor-pointer">
+            <input
+              type="radio"
+              name="body-type"
+              checked={body.type === t}
+              onChange={() => onChange({ ...body, type: t })}
+              className="accent-primary h-3 w-3"
             />
-            <div
-              style={{ ...sectionLabelStyle, borderTop: "1px solid var(--border)", marginTop: 2 }}
+            <span className={cn('text-xs', body.type === t ? 'text-foreground' : 'text-muted-foreground')}>
+              {t}
+            </span>
+          </label>
+        ))}
+
+        {body.type === 'raw' && (
+          <>
+            <Separator orientation="vertical" className="h-4" />
+            <Select
+              value={body.rawContentType}
+              onValueChange={(v) => onChange({ ...body, rawContentType: v as RawContentType })}
             >
-              Query Params
-            </div>
+              <SelectTrigger className="h-5 w-28 text-[11px] border-0 bg-transparent p-0 gap-1 focus:ring-0">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {RAW_TYPES.map((t) => (
+                  <SelectItem key={t} value={t} className="text-xs">{RAW_TYPE_LABELS[t]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </>
         )}
-        <KeyValueEditor
-          key="kve-params"
-          items={params}
-          onChange={onParamsChange}
-          allowBulkEdit
-          defaultBulkMode={paramsBulkMode}
-          onBulkModeChange={onParamsBulkModeChange}
-        />
       </div>
-    )
-  }
-  if (subTab === "Headers") {
-    return (
-      <div style={{ overflowY: "auto", flex: 1 }}>
-        <KeyValueEditor
-          key="kve-headers"
-          items={headers}
-          onChange={onHeadersChange}
-          allowBulkEdit
-          defaultBulkMode={headersBulkMode}
-          onBulkModeChange={onHeadersBulkModeChange}
-          keyAutocomplete={HTTP_HEADER_NAMES}
-        />
-      </div>
-    )
-  }
-  if (subTab === "Body") {
-    return (
-      <BodyEditor
-        bodyType={bodyType}
-        bodyRaw={bodyRaw}
-        bodyRawContentType={bodyRawContentType}
-        bodyFormData={bodyFormData}
-        bodyUrlencoded={bodyUrlencoded}
-        formDataBulkMode={formDataBulkMode}
-        urlencodedBulkMode={urlencodedBulkMode}
-        onBodyTypeChange={onBodyTypeChange}
-        onBodyRawChange={onBodyRawChange}
-        onBodyRawContentTypeChange={onBodyRawContentTypeChange}
-        onBodyFormDataChange={onBodyFormDataChange}
-        onBodyUrlencodedChange={onBodyUrlencodedChange}
-        onFormDataBulkModeChange={onFormDataBulkModeChange}
-        onUrlencodedBulkModeChange={onUrlencodedBulkModeChange}
-      />
-    )
-  }
-  if (subTab === "Settings") {
-    const boolRow = (id: string): React.CSSProperties => ({
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "10px 12px",
-      borderBottom: "1px solid var(--border)",
-      cursor: "pointer",
-      userSelect: "none",
-      background: hoveredRow === id ? "var(--bg-sidebar)" : "transparent",
-      transition: "background 80ms",
-    })
-    const plainRowStyle: React.CSSProperties = {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      padding: "10px 12px",
-      borderBottom: "1px solid var(--border)",
-    }
-    const labelStyle: React.CSSProperties = { fontSize: 11, color: "var(--fg)" }
-    const descStyle: React.CSSProperties = { fontSize: 10, color: "var(--fg-muted)", marginTop: 2 }
-    const inputStyle: React.CSSProperties = {
-      padding: "3px 8px",
-      fontSize: 11,
-      border: "1px solid var(--border)",
-      borderRadius: 3,
-      background: "var(--bg)",
-      color: "var(--fg)",
-      outline: "none",
-    }
-    const HTTP_VERSIONS: { value: "auto" | "http1" | "http2"; label: string }[] = [
-      { value: "auto", label: "Auto" },
-      { value: "http1", label: "HTTP/1.x" },
-      { value: "http2", label: "HTTP/2" },
-    ]
-    return (
-      <div style={{ overflowY: "auto", flex: 1 }}>
-        {/* HTTP */}
-        <div style={plainRowStyle}>
-          <div>
-            <div style={labelStyle}>HTTP Version</div>
-            <div style={descStyle}>Protocol version used to send the request</div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-hidden">
+        {body.type === 'none' && (
+          <div className="h-full flex items-center justify-center">
+            <p className="text-xs text-muted-foreground">This request does not have a body</p>
           </div>
-          <div style={{ display: "flex", gap: 2 }}>
-            {HTTP_VERSIONS.map(({ value, label }) => (
-              <button
-                key={value}
-                onClick={() => onHttpVersionChange(value)}
-                style={{
-                  padding: "2px 8px",
-                  fontSize: 11,
-                  border: "1px solid var(--border)",
-                  borderRadius: 3,
-                  background: httpVersion === value ? "var(--accent)" : "var(--bg)",
-                  color: httpVersion === value ? "#fff" : "var(--fg-muted)",
-                  cursor: "pointer",
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div
-          style={boolRow("encode-url")}
-          onClick={() => onEncodeUrlChange(!encodeUrl)}
-          onMouseEnter={() => setHoveredRow("encode-url")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Encode URL Automatically</div>
-            <div style={descStyle}>Encode path, query parameters, and auth fields</div>
-          </div>
-          <SettingsCheckbox checked={encodeUrl} />
-        </div>
-        {/* Redirects */}
-        <div
-          style={boolRow("redirects")}
-          onClick={() => onFollowRedirectsChange(!followRedirects)}
-          onMouseEnter={() => setHoveredRow("redirects")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Follow Redirects</div>
-            <div style={descStyle}>Automatically follow 3xx HTTP redirects</div>
-          </div>
-          <SettingsCheckbox checked={followRedirects} />
-        </div>
-        <div
-          style={boolRow("original-method")}
-          onClick={() => onFollowOriginalMethodChange(!followOriginalMethod)}
-          onMouseEnter={() => setHoveredRow("original-method")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Follow Original HTTP Method</div>
-            <div style={descStyle}>Redirect with the original method instead of GET</div>
-          </div>
-          <SettingsCheckbox checked={followOriginalMethod} />
-        </div>
-        <div
-          style={boolRow("follow-auth")}
-          onClick={() => onFollowAuthorizationHeaderChange(!followAuthorizationHeader)}
-          onMouseEnter={() => setHoveredRow("follow-auth")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Follow Authorization Header</div>
-            <div style={descStyle}>
-              Retain the Authorization header when redirecting to a different hostname
-            </div>
-          </div>
-          <SettingsCheckbox checked={followAuthorizationHeader} />
-        </div>
-        <div
-          style={boolRow("remove-referer")}
-          onClick={() => onRemoveRefererOnRedirectChange(!removeRefererOnRedirect)}
-          onMouseEnter={() => setHoveredRow("remove-referer")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Remove Referer Header on Redirect</div>
-            <div style={descStyle}>Strip the Referer header when a redirect occurs</div>
-          </div>
-          <SettingsCheckbox checked={removeRefererOnRedirect} />
-        </div>
-        <div style={plainRowStyle}>
-          <div>
-            <div style={labelStyle}>Maximum Number of Redirects</div>
-            <div style={descStyle}>Cap on consecutive redirects — 0 means unlimited</div>
-          </div>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            value={String(maxRedirects)}
-            onChange={(e) => {
-              const raw = e.target.value.replace(/\D/g, "")
-              onMaxRedirectsChange(raw === "" ? 0 : parseInt(raw, 10))
+        )}
+        {body.type === 'raw' && (
+          <textarea
+            value={body.raw}
+            onChange={(e) => onChange({ ...body, raw: e.target.value })}
+            className="w-full h-full resize-none bg-transparent text-[12px] font-mono text-foreground p-3 focus:outline-none leading-relaxed"
+            spellCheck={false}
+            placeholder={body.rawContentType === 'application/json' ? '{\n  \n}' : ''}
+          />
+        )}
+        {(body.type === 'form-data' || body.type === 'x-www-form-urlencoded') && (
+          <KVTable
+            pairs={body.type === 'form-data' ? body.formData : body.urlencoded}
+            onChange={(id, field, value) => {
+              const key = body.type === 'form-data' ? 'formData' : 'urlencoded';
+              onChange({
+                ...body,
+                [key]: body[key].map((kv) => (kv.id === id ? { ...kv, [field]: value } : kv)),
+              });
             }}
-            style={{ ...inputStyle, width: 56, textAlign: "right" }}
-          />
-        </div>
-        {/* Security */}
-        <div
-          style={boolRow("ssl")}
-          onClick={() => onSslVerificationChange(!sslVerification)}
-          onMouseEnter={() => setHoveredRow("ssl")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>SSL Certificate Verification</div>
-            <div style={descStyle}>Reject requests with invalid or self-signed certificates</div>
-          </div>
-          <SettingsCheckbox checked={sslVerification} />
-        </div>
-        <div
-          style={boolRow("cookie-jar")}
-          onClick={() => onDisableCookieJarChange(!disableCookieJar)}
-          onMouseEnter={() => setHoveredRow("cookie-jar")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Disable Cookie Jar</div>
-            <div style={descStyle}>Cookies will not be stored or sent for this request</div>
-          </div>
-          <SettingsCheckbox checked={disableCookieJar} />
-        </div>
-        {/* Timeout */}
-        <div style={plainRowStyle}>
-          <div>
-            <div style={labelStyle}>Request Timeout</div>
-            <div style={descStyle}>Maximum wait time — 0 means no timeout</div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={String(timeout)}
-              onChange={(e) => {
-                const raw = e.target.value.replace(/\D/g, "")
-                onTimeoutChange(raw === "" ? 0 : parseInt(raw, 10))
-              }}
-              style={{ ...inputStyle, width: 72, textAlign: "right" }}
-            />
-            <span style={{ fontSize: 10, color: "var(--fg-muted)", width: 14 }}>ms</span>
-          </div>
-        </div>
-        {/* Proxy */}
-        <div
-          style={boolRow("ignore-proxy")}
-          onClick={() => onIgnoreProxyChange(!ignoreProxy)}
-          onMouseEnter={() => setHoveredRow("ignore-proxy")}
-          onMouseLeave={() => setHoveredRow(null)}
-        >
-          <div>
-            <div style={labelStyle}>Ignore Proxy Settings</div>
-            <div style={descStyle}>Bypass the global proxy configuration for this request</div>
-          </div>
-          <SettingsCheckbox checked={ignoreProxy} />
-        </div>
-      </div>
-    )
-  }
-  return (
-    <div style={{ padding: 12, overflowY: "auto", flex: 1 }}>
-      <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>{subTab} — coming soon.</p>
-    </div>
-  )
-}
-
-export function RequestPane() {
-  const { tabs, activeTabId, updateTab } = useTabsStore()
-  const { environments, globals, activeEnvironmentId } = useEnvironmentsStore()
-  const tab = tabs.find((t) => t.id === activeTabId)
-  const [sending, setSending] = useState(false)
-
-  type BulkModes = { params: boolean; headers: boolean; formData: boolean; urlencoded: boolean }
-  const defaultBulkModes: BulkModes = {
-    params: false,
-    headers: false,
-    formData: false,
-    urlencoded: false,
-  }
-  const [bulkModeMap, setBulkModeMap] = useState<Record<string, BulkModes>>({})
-  const tabId = tab?.id ?? ""
-  const bulkModes: BulkModes = bulkModeMap[tabId] ?? defaultBulkModes
-
-  function setBulkMode(key: keyof BulkModes, v: boolean) {
-    setBulkModeMap((prev) => ({
-      ...prev,
-      [tabId]: { ...(prev[tabId] ?? defaultBulkModes), [key]: v },
-    }))
-  }
-
-  if (!tab) {
-    return (
-      <div
-        style={{
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "var(--bg-panel)",
-        }}
-      >
-        <p style={{ fontSize: 11, color: "var(--fg-muted)" }}>No tab open.</p>
-      </div>
-    )
-  }
-
-  const displayUrl = assembleUrl(tab.url, tab.params)
-
-  function setMethod(method: HttpMethod) {
-    updateTab(tab!.id, { method, dirty: !!tab!.url })
-  }
-
-  function handleUrlChange(raw: string) {
-    const { base, params: parsed } = parseUrl(raw)
-    const params = mergeParams(tab!.params, parsed)
-    const pathVars = mergePathVars(tab!.pathVars, extractPathVarNames(base))
-    updateTab(tab!.id, { url: base, params, pathVars, dirty: !!raw })
-  }
-
-  function handleParamsChange(params: KeyValueItem[]) {
-    updateTab(tab!.id, { params, dirty: !!tab!.url || params.some((p) => !!p.key) })
-  }
-
-  function handleHeadersChange(headers: KeyValueItem[]) {
-    updateTab(tab!.id, { headers, dirty: !!tab!.url || headers.some((h) => !!h.key) })
-  }
-
-  function handlePathVarsChange(pathVars: KeyValueItem[]) {
-    updateTab(tab!.id, { pathVars })
-  }
-
-  function handleBodyTypeChange(bodyType: BodyType) {
-    updateTab(tab!.id, { bodyType, dirty: !!tab!.url || bodyType !== "none" })
-  }
-
-  function handleBodyRawChange(bodyRaw: string) {
-    updateTab(tab!.id, { bodyRaw, dirty: !!tab!.url || !!bodyRaw })
-  }
-
-  function handleBodyRawContentTypeChange(bodyRawContentType: RawContentType) {
-    updateTab(tab!.id, { bodyRawContentType })
-  }
-
-  function handleBodyFormDataChange(bodyFormData: KeyValueItem[]) {
-    updateTab(tab!.id, {
-      bodyFormData,
-      dirty: !!tab!.url || bodyFormData.some((f) => !!f.key),
-    })
-  }
-
-  function handleBodyUrlencodedChange(bodyUrlencoded: KeyValueItem[]) {
-    updateTab(tab!.id, {
-      bodyUrlencoded,
-      dirty: !!tab!.url || bodyUrlencoded.some((u) => !!u.key),
-    })
-  }
-
-  function handleFollowRedirectsChange(followRedirects: boolean) {
-    updateTab(tab!.id, { followRedirects })
-  }
-  function handleFollowOriginalMethodChange(followOriginalMethod: boolean) {
-    updateTab(tab!.id, { followOriginalMethod })
-  }
-  function handleFollowAuthorizationHeaderChange(followAuthorizationHeader: boolean) {
-    updateTab(tab!.id, { followAuthorizationHeader })
-  }
-  function handleRemoveRefererOnRedirectChange(removeRefererOnRedirect: boolean) {
-    updateTab(tab!.id, { removeRefererOnRedirect })
-  }
-  function handleMaxRedirectsChange(maxRedirects: number) {
-    updateTab(tab!.id, { maxRedirects })
-  }
-  function handleSslVerificationChange(sslVerification: boolean) {
-    updateTab(tab!.id, { sslVerification })
-  }
-  function handleEncodeUrlChange(encodeUrl: boolean) {
-    updateTab(tab!.id, { encodeUrl })
-  }
-  function handleDisableCookieJarChange(disableCookieJar: boolean) {
-    updateTab(tab!.id, { disableCookieJar })
-  }
-  function handleHttpVersionChange(httpVersion: "auto" | "http1" | "http2") {
-    updateTab(tab!.id, { httpVersion })
-  }
-  function handleTimeoutChange(timeout: number) {
-    updateTab(tab!.id, { timeout })
-  }
-  function handleIgnoreProxyChange(ignoreProxy: boolean) {
-    updateTab(tab!.id, { ignoreProxy })
-  }
-
-  async function handleSend() {
-    if (!tab || sending || !tab.url) return
-    setSending(true)
-    try {
-      const activeEnvVars = environments.find((e) => e.id === activeEnvironmentId)?.variables ?? []
-      const resolve = (s: string) => resolveVariables(s, globals, activeEnvVars)
-      const resolveItems = (items: KeyValueItem[]) =>
-        items.map((item) => ({ ...item, key: resolve(item.key), value: resolve(item.value) }))
-      const resolvedTab: Tab = {
-        ...tab,
-        url: resolve(tab.url),
-        params: resolveItems(tab.params),
-        headers: resolveItems(tab.headers),
-        pathVars: resolveItems(tab.pathVars),
-        bodyRaw: resolve(tab.bodyRaw),
-        bodyFormData: resolveItems(tab.bodyFormData),
-        bodyUrlencoded: resolveItems(tab.bodyUrlencoded),
-      }
-      const response = await sendRequest(resolvedTab)
-      updateTab(tab.id, { response })
-    } catch (err) {
-      toast.error(err instanceof SendError ? err.message : "Unexpected error", {
-        description: err instanceof SendError ? err.code : undefined,
-      })
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const enabledParamsCount = tab.params.filter((p) => p.enabled && p.key).length
-  const enabledHeadersCount = tab.headers.filter((h) => h.enabled && h.key).length
-  const hasBody =
-    tab.bodyType !== "none" &&
-    (tab.bodyRaw.trim() !== "" ||
-      tab.bodyFormData.some((f) => f.enabled && f.key) ||
-      tab.bodyUrlencoded.some((u) => u.enabled && u.key))
-
-  function subTabLabel(t: RequestSubTab): string {
-    if (t === "Params" && enabledParamsCount > 0) return `Params (${enabledParamsCount})`
-    if (t === "Headers" && enabledHeadersCount > 0) return `Headers (${enabledHeadersCount})`
-    if (t === "Body" && hasBody) return "Body ●"
-    return t
-  }
-
-  return (
-    <div
-      style={{
-        height: "100%",
-        display: "flex",
-        flexDirection: "column",
-        background: "var(--bg-panel)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 6,
-          padding: "6px 8px",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        <MethodSelect value={tab.method} onChange={setMethod} />
-        <input
-          value={displayUrl}
-          onChange={(e) => handleUrlChange(e.target.value)}
-          style={{
-            flex: 1,
-            padding: "3px 8px",
-            fontSize: 11,
-            borderRadius: 4,
-            border: "1px solid var(--border)",
-            background: "var(--bg)",
-            color: "var(--fg)",
-            outline: "none",
-          }}
-          placeholder="Enter URL"
-        />
-        <button
-          onClick={handleSend}
-          disabled={sending || !tab.url}
-          style={{
-            padding: "3px 14px",
-            fontSize: 11,
-            fontWeight: 600,
-            borderRadius: 4,
-            border: "none",
-            background: sending || !tab.url ? "var(--fg-muted)" : "var(--accent)",
-            color: "#fff",
-            cursor: sending || !tab.url ? "not-allowed" : "pointer",
-            opacity: sending || !tab.url ? 0.6 : 1,
-          }}
-        >
-          {sending ? "Sending…" : "Send"}
-        </button>
-      </div>
-      <div
-        style={{
-          display: "flex",
-          padding: "0 4px",
-          borderBottom: "1px solid var(--border)",
-          flexShrink: 0,
-        }}
-      >
-        {REQUEST_TABS.map((t) => (
-          <button
-            key={t}
-            onClick={() => updateTab(tab.id, { activeSubTab: t })}
-            style={{
-              fontSize: 11,
-              border: "none",
-              background: "transparent",
-              color: tab.activeSubTab === t ? "var(--fg)" : "var(--fg-muted)",
-              cursor: "pointer",
-              padding: "6px 10px",
-              borderBottom:
-                tab.activeSubTab === t ? "2px solid var(--accent)" : "2px solid transparent",
-              marginBottom: -1,
-              whiteSpace: "nowrap",
+            onDelete={(id) => {
+              const key = body.type === 'form-data' ? 'formData' : 'urlencoded';
+              onChange({ ...body, [key]: body[key].filter((kv) => kv.id !== id) });
             }}
-          >
-            {subTabLabel(t)}
-          </button>
-        ))}
-      </div>
-      <div style={{ flex: 1, overflow: "hidden", display: "flex", flexDirection: "column" }}>
-        {tab.activeSubTab === "Code" ? (
-          <CodePanel tab={tab} />
-        ) : tab.activeSubTab === "Pre-request Script" ? (
-          <ScriptPanel
-            value={tab.preRequestScript}
-            onChange={(v) => updateTab(tab.id, { preRequestScript: v })}
-            eventName="prerequest"
-          />
-        ) : tab.activeSubTab === "Tests" ? (
-          <ScriptPanel
-            value={tab.testScript}
-            onChange={(v) => updateTab(tab.id, { testScript: v })}
-            eventName="test"
-          />
-        ) : (
-          <SubTabContent
-            key={tab.id}
-            subTab={tab.activeSubTab}
-            params={tab.params}
-            headers={tab.headers}
-            pathVars={tab.pathVars}
-            bodyType={tab.bodyType}
-            bodyRaw={tab.bodyRaw}
-            bodyRawContentType={tab.bodyRawContentType}
-            bodyFormData={tab.bodyFormData}
-            bodyUrlencoded={tab.bodyUrlencoded}
-            paramsBulkMode={bulkModes.params}
-            headersBulkMode={bulkModes.headers}
-            formDataBulkMode={bulkModes.formData}
-            urlencodedBulkMode={bulkModes.urlencoded}
-            onParamsChange={handleParamsChange}
-            onHeadersChange={handleHeadersChange}
-            onPathVarsChange={handlePathVarsChange}
-            onBodyTypeChange={handleBodyTypeChange}
-            onBodyRawChange={handleBodyRawChange}
-            onBodyRawContentTypeChange={handleBodyRawContentTypeChange}
-            onBodyFormDataChange={handleBodyFormDataChange}
-            onBodyUrlencodedChange={handleBodyUrlencodedChange}
-            onParamsBulkModeChange={(v) => setBulkMode("params", v)}
-            onHeadersBulkModeChange={(v) => setBulkMode("headers", v)}
-            onFormDataBulkModeChange={(v) => setBulkMode("formData", v)}
-            onUrlencodedBulkModeChange={(v) => setBulkMode("urlencoded", v)}
-            followRedirects={tab.followRedirects}
-            followOriginalMethod={tab.followOriginalMethod}
-            followAuthorizationHeader={tab.followAuthorizationHeader}
-            removeRefererOnRedirect={tab.removeRefererOnRedirect}
-            maxRedirects={tab.maxRedirects}
-            sslVerification={tab.sslVerification}
-            encodeUrl={tab.encodeUrl}
-            disableCookieJar={tab.disableCookieJar}
-            httpVersion={tab.httpVersion}
-            timeout={tab.timeout}
-            ignoreProxy={tab.ignoreProxy}
-            onFollowRedirectsChange={handleFollowRedirectsChange}
-            onFollowOriginalMethodChange={handleFollowOriginalMethodChange}
-            onFollowAuthorizationHeaderChange={handleFollowAuthorizationHeaderChange}
-            onRemoveRefererOnRedirectChange={handleRemoveRefererOnRedirectChange}
-            onMaxRedirectsChange={handleMaxRedirectsChange}
-            onSslVerificationChange={handleSslVerificationChange}
-            onEncodeUrlChange={handleEncodeUrlChange}
-            onDisableCookieJarChange={handleDisableCookieJarChange}
-            onHttpVersionChange={handleHttpVersionChange}
-            onTimeoutChange={handleTimeoutChange}
-            onIgnoreProxyChange={handleIgnoreProxyChange}
+            onAdd={() => {
+              const key = body.type === 'form-data' ? 'formData' : 'urlencoded';
+              onChange({
+                ...body,
+                [key]: [...body[key], { id: crypto.randomUUID(), enabled: true, key: '', value: '', description: '' }],
+              });
+            }}
           />
         )}
       </div>
     </div>
-  )
+  );
+}
+
+// ---------- Scripts Tab ----------
+
+function ScriptsTab({
+  preScript,
+  testScript,
+  onPreChange,
+  onTestChange,
+}: {
+  preScript: string;
+  testScript: string;
+  onPreChange: (v: string) => void;
+  onTestChange: (v: string) => void;
+}) {
+  const [active, setActive] = useState<'pre-request' | 'test'>('pre-request');
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-0 border-b border-border px-3 shrink-0">
+        {(['pre-request', 'test'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setActive(t)}
+            className={cn(
+              'px-3 py-1.5 text-xs border-b-2 transition-colors',
+              active === t
+                ? 'border-primary text-foreground'
+                : 'border-transparent text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {t === 'pre-request' ? 'Pre-request Script' : 'Tests'}
+            {t === 'test' && testScript && (
+              <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1">JS</Badge>
+            )}
+          </button>
+        ))}
+      </div>
+      <textarea
+        value={active === 'pre-request' ? preScript : testScript}
+        onChange={(e) => active === 'pre-request' ? onPreChange(e.target.value) : onTestChange(e.target.value)}
+        className="flex-1 resize-none bg-transparent text-[12px] font-mono text-foreground p-3 focus:outline-none leading-relaxed"
+        spellCheck={false}
+        placeholder={active === 'pre-request'
+          ? '// Runs before the request is sent\npm.environment.set("token", "value");'
+          : '// Runs after the response is received\npm.test("Status is 200", () => {\n  pm.response.to.have.status(200);\n});'}
+      />
+    </div>
+  );
+}
+
+// ---------- Request state ----------
+
+interface RequestState {
+  method: HttpMethod;
+  url: string;
+  params: KeyValuePair[];
+  headers: KeyValuePair[];
+  body: RequestBody;
+  auth: AuthConfig;
+  preRequestScript: string;
+  testScript: string;
+}
+
+const DEFAULT_STATE: RequestState = {
+  method: 'GET',
+  url: '',
+  params: [],
+  headers: [],
+  body: { type: 'none', raw: '', rawContentType: 'application/json', formData: [], urlencoded: [] },
+  auth: { type: 'inherit' },
+  preRequestScript: '',
+  testScript: '',
+};
+
+function makeKV(): KeyValuePair {
+  return { id: crypto.randomUUID(), enabled: true, key: '', value: '', description: '' };
+}
+
+// ---------- Main component ----------
+
+export function RequestPane() {
+  const { tabs, activeTabId, updateTab } = useTabsStore();
+  const { requestSubTab, setRequestSubTab, isSending, setSending, setResponse } = useUiStore();
+  const { findRequest } = useWorkspaceStore();
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const [state, setState] = useState<RequestState>(DEFAULT_STATE);
+
+  // Load request data when active tab changes
+  useEffect(() => {
+    if (!activeTab) return;
+    if (activeTab.requestId) {
+      const found = findRequest(activeTab.requestId);
+      if (found) {
+        const r = found.request;
+        setState({
+          method: r.method,
+          url: r.url,
+          params: r.params.length ? r.params : [],
+          headers: r.headers.length ? r.headers : [],
+          body: r.body,
+          auth: r.auth,
+          preRequestScript: r.preRequestScript,
+          testScript: r.testScript,
+        });
+        return;
+      }
+    }
+    setState({ ...DEFAULT_STATE, method: (activeTab.method ?? 'GET') as HttpMethod });
+  }, [activeTab?.id, activeTab?.requestId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleKVChange = useCallback(
+    (field: 'params' | 'headers') =>
+      (id: string, key: keyof KeyValuePair, value: string | boolean) => {
+        setState((s) => ({
+          ...s,
+          [field]: s[field].map((kv) => (kv.id === id ? { ...kv, [key]: value } : kv)),
+        }));
+        updateTab(activeTabId, { dirty: true });
+      },
+    [activeTabId, updateTab],
+  );
+
+  const handleKVDelete = useCallback(
+    (field: 'params' | 'headers') => (id: string) => {
+      setState((s) => ({ ...s, [field]: s[field].filter((kv) => kv.id !== id) }));
+    },
+    [],
+  );
+
+  const handleKVAdd = useCallback(
+    (field: 'params' | 'headers') => () => {
+      setState((s) => ({ ...s, [field]: [...s[field], makeKV()] }));
+    },
+    [],
+  );
+
+  const enabledParamCount = state.params.filter((p) => p.enabled && p.key).length;
+  const enabledHeaderCount = state.headers.filter((h) => h.enabled && h.key).length;
+  const hasBody = state.body.type !== 'none';
+
+  const handleSend = async () => {
+    setSending(true);
+    setResponse(null);
+    await new Promise((r) => setTimeout(r, 300 + Math.random() * 500));
+
+    const status = state.method === 'DELETE' ? 204 : state.method === 'POST' ? 201 : 200;
+    const bodyMap: Record<string, unknown> = {
+      GET: { data: [{ id: 1, name: 'Item One', createdAt: '2025-01-15T10:30:00Z' }, { id: 2, name: 'Item Two', createdAt: '2025-02-20T14:22:00Z' }], meta: { total: 2, page: 1 } },
+      POST: { id: Math.floor(Math.random() * 9000 + 1000), name: 'Created Resource', createdAt: new Date().toISOString() },
+      PUT: { id: 42, name: 'Updated Resource', updatedAt: new Date().toISOString() },
+      PATCH: { id: 42, patched: true, updatedAt: new Date().toISOString() },
+      DELETE: null,
+      OPTIONS: { allow: 'GET, POST, PUT, PATCH, DELETE, OPTIONS' },
+      HEAD: null,
+    };
+    const responseBody = bodyMap[state.method] ? JSON.stringify(bodyMap[state.method], null, 2) : '';
+    const ms = Math.floor(280 + Math.random() * 320);
+
+    setResponse({
+      status,
+      statusText: status === 200 ? 'OK' : status === 201 ? 'Created' : 'No Content',
+      time: ms,
+      size: responseBody.length,
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        'x-request-id': crypto.randomUUID().slice(0, 8),
+        'x-response-time': `${ms}ms`,
+        'cache-control': 'no-cache',
+        'access-control-allow-origin': '*',
+      },
+      body: responseBody,
+      contentType: 'application/json',
+    });
+    setSending(false);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden bg-background">
+      {/* URL Bar */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-border shrink-0">
+        {/* Method selector */}
+        <Select
+          value={state.method}
+          onValueChange={(v) => {
+            setState((s) => ({ ...s, method: v as HttpMethod }));
+            updateTab(activeTabId, { method: v as HttpMethod });
+          }}
+        >
+          <SelectTrigger className="h-8 w-28 text-xs border-border/60 shrink-0 px-2">
+            <MethodBadge method={state.method} size="sm" />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            {HTTP_METHODS.map((m) => (
+              <SelectItem key={m} value={m} className="text-xs">
+                <MethodBadge method={m} size="sm" />
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* URL input */}
+        <Input
+          value={state.url}
+          onChange={(e) => {
+            setState((s) => ({ ...s, url: e.target.value }));
+            updateTab(activeTabId, { title: e.target.value || 'New Request', dirty: true });
+          }}
+          placeholder="Enter URL or paste text"
+          className="h-8 flex-1 text-[13px] font-mono bg-muted/30 border-border/60"
+          spellCheck={false}
+        />
+
+        {/* Send button */}
+        <Button
+          onClick={handleSend}
+          disabled={isSending || !state.url.trim()}
+          className="h-8 px-4 text-xs font-semibold shrink-0"
+        >
+          {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Send className="h-3.5 w-3.5 mr-1" />}
+          Send
+        </Button>
+      </div>
+
+      {/* Sub-tabs */}
+      <Tabs value={requestSubTab} onValueChange={(v) => setRequestSubTab(v as typeof requestSubTab)} className="flex flex-col flex-1 overflow-hidden">
+        <div className="border-b border-border shrink-0 px-1">
+          <TabsList className="h-8 bg-transparent gap-0 rounded-none p-0">
+            {[
+              { value: 'params', label: 'Params', badge: enabledParamCount > 0 ? enabledParamCount : null },
+              { value: 'auth', label: 'Auth', badge: state.auth.type !== 'inherit' && state.auth.type !== 'none' ? '●' : null },
+              { value: 'headers', label: 'Headers', badge: enabledHeaderCount > 0 ? enabledHeaderCount : null },
+              { value: 'body', label: 'Body', badge: hasBody ? '●' : null },
+              { value: 'scripts', label: 'Scripts', badge: (state.preRequestScript || state.testScript) ? '●' : null },
+            ].map(({ value, label, badge }) => (
+              <TabsTrigger
+                key={value}
+                value={value}
+                className="h-8 px-3 text-xs rounded-none border-0 border-b-2 border-transparent !bg-transparent !shadow-none data-active:border-primary data-active:text-foreground dark:data-active:!bg-transparent gap-1"
+              >
+                {label}
+                {badge !== null && (
+                  <Badge variant="secondary" className="h-3.5 min-w-3.5 px-1 text-[9px] font-bold">
+                    {badge}
+                  </Badge>
+                )}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
+
+        <TabsContent value="params" className="flex-1 overflow-hidden mt-0">
+          <KVTable
+            pairs={state.params}
+            onChange={handleKVChange('params')}
+            onDelete={handleKVDelete('params')}
+            onAdd={handleKVAdd('params')}
+          />
+        </TabsContent>
+
+        <TabsContent value="auth" className="flex-1 overflow-auto mt-0">
+          <AuthTab auth={state.auth} onChange={(a) => setState((s) => ({ ...s, auth: a }))} />
+        </TabsContent>
+
+        <TabsContent value="headers" className="flex-1 overflow-hidden mt-0">
+          <KVTable
+            pairs={state.headers}
+            onChange={handleKVChange('headers')}
+            onDelete={handleKVDelete('headers')}
+            onAdd={handleKVAdd('headers')}
+          />
+        </TabsContent>
+
+        <TabsContent value="body" className="flex-1 overflow-hidden mt-0">
+          <BodyTab body={state.body} onChange={(b) => setState((s) => ({ ...s, body: b }))} />
+        </TabsContent>
+
+        <TabsContent value="scripts" className="flex-1 overflow-hidden mt-0">
+          <ScriptsTab
+            preScript={state.preRequestScript}
+            testScript={state.testScript}
+            onPreChange={(v) => setState((s) => ({ ...s, preRequestScript: v }))}
+            onTestChange={(v) => setState((s) => ({ ...s, testScript: v }))}
+          />
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
 }
