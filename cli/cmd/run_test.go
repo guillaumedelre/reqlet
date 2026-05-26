@@ -2,13 +2,41 @@ package cmd
 
 import (
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func resetFlags(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		flagEnvironment = ""
+		flagGlobals = ""
+		flagData = ""
+		flagEnvVar = nil
+		flagGlobalVar = nil
+		flagRunner = ""
+		flagIterations = 1
+		flagDelayRequest = 0
+		flagTimeout = 0
+		flagTimeoutReq = 30
+		flagFolder = ""
+		flagBail = false
+		flagInsecure = false
+		flagNoColor = false
+		flagVerbose = false
+		flagReporterJSON = ""
+		flagReporterJUnit = ""
+		flagClientCert = ""
+		flagClientKey = ""
+		flagClientPassphrase = ""
+	})
+}
 
 // ── parseKV ──────────────────────────────────────────────────────────────────
 
@@ -206,4 +234,161 @@ func TestResolveRunner_CWDRelativePath(t *testing.T) {
 	path, err := resolveRunner("")
 	require.NoError(t, err)
 	assert.Equal(t, filepath.Join("runner", "src", "index.js"), path)
+}
+
+// ── runCollection ─────────────────────────────────────────────────────────────
+
+func TestRunCollection_CollectionNotFound(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{"/nonexistent/col.json"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open collection")
+}
+
+func TestRunCollection_EnvironmentNotFound(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagEnvironment = "/nonexistent/env.json"
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open environment")
+}
+
+func TestRunCollection_InvalidEnvVar(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagEnvVar = []string{"noequals"}
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--env-var")
+}
+
+func TestRunCollection_EnvVarWithNoLoadedEnv(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagEnvVar = []string{"TOKEN=abc"}
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	// fails at resolveRunner, not at env-var processing
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner not found")
+}
+
+func TestRunCollection_GlobalsFileNotFound(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagGlobals = "/nonexistent/globals.json"
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "globals:")
+}
+
+func TestRunCollection_InvalidGlobalVar(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagGlobalVar = []string{"noequals"}
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "--global-var")
+}
+
+func TestRunCollection_RunnerNotFound(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+
+	orig, err := os.Getwd()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+	require.NoError(t, os.Chdir(t.TempDir()))
+
+	cmd := &cobra.Command{}
+	err = runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "runner not found")
+}
+
+// stubRunnerJS is a minimal Node.js stub that speaks the sandbox IPC protocol.
+// It responds to every "execute" message with an empty successful result.
+const stubRunnerJS = `
+process.stdin.setEncoding("utf8");
+let buf = "";
+process.stdin.on("data", (chunk) => {
+  buf += chunk;
+  const lines = buf.split("\n");
+  buf = lines.pop();
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    try {
+      const m = JSON.parse(line);
+      const result = { logs: [], tests: [], variables: {}, globals: {} };
+      process.stdout.write(JSON.stringify({ id: m.id, result, error: null }) + "\n");
+    } catch {}
+  }
+});
+process.stdin.on("end", () => process.exit(0));
+`
+
+func writeStubRunner(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "runner", "src")
+	require.NoError(t, os.MkdirAll(dir, 0o750)) //nolint:gosec
+	path := filepath.Join(dir, "index.js")
+	require.NoError(t, os.WriteFile(path, []byte(stubRunnerJS), 0o600))
+	return path
+}
+
+func TestRunCollection_EmptyCollectionSuccess(t *testing.T) {
+	resetFlags(t)
+
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	flagRunner = writeStubRunner(t)
+	flagReporterJSON = filepath.Join(dir, "report.json")
+	flagTimeout = 60
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.NoError(t, err)
+}
+
+func TestRunCollection_WithEnvVarAndGlobalVar(t *testing.T) {
+	resetFlags(t)
+
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	envPath := writeTestFile(t, dir, "env.json", minimalEnv)
+	flagRunner = writeStubRunner(t)
+	flagEnvironment = envPath
+	flagEnvVar = []string{"EXTRA=1"}
+	flagGlobalVar = []string{"G=2"}
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.NoError(t, err)
 }

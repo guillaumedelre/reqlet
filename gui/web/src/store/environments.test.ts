@@ -115,6 +115,39 @@ describe("addVariable / updateVariable / removeVariable", () => {
   })
 })
 
+describe("addVariable / updateVariable / removeVariable with multiple envs", () => {
+  it("only modifies the target environment", () => {
+    const id1 = useEnvironmentsStore.getState().addEnvironment("Env1")
+    const id2 = useEnvironmentsStore.getState().addEnvironment("Env2")
+    useEnvironmentsStore.getState().addVariable(id1)
+    const { environments } = useEnvironmentsStore.getState()
+    expect(environments.find((e) => e.id === id1)?.variables).toHaveLength(1)
+    expect(environments.find((e) => e.id === id2)?.variables).toHaveLength(0)
+  })
+
+  it("updateVariable only touches the target environment", () => {
+    const id1 = useEnvironmentsStore.getState().addEnvironment("Env1")
+    const id2 = useEnvironmentsStore.getState().addEnvironment("Env2")
+    useEnvironmentsStore.getState().addVariable(id1)
+    useEnvironmentsStore.getState().addVariable(id2)
+    const varId1 = useEnvironmentsStore.getState().environments[0].variables[0].id
+    useEnvironmentsStore.getState().updateVariable(id1, varId1, { key: "changed" })
+    const env2Var = useEnvironmentsStore.getState().environments[1].variables[0]
+    expect(env2Var.key).toBe("")
+  })
+
+  it("removeVariable only removes from the target environment", () => {
+    const id1 = useEnvironmentsStore.getState().addEnvironment("Env1")
+    const id2 = useEnvironmentsStore.getState().addEnvironment("Env2")
+    useEnvironmentsStore.getState().addVariable(id1)
+    useEnvironmentsStore.getState().addVariable(id2)
+    const varId1 = useEnvironmentsStore.getState().environments[0].variables[0].id
+    useEnvironmentsStore.getState().removeVariable(id1, varId1)
+    expect(useEnvironmentsStore.getState().environments[0].variables).toHaveLength(0)
+    expect(useEnvironmentsStore.getState().environments[1].variables).toHaveLength(1)
+  })
+})
+
 describe("globals", () => {
   it("adds a global variable", () => {
     useEnvironmentsStore.getState().addGlobal()
