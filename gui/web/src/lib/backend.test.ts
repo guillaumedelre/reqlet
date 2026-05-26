@@ -4,6 +4,7 @@ import { SendError, isWails, sendRequest } from "./backend"
 
 const baseTab = {
   id: "tab-1",
+  type: "request" as const,
   method: "GET" as const,
   url: "https://example.com",
   params: [],

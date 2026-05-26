@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
+export type TabType = "request" | "environment" | "globals"
 export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
 export type RequestSubTab =
   | "Params"
@@ -43,6 +44,8 @@ export interface ResponseData {
 
 export interface Tab {
   id: string
+  type: TabType
+  envId?: string
   method: HttpMethod
   url: string
   params: KeyValueItem[]
@@ -74,6 +77,8 @@ export interface Tab {
 function newTab(patch?: Partial<Tab>): Tab {
   return {
     id: crypto.randomUUID(),
+    type: "request",
+    envId: undefined,
     method: "GET",
     url: "",
     params: [],
@@ -117,6 +122,8 @@ interface TabsState {
   reopenLastTab: () => void
   reorderTabs: (fromId: string, toId: string) => void
   updateTab: (id: string, patch: Partial<Omit<Tab, "id">>) => void
+  openEnvTab: (envId: string) => void
+  openGlobalsTab: () => void
 }
 
 const initial = newTab()
@@ -208,15 +215,33 @@ export const useTabsStore = create<TabsState>()(
         set((s) => ({
           tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
         })),
+
+      openEnvTab: (envId) =>
+        set((s) => {
+          const existing = s.tabs.find((t) => t.type === "environment" && t.envId === envId)
+          if (existing) return { activeTabId: existing.id }
+          const tab = newTab({ type: "environment", envId })
+          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
+        }),
+
+      openGlobalsTab: () =>
+        set((s) => {
+          const existing = s.tabs.find((t) => t.type === "globals")
+          if (existing) return { activeTabId: existing.id }
+          const tab = newTab({ type: "globals" })
+          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
+        }),
     }),
     {
       name: "reqlet-tabs",
-      version: 9,
+      version: 10,
       migrate(persisted: unknown) {
         const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
         return {
           ...s,
           tabs: (s.tabs ?? []).map((t: unknown) => ({
+            type: "request",
+            envId: undefined,
             params: [],
             headers: [],
             pathVars: [],
@@ -225,6 +250,8 @@ export const useTabsStore = create<TabsState>()(
             bodyRawContentType: "JSON",
             bodyFormData: [],
             bodyUrlencoded: [],
+            dirty: false,
+            activeSubTab: "Params",
             response: null,
             preRequestScript: "",
             testScript: "",

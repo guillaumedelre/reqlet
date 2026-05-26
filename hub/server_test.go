@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,4 +42,14 @@ func TestAPI_UnknownRoute_NotFound(t *testing.T) {
 	s.router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/unknown", nil))
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestStart_ErrorOnAlreadyBoundAddr(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = ln.Close() }()
+
+	s := NewServer(ln.Addr().String())
+	err = s.Start()
+	require.Error(t, err)
 }

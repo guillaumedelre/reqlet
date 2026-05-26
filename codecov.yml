@@ -56,27 +56,27 @@ flags:
   reqlet-engine:
     paths:
       - engine/
-    carryforward: false
+    carryforward: true
   reqlet-cli:
     paths:
       - cli/
-    carryforward: false
+    carryforward: true
   reqlet-agent:
     paths:
       - agent/
-    carryforward: false
+    carryforward: true
   reqlet-web:
     paths:
       - gui/web/src/
-    carryforward: false
+    carryforward: true
   reqlet-runner:
     paths:
       - runner/src/
-    carryforward: false
+    carryforward: true
   reqlet-hub:
     paths:
       - hub/
-    carryforward: false
+    carryforward: true
 
 comment:
   layout: "reach,diff,flags,files"
@@ -85,6 +85,10 @@ comment:
 
 ignore:
   - "**/*_test.go"
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.test.js"
+  - "**/__tests__/**"
   - "docs/**"
   - "gui/web/src/test/**"
   - "cli/main.go"

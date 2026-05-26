@@ -1,4 +1,4 @@
-import { describe, it, expect } from "@jest/globals";
+import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals";
 import { execute } from "../executor.js";
 
 const emptyCtx = {
@@ -93,5 +93,66 @@ describe("execute", () => {
     expect(result.tests).toHaveLength(1);
     expect(result.tests[0].name).toBe("(script error)");
     expect(result.tests[0].passed).toBe(false);
+  });
+});
+
+describe("pm.sendRequest", () => {
+  let savedFetch;
+
+  beforeEach(() => {
+    savedFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = savedFetch;
+  });
+
+  it("calls fetch with a string URL as a GET request", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue("{}"),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    await execute(`pm.sendRequest("https://example.com/api", () => {})`, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://example.com/api",
+      expect.objectContaining({ method: "GET" }),
+    );
+  });
+
+  it("calls fetch with an object request including raw body and headers", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "Created",
+      status: 201,
+      text: jest.fn().mockResolvedValue('{"id":1}'),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    const script = `pm.sendRequest({
+      url: "https://api.example.com/items",
+      method: "POST",
+      header: { "Content-Type": "application/json" },
+      body: { mode: "raw", raw: '{"x":1}' },
+    }, () => {})`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://api.example.com/items",
+      expect.objectContaining({ method: "POST", body: '{"x":1}' }),
+    );
+  });
+
+  it("calls callback with error when fetch rejects", async () => {
+    globalThis.fetch = jest.fn().mockRejectedValue(new Error("network error"));
+
+    await execute(`pm.sendRequest("https://fail.example.com", () => {})`, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(globalThis.fetch).toHaveBeenCalled();
   });
 });

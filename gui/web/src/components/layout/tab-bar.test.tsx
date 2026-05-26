@@ -132,4 +132,93 @@ describe("TabBar", () => {
     fireEvent.contextMenu(screen.getByRole("tab"))
     expect(screen.getByText("Duplicate")).toBeInTheDocument()
   })
+
+  it("context menu calls duplicateTab", () => {
+    const duplicateTab = vi.fn()
+    vi.mocked(useTabsStore).mockReturnValue(makeStore({ duplicateTab }))
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getByRole("tab"))
+    fireEvent.click(screen.getByText("Duplicate"))
+    expect(duplicateTab).toHaveBeenCalledWith("tab-1")
+  })
+
+  it("context menu calls closeTab on Close", () => {
+    const closeTab = vi.fn()
+    vi.mocked(useTabsStore).mockReturnValue(makeStore({ closeTab }))
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getByRole("tab"))
+    fireEvent.click(screen.getByText("Close"))
+    expect(closeTab).toHaveBeenCalledWith("tab-1")
+  })
+
+  it("context menu Close others is disabled with single tab", () => {
+    vi.mocked(useTabsStore).mockReturnValue(makeStore())
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getByRole("tab"))
+    expect(screen.getByText("Close others")).toHaveStyle("opacity: 0.5")
+  })
+
+  it("context menu Close others calls closeOthers with multiple tabs", () => {
+    const closeOthers = vi.fn()
+    vi.mocked(useTabsStore).mockReturnValue(
+      makeStore({
+        tabs: [makeTab({ id: "t1" }), makeTab({ id: "t2" })],
+        closeOthers,
+      }),
+    )
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0])
+    fireEvent.click(screen.getByText("Close others"))
+    expect(closeOthers).toHaveBeenCalledWith("t1")
+  })
+
+  it("context menu Close to the right is disabled for last tab", () => {
+    vi.mocked(useTabsStore).mockReturnValue(makeStore())
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getByRole("tab"))
+    expect(screen.getByText("Close to the right")).toHaveStyle("opacity: 0.5")
+  })
+
+  it("context menu calls closeToRight when not last tab", () => {
+    const closeToRight = vi.fn()
+    vi.mocked(useTabsStore).mockReturnValue(
+      makeStore({
+        tabs: [makeTab({ id: "t1" }), makeTab({ id: "t2" })],
+        closeToRight,
+      }),
+    )
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getAllByRole("tab")[0])
+    fireEvent.click(screen.getByText("Close to the right"))
+    expect(closeToRight).toHaveBeenCalledWith("t1")
+  })
+
+  it("context menu closes when clicking outside", () => {
+    vi.mocked(useTabsStore).mockReturnValue(makeStore())
+    render(<TabBar />)
+    fireEvent.contextMenu(screen.getByRole("tab"))
+    expect(screen.getByText("Duplicate")).toBeInTheDocument()
+    fireEvent.mouseDown(document.body)
+    expect(screen.queryByText("Duplicate")).not.toBeInTheDocument()
+  })
+
+  it("renders env tab with globe badge instead of method badge", () => {
+    vi.mocked(useTabsStore).mockReturnValue(
+      makeStore({
+        tabs: [makeTab({ id: "e1", type: "environment", envId: "env-1" })],
+      }),
+    )
+    render(<TabBar />)
+    expect(screen.queryByText("GET")).not.toBeInTheDocument()
+  })
+
+  it("renders globals tab with Globals label", () => {
+    vi.mocked(useTabsStore).mockReturnValue(
+      makeStore({
+        tabs: [makeTab({ id: "g1", type: "globals" })],
+      }),
+    )
+    render(<TabBar />)
+    expect(screen.getByText("Globals")).toBeInTheDocument()
+  })
 })

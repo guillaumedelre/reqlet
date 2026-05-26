@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest"
 import { useUIStore } from "./ui"
 
 afterEach(() => {
-  useUIStore.setState({ sidebarCollapsed: false, searchOpen: false })
+  useUIStore.setState({ sidebarCollapsed: false, sidebarSection: "collections", searchOpen: false })
 })
 
 describe("useUIStore", () => {
@@ -16,6 +16,19 @@ describe("useUIStore", () => {
       useUIStore.setState({ sidebarCollapsed: true })
       useUIStore.getState().toggleSidebar()
       expect(useUIStore.getState().sidebarCollapsed).toBe(false)
+    })
+  })
+
+  describe("setSidebarSection", () => {
+    it("updates the sidebar section", () => {
+      useUIStore.getState().setSidebarSection("environments")
+      expect(useUIStore.getState().sidebarSection).toBe("environments")
+    })
+
+    it("switches back to collections", () => {
+      useUIStore.setState({ sidebarSection: "history" })
+      useUIStore.getState().setSidebarSection("collections")
+      expect(useUIStore.getState().sidebarSection).toBe("collections")
     })
   })
 
