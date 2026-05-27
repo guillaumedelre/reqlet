@@ -462,3 +462,132 @@ func TestListEnvironments_MultipleItems(t *testing.T) {
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
 	assert.Len(t, body, 2)
 }
+
+// ---------------------------------------------------------------------------
+// Import / Export — collections
+// ---------------------------------------------------------------------------
+
+const validPostmanCollection = `{
+  "info": {
+    "_postman_id": "import-test-id",
+    "name": "Import Test",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": []
+}`
+
+const validPostmanEnvironment = `{
+  "id": "env-import-id",
+  "name": "Import Env",
+  "values": [],
+  "_postman_variable_scope": "environment"
+}`
+
+func TestImportCollection_Valid(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/import",
+		strings.NewReader(validPostmanCollection)))
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var out map[string]interface{}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, "Import Test", out["name"])
+}
+
+func TestImportCollection_InvalidJSON(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/import",
+		strings.NewReader(`not json at all`)))
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestImportCollection_EmptyBody(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/import",
+		strings.NewReader(`{}`)))
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestExportCollection_Existing(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+
+	// seed a minimal frontend-format collection
+	require.NoError(t, s.collections.save("col-export", json.RawMessage(
+		`{"id":"col-export","name":"My Export","description":"","items":[],"variables":[],"preRequestScript":"","testScript":"","auth":{"type":"none"}}`,
+	)))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/collections/col-export/export", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "My Export.postman_collection.json")
+	var out map[string]interface{}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	info := out["info"].(map[string]interface{})
+	assert.Equal(t, "My Export", info["name"])
+}
+
+func TestExportCollection_NotFound(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/collections/nonexistent/export", nil))
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ---------------------------------------------------------------------------
+// Import / Export — environments
+// ---------------------------------------------------------------------------
+
+func TestImportEnvironment_Valid(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/environments/import",
+		strings.NewReader(validPostmanEnvironment)))
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var out map[string]interface{}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, "Import Env", out["name"])
+}
+
+func TestImportEnvironment_InvalidJSON(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/environments/import",
+		strings.NewReader(`not json`)))
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestExportEnvironment_Existing(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+
+	require.NoError(t, s.environments.save("env-export", json.RawMessage(
+		`{"id":"env-export","name":"My Env","variables":[]}`,
+	)))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/environments/env-export/export", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Disposition"), "My Env.postman_environment.json")
+	var out map[string]interface{}
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, "My Env", out["name"])
+}
+
+func TestExportEnvironment_NotFound(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/environments/ghost/export", nil))
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
