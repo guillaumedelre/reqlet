@@ -101,9 +101,7 @@ function LoadingState() {
 
 type BodyView = "pretty" | "raw" | "preview"
 
-function parseCookies(
-  headers: Record<string, string>,
-): Array<{
+function parseCookies(headers: Record<string, string>): Array<{
   name: string
   value: string
   domain: string

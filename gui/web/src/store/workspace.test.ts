@@ -107,12 +107,10 @@ describe("updateEnvironmentVariable", () => {
     const env = useWorkspaceStore.getState().addEnvironment("Dev")
     useWorkspaceStore.getState().addEnvironmentVariable(env.id)
     const varId = useWorkspaceStore.getState().environments[0].variables[0].id
-    useWorkspaceStore
-      .getState()
-      .updateEnvironmentVariable(env.id, varId, {
-        key: "BASE_URL",
-        initialValue: "https://dev.example.com",
-      })
+    useWorkspaceStore.getState().updateEnvironmentVariable(env.id, varId, {
+      key: "BASE_URL",
+      initialValue: "https://dev.example.com",
+    })
     const v = useWorkspaceStore.getState().environments[0].variables[0]
     expect(v.key).toBe("BASE_URL")
     expect(v.initialValue).toBe("https://dev.example.com")
@@ -321,12 +319,10 @@ describe("updateCollectionVariable", () => {
     useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
     useWorkspaceStore.getState().addCollectionVariable("c1")
     const varId = useWorkspaceStore.getState().collections[0].variables[0].id
-    useWorkspaceStore
-      .getState()
-      .updateCollectionVariable("c1", varId, {
-        key: "BASE",
-        initialValue: "https://api.example.com",
-      })
+    useWorkspaceStore.getState().updateCollectionVariable("c1", varId, {
+      key: "BASE",
+      initialValue: "https://api.example.com",
+    })
     const v = useWorkspaceStore.getState().collections[0].variables[0]
     expect(v.key).toBe("BASE")
     expect(v.initialValue).toBe("https://api.example.com")
