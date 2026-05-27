@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import Editor, { type BeforeMount, type OnMount } from "@monaco-editor/react"
 import type * as Monaco from "monaco-editor"
 import { cn } from "@/lib/utils"
+import { PM_SANDBOX_TYPES } from "@/lib/pm-types"
 
 function useIsDark(): boolean {
   const [isDark, setIsDark] = useState(
@@ -40,6 +41,16 @@ const defineThemes: BeforeMount = (monaco) => {
   })
 }
 
+// Guard against redundant addExtraLib calls across editor instances
+let pmTypesRegistered = false
+
+function ensurePmTypes(monaco: typeof Monaco) {
+  if (pmTypesRegistered) return
+  // monaco.languages.typescript is deprecated in 0.55+; use top-level typescript namespace
+  monaco.typescript.javascriptDefaults.addExtraLib(PM_SANDBOX_TYPES as string, "ts:pm.d.ts")
+  pmTypesRegistered = true
+}
+
 const VAR_REGEX = /\{\{([^{}]*)\}\}/g
 
 function computeVariableDecorations(
@@ -75,6 +86,8 @@ interface CodeEditorProps {
   className?: string
   variableSuggestions?: string[]
   variableResolvedMap?: Map<string, string>
+  /** Inject pm.* type definitions into Monaco's JS language service. */
+  pmCompletions?: boolean
 }
 
 export function CodeEditor({
@@ -86,6 +99,7 @@ export function CodeEditor({
   className,
   variableSuggestions,
   variableResolvedMap,
+  pmCompletions = false,
 }: CodeEditorProps) {
   const isDark = useIsDark()
 
@@ -122,6 +136,10 @@ export function CodeEditor({
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor
     monacoRef.current = monaco
+
+    if (pmCompletions) {
+      ensurePmTypes(monaco)
+    }
 
     if (variableSuggestions !== undefined) {
       // Register per-editor completion provider; model check avoids cross-editor leakage

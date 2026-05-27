@@ -196,6 +196,7 @@ function ScriptsTab({
           value={active === "pre-request" ? preScript : testScript}
           onChange={(v) => (active === "pre-request" ? onPreChange(v) : onTestChange(v))}
           language="javascript"
+          pmCompletions
         />
       </div>
     </div>
