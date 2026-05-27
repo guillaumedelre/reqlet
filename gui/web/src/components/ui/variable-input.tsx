@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { cn } from "@/lib/utils"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 type Token =
   | { type: "text"; text: string }
@@ -170,37 +171,7 @@ export function VariableInput({
     <div className={cn("relative min-w-0", className)}>
       {/* Visual container — overflow-hidden clips the mirror scroll */}
       <div className="h-full rounded-md border border-border/60 bg-muted/30 overflow-hidden relative">
-        {/* Highlight mirror — renders colored variable tokens behind the input */}
-        <div
-          aria-hidden
-          className="absolute inset-0 pointer-events-none flex items-center overflow-hidden"
-        >
-          <div
-            className="whitespace-nowrap font-mono text-[13px] shrink-0"
-            style={{ paddingInline: 12, transform: `translateX(${-scrollLeft}px)` }}
-          >
-            {tokens.map((token, i) =>
-              token.type === "var" ? (
-                <span
-                  key={i}
-                  className={
-                    token.resolved
-                      ? "text-emerald-500 dark:text-emerald-400"
-                      : "text-amber-500 dark:text-amber-400"
-                  }
-                >
-                  {token.text}
-                </span>
-              ) : (
-                <span key={i} className="text-foreground">
-                  {token.text}
-                </span>
-              ),
-            )}
-          </div>
-        </div>
-
-        {/* Actual input — text is transparent when variables are present so the mirror shows */}
+        {/* Input first so it sits below the mirror in stacking order */}
         <input
           ref={inputRef}
           value={value}
@@ -219,6 +190,53 @@ export function VariableInput({
           spellCheck={false}
           {...props}
         />
+
+        {/* Mirror rendered after input so it sits on top — pointer-events-none passes
+            through to the input everywhere except resolved var spans (pointer-events-auto) */}
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none flex items-center overflow-hidden"
+        >
+          <div
+            className="whitespace-nowrap font-mono text-[13px] shrink-0"
+            style={{ paddingInline: 12, transform: `translateX(${-scrollLeft}px)` }}
+          >
+            {tokens.map((token, i) => {
+              if (token.type !== "var") {
+                return (
+                  <span key={i} className="text-foreground">
+                    {token.text}
+                  </span>
+                )
+              }
+              if (!token.resolved) {
+                return (
+                  <span key={i} className="text-amber-500 dark:text-amber-400">
+                    {token.text}
+                  </span>
+                )
+              }
+              return (
+                <Tooltip key={i}>
+                  <TooltipTrigger asChild>
+                    <span
+                      className="text-emerald-500 dark:text-emerald-400 pointer-events-auto cursor-text"
+                      onMouseDown={(e) => {
+                        e.preventDefault()
+                        inputRef.current?.focus()
+                      }}
+                    >
+                      {token.text}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="font-mono text-xs">
+                    {resolvedMap.get(token.name)}
+                  </TooltipContent>
+                </Tooltip>
+              )
+            })}
+          </div>
+        </div>
       </div>
 
       {/* Focus ring rendered outside overflow-hidden so it isn't clipped */}

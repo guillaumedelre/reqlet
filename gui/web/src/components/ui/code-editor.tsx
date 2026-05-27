@@ -95,6 +95,7 @@ export function CodeEditor({
   const resolvedMapRef = useRef(variableResolvedMap ?? new Map<string, string>())
   const decorationsRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const completionDisposableRef = useRef<Monaco.IDisposable | null>(null)
+  const hoverDisposableRef = useRef<Monaco.IDisposable | null>(null)
 
   useEffect(() => {
     suggestionsRef.current = variableSuggestions ?? []
@@ -115,6 +116,7 @@ export function CodeEditor({
   useEffect(() => {
     return () => {
       completionDisposableRef.current?.dispose()
+      hoverDisposableRef.current?.dispose()
       decorationsRef.current?.clear()
     }
   }, [])
@@ -175,6 +177,33 @@ export function CodeEditor({
             computeVariableDecorations(m, monacoRef.current, resolvedMapRef.current),
           )
         }
+      })
+
+      // Show resolved value on hover; model check avoids cross-editor leakage
+      hoverDisposableRef.current = monaco.languages.registerHoverProvider("*", {
+        provideHover: (hoverModel: Monaco.editor.ITextModel, position: Monaco.Position) => {
+          if (editor.getModel() !== hoverModel) return null
+          const line = hoverModel.getLineContent(position.lineNumber)
+          const col0 = position.column - 1
+          const varRegex = /\{\{([^{}]*)\}\}/g
+          let match: RegExpExecArray | null
+          while ((match = varRegex.exec(line)) !== null) {
+            if (col0 >= match.index && col0 < match.index + match[0].length) {
+              const value = resolvedMapRef.current.get(match[1])
+              if (value === undefined) return null
+              return {
+                range: new monaco.Range(
+                  position.lineNumber,
+                  match.index + 1,
+                  position.lineNumber,
+                  match.index + match[0].length + 1,
+                ),
+                contents: [{ value: `**${match[1]}**` }, { value: `\`\`\`\n${value}\n\`\`\`` }],
+              }
+            }
+          }
+          return null
+        },
       })
     }
   }
