@@ -338,6 +338,45 @@ vi.mock("@monaco-editor/react", () => ({
 }))
 ```
 
+`CodeEditor` accepts two optional props for variable support — pass them whenever the editor value may contain `{{var}}` expressions:
+
+| Prop | Type | Effect |
+|---|---|---|
+| `variableSuggestions` | `string[]` | Enables `{{` autocomplete (Monaco completion provider) |
+| `variableResolvedMap` | `Map<string, string>` | Enables inline coloring + hover tooltip with resolved value |
+
+Resolved variables render in emerald, unresolved in amber (CSS classes `.monaco-var-resolved` / `.monaco-var-unresolved` in `index.css`). The hover tooltip shows the variable name and its resolved value. Script editors do **not** receive these props because `{{var}}` is not interpolated in scripts.
+
+#### Variable highlighting in text inputs (`src/components/ui/variable-input.tsx`)
+
+The URL bar uses `VariableInput` instead of a plain `<Input>`. It overlays a transparent `<input>` on a mirror `<div>` that renders colored token spans:
+
+| Token state | Color |
+|---|---|
+| Resolved (`{{var}}` found in `resolvedMap`) | Emerald (`text-emerald-500`) + tooltip with resolved value |
+| Unresolved | Amber (`text-amber-500`) |
+| Plain text | Default foreground |
+
+The tooltip on resolved variables uses the Radix `Tooltip` component (provider already mounted at root in `App.tsx`). Hovering shows the variable's current value in a monospace popover.
+
+Autocomplete fires on `{{` and filters `suggestions` by the partial name typed. Arrow keys navigate, Enter/Tab confirms, Escape closes. The `getAutocompleteContext` and `tokenizeVariables` helpers are exported for reuse.
+
+#### `useVariableScope` hook (`src/hooks/use-variable-scope.ts`)
+
+Resolves the effective variable map for a given scope. Takes an optional `collectionId`.
+
+```ts
+const { resolvedMap, allKeys } = useVariableScope(collectionId)
+```
+
+Priority (highest wins): environment > collection > global. Each variable falls back to `initialValue` when `currentValue` is empty. The hook is memoized — it only recomputes when stores change.
+
+**Recursive resolution** — variable values that themselves contain `{{var}}` references are resolved transitively. For example, if the active environment defines `urlAuth = "{{proto}}authentication.{{baseUrl}}"` and globals define `proto = "https://"` and `baseUrl = "api.example.com"`, then `resolvedMap.get("urlAuth")` returns `"https://authentication.api.example.com"`. This is consistent with what the Go engine does at Send time (`engine/variables`).
+
+Cycle detection is built in: if a chain of references loops back to itself (`a → b → a`), the cycle-forming token is left as `{{var}}` in the resolved value rather than causing infinite recursion. Undefined references are also left as-is.
+
+The pure function `resolveRecursive(rawMap)` is exported separately for use outside the hook and for direct unit testing.
+
 #### Body editor
 
 The Body sub-tab renders a type selector bar (none / form-data / urlencoded / raw / binary / GraphQL)

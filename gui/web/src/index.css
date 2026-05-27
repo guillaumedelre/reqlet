@@ -158,3 +158,17 @@ body {
     @apply font-sans;
   }
 }
+
+/* Placeholder for VariableInput — must be explicit because the input uses color:transparent */
+.reqlet-variable-input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 1;
+}
+
+/* Monaco inline decorations for {{variable}} tokens */
+.monaco-editor .monaco-var-resolved {
+  color: #10b981 !important;
+}
+.monaco-editor .monaco-var-unresolved {
+  color: #f59e0b !important;
+}
