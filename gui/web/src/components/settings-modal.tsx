@@ -1,14 +1,22 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Switch } from '@/components/ui/switch';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Slider } from '@/components/ui/slider';
-import { useSettingsStore } from '@/store/settings';
-import { useUiStore } from '@/store/ui';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Switch } from "@/components/ui/switch"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+import { Separator } from "@/components/ui/separator"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { Slider } from "@/components/ui/slider"
+import { useSettingsStore } from "@/store/settings"
+import { useUiStore } from "@/store/ui"
 
-function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Row({
+  label,
+  hint,
+  children,
+}: {
+  label: string
+  hint?: string
+  children: React.ReactNode
+}) {
   return (
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div className="min-w-0">
@@ -17,21 +25,23 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
       </div>
       <div className="shrink-0">{children}</div>
     </div>
-  );
+  )
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">{title}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+        {title}
+      </p>
       <div className="divide-y divide-border/50">{children}</div>
     </div>
-  );
+  )
 }
 
 export function SettingsModal() {
-  const { settingsOpen, setSettingsOpen } = useUiStore();
-  const s = useSettingsStore();
+  const { settingsOpen, setSettingsOpen } = useUiStore()
+  const s = useSettingsStore()
 
   return (
     <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
@@ -42,13 +52,18 @@ export function SettingsModal() {
         <Separator />
         <ScrollArea className="max-h-[70vh]">
           <div className="px-5 py-4 space-y-5">
-
             <Section title="Network defaults">
               <Row label="SSL Verification" hint="Verify SSL certificates by default">
-                <Switch checked={s.sslVerifyDefault} onCheckedChange={(v) => s.update({ sslVerifyDefault: v })} />
+                <Switch
+                  checked={s.sslVerifyDefault}
+                  onCheckedChange={(v) => s.update({ sslVerifyDefault: v })}
+                />
               </Row>
               <Row label="Follow Redirects">
-                <Switch checked={s.followRedirectsDefault} onCheckedChange={(v) => s.update({ followRedirectsDefault: v })} />
+                <Switch
+                  checked={s.followRedirectsDefault}
+                  onCheckedChange={(v) => s.update({ followRedirectsDefault: v })}
+                />
               </Row>
               <Row label="Timeout (ms)" hint="0 = no timeout">
                 <Input
@@ -80,14 +95,18 @@ export function SettingsModal() {
                     <Input
                       value={s.proxy.username}
                       placeholder="Username"
-                      onChange={(e) => s.update({ proxy: { ...s.proxy, username: e.target.value } })}
+                      onChange={(e) =>
+                        s.update({ proxy: { ...s.proxy, username: e.target.value } })
+                      }
                       className="h-7 text-xs"
                     />
                     <Input
                       type="password"
                       value={s.proxy.password}
                       placeholder="Password"
-                      onChange={(e) => s.update({ proxy: { ...s.proxy, password: e.target.value } })}
+                      onChange={(e) =>
+                        s.update({ proxy: { ...s.proxy, password: e.target.value } })
+                      }
                       className="h-7 text-xs"
                     />
                   </div>
@@ -113,7 +132,6 @@ export function SettingsModal() {
                 />
               </Row>
             </Section>
-
           </div>
         </ScrollArea>
         <Separator />
@@ -132,5 +150,5 @@ export function SettingsModal() {
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 }

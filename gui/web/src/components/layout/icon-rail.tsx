@@ -1,14 +1,14 @@
-import { FolderOpen, Globe2, Clock3, Plus } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import { useUiStore, type SidePanel } from '@/store/ui';
-import { useTabsStore } from '@/store/tabs';
+import { FolderOpen, Globe2, Clock3, Plus } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { cn } from "@/lib/utils"
+import { useUiStore, type SidePanel } from "@/store/ui"
+import { useTabsStore } from "@/store/tabs"
 
 interface RailItemProps {
-  icon: React.ReactNode;
-  label: string;
-  active?: boolean;
-  onClick: () => void;
+  icon: React.ReactNode
+  label: string
+  active?: boolean
+  onClick: () => void
 }
 
 function RailItem({ icon, label, active, onClick }: RailItemProps) {
@@ -18,10 +18,10 @@ function RailItem({ icon, label, active, onClick }: RailItemProps) {
         <button
           onClick={onClick}
           className={cn(
-            'relative w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150',
+            "relative w-9 h-9 flex items-center justify-center rounded-lg transition-all duration-150",
             active
-              ? 'bg-primary/10 text-primary after:absolute after:left-0 after:top-1/2 after:-translate-y-1/2 after:h-4 after:w-0.5 after:rounded-r after:bg-primary after:-ml-[2px]'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/60',
+              ? "bg-primary/10 text-primary after:absolute after:left-0 after:top-1/2 after:-translate-y-1/2 after:h-4 after:w-0.5 after:rounded-r after:bg-primary after:-ml-[2px]"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
           )}
           aria-label={label}
         >
@@ -32,18 +32,26 @@ function RailItem({ icon, label, active, onClick }: RailItemProps) {
         {label}
       </TooltipContent>
     </Tooltip>
-  );
+  )
 }
 
 export function IconRail() {
-  const { activePanel, togglePanel } = useUiStore();
-  const { openNewTab } = useTabsStore();
+  const { activePanel, togglePanel } = useUiStore()
+  const { openNewTab } = useTabsStore()
 
   const panels: { panel: SidePanel; icon: React.ReactNode; label: string }[] = [
-    { panel: 'collections', icon: <FolderOpen className="h-[17px] w-[17px]" />, label: 'Collections' },
-    { panel: 'environments', icon: <Globe2 className="h-[17px] w-[17px]" />, label: 'Environments' },
-    { panel: 'history', icon: <Clock3 className="h-[17px] w-[17px]" />, label: 'History' },
-  ];
+    {
+      panel: "collections",
+      icon: <FolderOpen className="h-[17px] w-[17px]" />,
+      label: "Collections",
+    },
+    {
+      panel: "environments",
+      icon: <Globe2 className="h-[17px] w-[17px]" />,
+      label: "Environments",
+    },
+    { panel: "history", icon: <Clock3 className="h-[17px] w-[17px]" />, label: "History" },
+  ]
 
   return (
     <div className="w-[46px] flex flex-col items-center py-2 gap-1 border-r border-border bg-card shrink-0 overflow-hidden">
@@ -69,8 +77,10 @@ export function IconRail() {
             <Plus className="h-[17px] w-[17px]" />
           </button>
         </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">New Request</TooltipContent>
+        <TooltipContent side="right" className="text-xs">
+          New Request
+        </TooltipContent>
       </Tooltip>
     </div>
-  );
+  )
 }

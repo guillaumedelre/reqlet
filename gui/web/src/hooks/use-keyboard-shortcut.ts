@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef } from "react"
 
 export function useKeyboardShortcut(
   key: string,
@@ -7,8 +7,8 @@ export function useKeyboardShortcut(
   shift = false,
   alt = false,
 ): void {
-  const ref = useRef(handler);
-  ref.current = handler;
+  const ref = useRef(handler)
+  ref.current = handler
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -18,11 +18,11 @@ export function useKeyboardShortcut(
         shift === e.shiftKey &&
         alt === e.altKey
       ) {
-        e.preventDefault();
-        ref.current();
+        e.preventDefault()
+        ref.current()
       }
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [key, ctrl, shift, alt]);
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [key, ctrl, shift, alt])
 }

@@ -1,23 +1,17 @@
-import { useEffect } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Checkbox } from '@/components/ui/checkbox';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { useWorkspaceStore } from '@/store/workspace';
-import { useTabsStore } from '@/store/tabs';
-import { useDeleteConfirm } from '@/hooks/use-delete-confirm';
-import type { EnvVariable } from '@/types';
+import { useEffect } from "react"
+import { Plus, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { ScrollArea } from "@/components/ui/scroll-area"
+import { useWorkspaceStore } from "@/store/workspace"
+import { useTabsStore } from "@/store/tabs"
+import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
+import type { EnvVariable } from "@/types"
 
-function EnvRow({
-  variable,
-  envId,
-}: {
-  variable: EnvVariable;
-  envId: string;
-}) {
-  const { updateEnvironmentVariable, deleteEnvironmentVariable } = useWorkspaceStore();
-  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
+function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
+  const { updateEnvironmentVariable, deleteEnvironmentVariable } = useWorkspaceStore()
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm()
 
   return (
     <div className="group flex items-center gap-2 px-3 py-1.5 border-b border-border/40 hover:bg-muted/20">
@@ -37,40 +31,46 @@ function EnvRow({
       />
       <Input
         value={variable.initialValue}
-        onChange={(e) => updateEnvironmentVariable(envId, variable.id, { initialValue: e.target.value })}
+        onChange={(e) =>
+          updateEnvironmentVariable(envId, variable.id, { initialValue: e.target.value })
+        }
         placeholder="Initial value"
         className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <Input
         value={variable.currentValue}
-        onChange={(e) => updateEnvironmentVariable(envId, variable.id, { currentValue: e.target.value })}
+        onChange={(e) =>
+          updateEnvironmentVariable(envId, variable.id, { currentValue: e.target.value })
+        }
         placeholder="Current value"
         className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <button
-        onClick={() => requestDelete(variable.key || '', () => deleteEnvironmentVariable(envId, variable.id))}
+        onClick={() =>
+          requestDelete(variable.key || "", () => deleteEnvironmentVariable(envId, variable.id))
+        }
         className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
       >
         <Trash2 className="h-3 w-3" />
       </button>
     </div>
-  );
+  )
 }
 
 export function EnvironmentPane() {
-  const { tabs, activeTabId, closeTab } = useTabsStore();
-  const { environments, addEnvironmentVariable } = useWorkspaceStore();
+  const { tabs, activeTabId, closeTab } = useTabsStore()
+  const { environments, addEnvironmentVariable } = useWorkspaceStore()
 
-  const activeTab = tabs.find((t) => t.id === activeTabId);
-  const env = environments.find((e) => e.id === activeTab?.environmentId);
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const env = environments.find((e) => e.id === activeTab?.environmentId)
 
   useEffect(() => {
-    if (activeTab?.type === 'environment' && !env) {
-      closeTab(activeTab.id);
+    if (activeTab?.type === "environment" && !env) {
+      closeTab(activeTab.id)
     }
-  }, [activeTab, env, closeTab]);
+  }, [activeTab, env, closeTab])
 
-  if (!env) return null;
+  if (!env) return null
 
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
@@ -83,9 +83,15 @@ export function EnvironmentPane() {
       {/* Column headers */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0 bg-muted/30">
         <div className="w-4 shrink-0" />
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Variable</span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Initial Value</span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Current Value</span>
+        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          Variable
+        </span>
+        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          Initial Value
+        </span>
+        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          Current Value
+        </span>
         <div className="w-5 shrink-0" />
       </div>
 
@@ -114,5 +120,5 @@ export function EnvironmentPane() {
         </Button>
       </div>
     </div>
-  );
+  )
 }
