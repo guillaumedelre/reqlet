@@ -383,6 +383,18 @@ describe("updateItemAuth", () => {
     useWorkspaceStore.getState().updateItemAuth("c1", f.id, { type: "none" })
     expect(useWorkspaceStore.getState().collections[1].items).toHaveLength(0)
   })
+
+  it("does not affect sibling request items (covers patch return item branch)", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    const r1 = useWorkspaceStore.getState().addRequest("c1")
+    const r2 = useWorkspaceStore.getState().addRequest("c1")
+    useWorkspaceStore
+      .getState()
+      .updateItemAuth("c1", r1.id, { type: "bearer", bearer: { token: "tok" } })
+    const items = useWorkspaceStore.getState().collections[0].items as RequestItem[]
+    // r2 is a sibling request — patch returns it unchanged (L774 return item)
+    expect(items.find((i) => i.id === r2.id)?.auth).toEqual({ type: "inherit" })
+  })
 })
 
 // ── Collection scripts ─────────────────────────────────────────────────────
@@ -477,6 +489,22 @@ describe("findRequest", () => {
     useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
     expect(useWorkspaceStore.getState().findRequest("unknown")).toBeNull()
   })
+
+  it("finds second of two root-level requests (covers L373 false branch)", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    useWorkspaceStore.getState().addRequest("c1")
+    const r2 = useWorkspaceStore.getState().addRequest("c1")
+    const result = useWorkspaceStore.getState().findRequest(r2.id)
+    expect(result?.request.id).toBe(r2.id)
+  })
+
+  it("finds request after an empty folder (covers L376 false branch)", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    useWorkspaceStore.getState().addFolder("c1")
+    const r = useWorkspaceStore.getState().addRequest("c1")
+    const result = useWorkspaceStore.getState().findRequest(r.id)
+    expect(result?.request.id).toBe(r.id)
+  })
 })
 
 describe("findFolderPath", () => {
@@ -492,6 +520,15 @@ describe("findFolderPath", () => {
   it("returns null for unknown folder id", () => {
     useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
     expect(useWorkspaceStore.getState().findFolderPath("nope")).toBeNull()
+  })
+
+  it("finds second of two sibling folders (covers L392 false branch)", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    useWorkspaceStore.getState().addFolder("c1")
+    const f2 = useWorkspaceStore.getState().addFolder("c1")
+    const path = useWorkspaceStore.getState().findFolderPath(f2.id)
+    expect(path).not.toBeNull()
+    expect(path![path!.length - 1].id).toBe(f2.id)
   })
 })
 

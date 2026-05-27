@@ -249,13 +249,12 @@ Each tab is identified by a stable `id` (UUID). The active tab ID and the ordere
 
 | Store | File | Persisted | Responsibility |
 |---|---|---|---|
+| `useWorkspaceStore` | `src/store/workspace.ts` | no | Collections, environments, global variables |
 | `useTabStore` | `src/store/tabs.ts` | localStorage | Open tabs, active tab, tab state |
-| `useEnvironmentStore` | `src/store/environments.ts` | localStorage | Environment list, active env ID, variables per env |
-| `useGlobalsStore` | `src/store/globals.ts` | localStorage | Global variable list |
-| `useSidebarStore` | `src/store/ui.ts` | localStorage | Sidebar collapsed state, active panel |
-| `useCollectionStore` | `src/store/collections.ts` | localStorage | Collection tree, collection variables |
+| `useUiStore` | `src/store/ui.ts` | no | Active panel, active environment, search/settings modal open |
+| `useSettingsStore` | `src/store/settings.ts` | no | Proxy, TLS, timeout preferences |
 
-Stores are read by TanStack Query hooks when the backend is available (Phase 2.14+). Until then they are the source of truth.
+`useWorkspaceStore` is populated at startup by `hooks/use-workspace-sync.ts` via TanStack Query (`GET /api/collections`, `GET /api/environments`). After init, a Zustand `subscribe` fires fire-and-forget API calls for every diff (create/update/delete). The store is the in-memory source of truth; the REST API is the persistence layer.
 
 #### Environment and globals editor
 
