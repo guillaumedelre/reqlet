@@ -187,7 +187,7 @@ function ResponseBody({
   return (
     <div className="relative h-full">
       <div className="absolute top-2 right-3 z-10 flex items-center gap-1 pointer-events-auto">
-        <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+        <Badge variant="secondary" className="text-[0.625rem] h-5 px-1.5">
           {isJson ? "JSON" : (contentType.split("/")[1] ?? "text")}
         </Badge>
         <CopyButton text={formatted} />
@@ -207,7 +207,7 @@ function ResponseHeaders({ headers }: { headers: Record<string, string> }) {
   return (
     <ScrollArea className="h-full">
       <div className="p-2">
-        <div className="flex text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-b border-border mb-1">
+        <div className="flex text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-b border-border mb-1">
           <span className="flex-1">Header</span>
           <span className="flex-1">Value</span>
         </div>
@@ -305,12 +305,15 @@ export function ResponsePane() {
       <div className="flex items-center gap-3 px-3 h-9 border-b border-border shrink-0 bg-card">
         <Badge
           variant="outline"
-          className={cn("text-[11px] h-5 px-2 font-bold border", getStatusClasses(response.status))}
+          className={cn(
+            "text-[0.6875rem] h-5 px-2 font-bold border",
+            getStatusClasses(response.status),
+          )}
         >
           {response.status} {response.statusText}
         </Badge>
 
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
           <Clock className="h-3 w-3" />
           <span
             className={cn(
@@ -322,7 +325,7 @@ export function ResponsePane() {
           </span>
         </div>
 
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        <div className="flex items-center gap-1 text-[0.6875rem] text-muted-foreground">
           <Database className="h-3 w-3" />
           <span className="font-mono">{formatSize(response.size)}</span>
         </div>
@@ -378,7 +381,7 @@ export function ResponsePane() {
                 key={v}
                 onClick={() => setBodyView(v)}
                 className={cn(
-                  "px-2 py-0.5 text-[11px] rounded transition-colors capitalize",
+                  "px-2 py-0.5 text-[0.6875rem] rounded transition-colors capitalize",
                   bodyView === v
                     ? "bg-muted text-foreground font-medium"
                     : "text-muted-foreground hover:text-foreground",
@@ -425,7 +428,7 @@ export function ResponsePane() {
             return (
               <ScrollArea className="h-full">
                 <div className="p-2">
-                  <div className="flex text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-b border-border mb-1 gap-2">
+                  <div className="flex text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-b border-border mb-1 gap-2">
                     <span className="w-32 shrink-0">Name</span>
                     <span className="flex-1">Value</span>
                     <span className="w-16 shrink-0 text-right">Flags</span>

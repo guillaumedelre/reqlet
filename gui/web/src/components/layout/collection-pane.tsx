@@ -30,7 +30,7 @@ function Breadcrumb({
   onFolderClick: (id: string) => void
 }) {
   return (
-    <div className="flex items-center gap-1 px-3 py-1.5 text-[11px] text-muted-foreground border-b border-border bg-card shrink-0">
+    <div className="flex items-center gap-1 px-3 py-1.5 text-[0.6875rem] text-muted-foreground border-b border-border bg-card shrink-0">
       {segments.map((seg, i) => (
         <span key={seg.id} className="flex items-center gap-1">
           {i > 0 && <ChevronRight className="h-3 w-3 shrink-0" />}
@@ -122,13 +122,13 @@ function VariablesTab({
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0 bg-muted/30">
         <div className="w-4 shrink-0" />
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Variable
         </span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Initial Value
         </span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Current Value
         </span>
         <div className="w-5 shrink-0" />
@@ -233,14 +233,14 @@ function Overview({
     <ScrollArea className="h-full">
       <div className="p-4 space-y-4">
         <div className="space-y-1">
-          <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          <label className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
             Name
           </label>
           <Input value={name} className="text-sm font-medium" readOnly />
         </div>
         {description && (
           <div className="space-y-1">
-            <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <label className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
               Description
             </label>
             <p className="text-xs text-foreground leading-relaxed">{description}</p>

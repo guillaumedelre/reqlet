@@ -28,7 +28,7 @@ export function HeaderBar() {
             R
           </span>
         </div>
-        <span className="text-[13px] font-semibold text-foreground">My Workspace</span>
+        <span className="text-[0.8125rem] font-semibold text-foreground">My Workspace</span>
       </div>
 
       <Separator orientation="vertical" className="h-4 mx-1" />
@@ -66,7 +66,7 @@ export function HeaderBar() {
           >
             <Search className="h-3 w-3" />
             <span className="hidden sm:inline">Search</span>
-            <Kbd className="hidden sm:inline-flex text-[10px] h-4">⌘K</Kbd>
+            <Kbd className="hidden sm:inline-flex text-[0.625rem] h-4">⌘K</Kbd>
           </Button>
         </TooltipTrigger>
         <TooltipContent className="text-xs">Search (⌘K)</TooltipContent>

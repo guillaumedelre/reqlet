@@ -30,12 +30,12 @@ export function useDeleteConfirm() {
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            Supprimer {pending.label ? `« ${pending.label} »` : "cet élément"} ?
+            Delete {pending.label ? `"${pending.label}"` : "this item"}?
           </AlertDialogTitle>
-          <AlertDialogDescription>Cette action est irréversible.</AlertDialogDescription>
+          <AlertDialogDescription>This action cannot be undone.</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogCancel onClick={() => setPending(null)}>Annuler</AlertDialogCancel>
+          <AlertDialogCancel onClick={() => setPending(null)}>Cancel</AlertDialogCancel>
           <AlertDialogAction
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             onClick={() => {
@@ -43,7 +43,7 @@ export function useDeleteConfirm() {
               setPending(null)
             }}
           >
-            Supprimer
+            Delete
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

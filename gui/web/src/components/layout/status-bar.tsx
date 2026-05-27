@@ -20,7 +20,7 @@ export function StatusBar() {
       {/* Environment */}
       <div className="flex items-center gap-1">
         <Circle className="h-1.5 w-1.5 fill-current text-primary" />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[0.625rem] text-muted-foreground">
           {activeEnv ? activeEnv.name : "No Environment"}
         </span>
       </div>
@@ -30,7 +30,7 @@ export function StatusBar() {
       {/* Tab count */}
       <div className="flex items-center gap-1">
         <Layers className="h-2.5 w-2.5 text-muted-foreground/60" />
-        <span className="text-[10px] text-muted-foreground">
+        <span className="text-[0.625rem] text-muted-foreground">
           {tabs.length} tab{tabs.length !== 1 ? "s" : ""}
           {dirtyCount > 0 && <span className="text-amber-500 ml-1">· {dirtyCount} unsaved</span>}
         </span>
@@ -42,23 +42,26 @@ export function StatusBar() {
       {response && (
         <>
           <span
-            className={cn("text-[10px] font-mono font-medium", getStatusClasses(response.status))}
+            className={cn(
+              "text-[0.625rem] font-mono font-medium",
+              getStatusClasses(response.status),
+            )}
           >
             {response.status} {response.statusText}
           </span>
           <div className="h-3 w-px bg-border" />
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="text-[0.625rem] text-muted-foreground font-mono">
             {formatTime(response.time)}
           </span>
           <div className="h-3 w-px bg-border" />
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="text-[0.625rem] text-muted-foreground font-mono">
             {formatSize(response.size)}
           </span>
           <div className="h-3 w-px bg-border" />
         </>
       )}
 
-      <span className="text-[10px] text-muted-foreground/50">Reqlet v0.1.0</span>
+      <span className="text-[0.625rem] text-muted-foreground/50">Reqlet v0.1.0</span>
     </div>
   )
 }

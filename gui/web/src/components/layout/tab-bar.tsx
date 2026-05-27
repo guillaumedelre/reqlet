@@ -89,7 +89,7 @@ function TabItem({
           {tab.type === "environment" && <Globe2 className="h-3 w-3 text-primary shrink-0" />}
           {tab.type === "globals" && <Globe2 className="h-3 w-3 text-primary shrink-0" />}
 
-          <span className="text-[12px] truncate leading-none max-w-[100px]">{tab.title}</span>
+          <span className="text-xs truncate leading-none max-w-[100px]">{tab.title}</span>
 
           {tab.dirty && <span className="h-1.5 w-1.5 rounded-full bg-orange-400 shrink-0" />}
 
@@ -233,16 +233,16 @@ export function TabBar() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Fermer sans enregistrer ?</AlertDialogTitle>
+              <AlertDialogTitle>Close without saving?</AlertDialogTitle>
               <AlertDialogDescription>
                 {pendingClose.count === 1
-                  ? `« ${pendingClose.title} » a des modifications non enregistrées. Elles seront perdues.`
-                  : `${pendingClose.count} onglets ont des modifications non enregistrées. Elles seront perdues.`}
+                  ? `"${pendingClose.title}" has unsaved changes. They will be lost.`
+                  : `${pendingClose.count} tabs have unsaved changes. They will be lost.`}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel onClick={() => setPendingClose(null)}>
-                Continuer l'édition
+                Keep editing
               </AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -251,7 +251,7 @@ export function TabBar() {
                   setPendingClose(null)
                 }}
               >
-                Fermer quand même
+                Close anyway
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

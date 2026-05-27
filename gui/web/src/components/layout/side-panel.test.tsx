@@ -77,7 +77,7 @@ describe("EnvironmentsPanel — delete active environment", () => {
     await user.click(within(row).getByRole("button"))
 
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }))
-    await user.click(await screen.findByRole("button", { name: /supprimer/i }))
+    await user.click(await screen.findByRole("button", { name: /delete/i }))
 
     await waitFor(() => {
       expect(useUiStore.getState().activeEnvironmentId).toBeNull()
@@ -100,7 +100,7 @@ describe("EnvironmentsPanel — delete active environment", () => {
     await user.click(within(row).getByRole("button"))
 
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }))
-    await user.click(await screen.findByRole("button", { name: /supprimer/i }))
+    await user.click(await screen.findByRole("button", { name: /delete/i }))
 
     await waitFor(() => {
       expect(
@@ -125,7 +125,7 @@ describe("EnvironmentsPanel — delete active environment", () => {
     await user.click(within(row).getByRole("button"))
 
     await user.click(await screen.findByRole("menuitem", { name: /delete/i }))
-    await user.click(await screen.findByRole("button", { name: /annuler/i }))
+    await user.click(await screen.findByRole("button", { name: /cancel/i }))
 
     await waitFor(() => {
       expect(useUiStore.getState().activeEnvironmentId).toBe("env-a")

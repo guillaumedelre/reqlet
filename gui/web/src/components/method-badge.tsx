@@ -14,7 +14,7 @@ export function MethodBadge({ method, size = "xs", className }: MethodBadgeProps
     <span
       className={cn(
         "font-mono font-bold tracking-wider shrink-0 inline-block text-center",
-        size === "xs" ? "text-[10px]" : "text-[11px]",
+        size === "xs" ? "text-[0.625rem]" : "text-[0.6875rem]",
         text,
         dark,
         className,

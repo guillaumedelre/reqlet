@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
 import { useQueryClient } from "@tanstack/react-query"
+import { toast } from "sonner"
 import {
   ChevronRight,
   Folder,
@@ -93,7 +94,7 @@ function InlineRename({ name, onCommit, onCancel, className }: InlineRenameProps
       }}
       onClick={(e) => e.stopPropagation()}
       className={cn(
-        "flex-1 min-w-0 text-[12px] bg-transparent border-b border-primary/60 focus:outline-none px-0 leading-none",
+        "flex-1 min-w-0 text-xs bg-transparent border-b border-primary/60 focus:outline-none px-0 leading-none",
         className,
       )}
     />
@@ -149,9 +150,7 @@ function RequestNode({ item, depth, collectionId }: RequestNodeProps) {
           onCancel={() => setEditing(false)}
         />
       ) : (
-        <span className="flex-1 text-[12px] text-foreground truncate leading-none">
-          {item.name}
-        </span>
+        <span className="flex-1 text-xs text-foreground truncate leading-none">{item.name}</span>
       )}
 
       <DropdownMenu>
@@ -272,6 +271,10 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
             "h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-150",
             expanded && "rotate-90",
           )}
+          onClick={(e) => {
+            e.stopPropagation()
+            toggleExpand(item.id)
+          }}
         />
         {expanded ? (
           <FolderOpen className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
@@ -286,9 +289,7 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
             onCancel={() => setEditing(false)}
           />
         ) : (
-          <span className="flex-1 text-[12px] text-foreground truncate leading-none">
-            {item.name}
-          </span>
+          <span className="flex-1 text-xs text-foreground truncate leading-none">{item.name}</span>
         )}
 
         <DropdownMenu>
@@ -453,13 +454,13 @@ function CollectionCard({ collection, autoEdit }: { collection: Collection; auto
             onCancel={() => setEditing(false)}
           />
         ) : (
-          <span className="flex-1 text-[12px] font-medium text-foreground truncate leading-none">
+          <span className="flex-1 text-xs font-medium text-foreground truncate leading-none">
             {collection.name}
           </span>
         )}
 
         {!editing && (
-          <span className="text-[10px] text-muted-foreground shrink-0">
+          <span className="text-[0.625rem] text-muted-foreground shrink-0">
             {requestCount(collection.items)}
           </span>
         )}
@@ -541,10 +542,17 @@ function CollectionsPanel() {
     if (!file) return
     e.target.value = ""
     try {
+      const text = await file.text()
+      const json = JSON.parse(text)
+      const name: string = json?.info?.name ?? json?.name ?? ""
+      if (name && collections.some((c) => c.name === name)) {
+        toast.error(`A collection named "${name}" already exists.`)
+        return
+      }
       await api.collections.import(file)
       await queryClient.invalidateQueries({ queryKey: ["collections"] })
     } catch {
-      // silently ignore import errors for now
+      toast.error("Failed to import collection. Check the file format.")
     }
   }
 
@@ -580,7 +588,7 @@ function CollectionsPanel() {
     <DragContext.Provider value={{ draggedId, dragOverId, startDrag, endDrag, setDragOver, drop }}>
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
-          <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+          <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
             Collections
           </span>
           <div className="flex items-center gap-0.5">
@@ -632,7 +640,7 @@ function CollectionsPanel() {
           </div>
         </div>
 
-        <ScrollArea className="flex-1 px-1 py-1">
+        <ScrollArea className="flex-1 min-h-0 px-1 py-1">
           {filtered.length === 0 ? (
             <div className="py-8 text-center text-xs text-muted-foreground">
               No collections found
@@ -669,10 +677,17 @@ function EnvironmentsPanel() {
     if (!file) return
     e.target.value = ""
     try {
+      const text = await file.text()
+      const json = JSON.parse(text)
+      const name: string = json?.name ?? ""
+      if (name && environments.some((env) => env.name === name)) {
+        toast.error(`An environment named "${name}" already exists.`)
+        return
+      }
       await api.environments.import(file)
       await queryClient.invalidateQueries({ queryKey: ["environments"] })
     } catch {
-      // silently ignore import errors for now
+      toast.error("Failed to import environment. Check the file format.")
     }
   }
 
@@ -689,7 +704,7 @@ function EnvironmentsPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
           Environments
         </span>
         <div className="flex items-center gap-0.5">
@@ -729,7 +744,7 @@ function EnvironmentsPanel() {
         </div>
       </div>
       {deleteDialog}
-      <ScrollArea className="flex-1 p-2">
+      <ScrollArea className="flex-1 min-h-0 p-2">
         <div className="space-y-0.5">
           {/* Globals entry — singleton */}
           <div
@@ -737,8 +752,10 @@ function EnvironmentsPanel() {
             onClick={openGlobalsTab}
           >
             <Globe2 className="h-3.5 w-3.5 text-primary shrink-0" />
-            <span className="flex-1 text-[12px]">Globals</span>
-            <span className="text-[10px] text-muted-foreground">{globalVariables.length} vars</span>
+            <span className="flex-1 text-xs">Globals</span>
+            <span className="text-[0.625rem] text-muted-foreground">
+              {globalVariables.length} vars
+            </span>
           </div>
 
           <div className="h-px bg-border mx-1 my-0.5" />
@@ -770,10 +787,10 @@ function EnvironmentsPanel() {
                   onCancel={() => setEditingId(null)}
                 />
               ) : (
-                <span className="flex-1 text-[12px] truncate">{env.name}</span>
+                <span className="flex-1 text-xs truncate">{env.name}</span>
               )}
               {editingId !== env.id && (
-                <span className="text-[10px] text-muted-foreground">
+                <span className="text-[0.625rem] text-muted-foreground">
                   {env.variables.length} vars
                 </span>
               )}
@@ -828,7 +845,7 @@ function HistoryPanel() {
   return (
     <div className="flex flex-col h-full">
       <div className="px-2 py-2 border-b border-border shrink-0">
-        <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">
+        <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
           History
         </span>
       </div>

@@ -234,7 +234,7 @@ describe("EnvRow — variable editing", () => {
     })
 
     // confirm in the dialog
-    const confirmBtn = await screen.findByRole("button", { name: /supprimer/i })
+    const confirmBtn = await screen.findByRole("button", { name: /delete/i })
     act(() => {
       fireEvent.click(confirmBtn)
     })

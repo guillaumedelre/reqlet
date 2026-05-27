@@ -105,7 +105,7 @@ function KVTable({
           ))}
         </datalist>
       )}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Key</span>
         <span className="flex-1">Value</span>
@@ -182,7 +182,7 @@ function FormDataRow({
           })
         }
       >
-        <SelectTrigger className="h-6 w-14 text-[11px] border-0 bg-transparent focus:ring-0 px-1 shrink-0">
+        <SelectTrigger className="h-6 w-14 text-[0.6875rem] border-0 bg-transparent focus:ring-0 px-1 shrink-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -235,7 +235,7 @@ function FormDataTable({
 }) {
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Key</span>
         <span className="w-14 shrink-0">Type</span>
@@ -351,7 +351,7 @@ function BodyTab({
               value={body.rawContentType}
               onValueChange={(v) => onChange({ ...body, rawContentType: v as RawContentType })}
             >
-              <SelectTrigger className="h-5 w-28 text-[11px] border-0 bg-transparent p-0 gap-1 focus:ring-0">
+              <SelectTrigger className="h-5 w-28 text-[0.6875rem] border-0 bg-transparent p-0 gap-1 focus:ring-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -443,7 +443,7 @@ function BodyTab({
             <label className="flex flex-col items-center gap-2 cursor-pointer group">
               <div className="border-2 border-dashed border-border rounded-lg px-8 py-6 text-center group-hover:border-primary/40 transition-colors">
                 <p className="text-xs text-muted-foreground">Click to select a file</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">Any file type</p>
+                <p className="text-[0.625rem] text-muted-foreground/60 mt-1">Any file type</p>
               </div>
               <input type="file" className="hidden" onChange={() => {}} />
             </label>
@@ -453,7 +453,7 @@ function BodyTab({
           <div className="flex flex-col h-full">
             <div className="flex-[2] overflow-hidden border-b border-border">
               <div className="flex items-center px-3 h-6 border-b border-border/50 bg-muted/20">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <span className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
                   Query
                 </span>
               </div>
@@ -469,7 +469,7 @@ function BodyTab({
             </div>
             <div className="flex-1 overflow-hidden">
               <div className="flex items-center px-3 h-6 border-b border-border/50 bg-muted/20">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <span className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
                   Variables
                 </span>
               </div>
@@ -554,7 +554,7 @@ function SRow({
     <div className="flex items-center justify-between gap-4 py-2 border-b border-border/40 last:border-0">
       <div>
         <p className="text-xs text-foreground">{label}</p>
-        {hint && <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>}
+        {hint && <p className="text-[0.625rem] text-muted-foreground mt-0.5">{hint}</p>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -564,7 +564,7 @@ function SRow({
 function SSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 pt-1">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground mb-1 pt-1">
         {title}
       </p>
       {children}
@@ -707,7 +707,7 @@ function SettingsTab({
 
         <div className="pt-1">
           <button
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[0.625rem] text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => onChange({ ...DEFAULT_REQUEST_SETTINGS })}
           >
             Reset to defaults
@@ -755,10 +755,10 @@ function PathVarsSection({
 
   return (
     <div className="border-t border-border mt-1">
-      <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
+      <div className="px-3 py-1 text-[0.625rem] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
         Path Variables
       </div>
-      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Variable</span>
         <span className="flex-1">Value</span>

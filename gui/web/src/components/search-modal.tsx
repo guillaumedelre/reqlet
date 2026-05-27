@@ -160,7 +160,7 @@ export function SearchModal() {
                   <Folder className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span className="flex-1 truncate">{r.label}</span>
                   {r.kind === "folder" && (
-                    <span className="text-[10px] text-muted-foreground truncate max-w-[140px]">
+                    <span className="text-[0.625rem] text-muted-foreground truncate max-w-[140px]">
                       {r.breadcrumb}
                     </span>
                   )}
@@ -181,14 +181,14 @@ export function SearchModal() {
                   <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   {r.kind === "request" && (
                     <span
-                      className={`font-mono font-bold text-[10px] shrink-0 ${METHOD_COLORS[r.method] ?? "text-muted-foreground"}`}
+                      className={`font-mono font-bold text-[0.625rem] shrink-0 ${METHOD_COLORS[r.method] ?? "text-muted-foreground"}`}
                     >
                       {r.method}
                     </span>
                   )}
                   <span className="flex-1 truncate">{r.label}</span>
                   {r.kind === "request" && (
-                    <span className="text-[10px] text-muted-foreground truncate max-w-[160px] font-mono">
+                    <span className="text-[0.625rem] text-muted-foreground truncate max-w-[160px] font-mono">
                       {r.url}
                     </span>
                   )}

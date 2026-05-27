@@ -197,7 +197,7 @@ export function CodeSnippets({ request }: { request: RequestState }) {
               <div className="absolute top-2 right-2 z-10">
                 <CopySnippet text={l.gen(request)} />
               </div>
-              <pre className="p-4 pr-10 text-[12px] font-mono leading-relaxed text-foreground whitespace-pre-wrap break-all">
+              <pre className="p-4 pr-10 text-xs font-mono leading-relaxed text-foreground whitespace-pre-wrap break-all">
                 {l.gen(request)}
               </pre>
             </div>

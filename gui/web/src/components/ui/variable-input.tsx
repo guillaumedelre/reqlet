@@ -183,7 +183,7 @@ export function VariableInput({
           className={cn(
             "reqlet-variable-input",
             "absolute inset-0 w-full h-full bg-transparent",
-            "font-mono text-[13px] px-3 border-0 outline-none",
+            "font-mono text-[0.8125rem] px-3 border-0 outline-none",
             "caret-foreground",
             hasVars ? "text-transparent" : "text-foreground",
           )}
@@ -198,7 +198,7 @@ export function VariableInput({
           className="absolute inset-0 pointer-events-none flex items-center overflow-hidden"
         >
           <div
-            className="whitespace-nowrap font-mono text-[13px] shrink-0"
+            className="whitespace-nowrap font-mono text-[0.8125rem] shrink-0"
             style={{ paddingInline: 12, transform: `translateX(${-scrollLeft}px)` }}
           >
             {tokens.map((token, i) => {
