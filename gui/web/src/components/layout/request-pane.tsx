@@ -1,10 +1,12 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useMemo, useRef, useState } from "react"
 import { Send, Plus, Trash2, Loader2 } from "lucide-react"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
+import { useVariableScope } from "@/hooks/use-variable-scope"
 import { CodeSnippets } from "@/components/code-gen-dialog"
 import { CodeEditor } from "@/components/ui/code-editor"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { VariableInput } from "@/components/ui/variable-input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Switch } from "@/components/ui/switch"
@@ -23,6 +25,7 @@ import { cn } from "@/lib/utils"
 import { HTTP_METHODS, COMMON_REQUEST_HEADERS } from "@/lib/http"
 import { toast } from "sonner"
 import { useTabsStore } from "@/store/tabs"
+import { useWorkspaceStore } from "@/store/workspace"
 import { DEFAULT_REQUEST_SETTINGS } from "@/types"
 import { sendRequest, BackendError } from "@/lib/backend"
 import type {
@@ -305,7 +308,17 @@ const BODY_TYPE_LABELS: Record<string, string> = {
   graphql: "GraphQL",
 }
 
-function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestBody) => void }) {
+function BodyTab({
+  body,
+  onChange,
+  variableSuggestions,
+  variableResolvedMap,
+}: {
+  body: RequestBody
+  onChange: (b: RequestBody) => void
+  variableSuggestions?: string[]
+  variableResolvedMap?: Map<string, string>
+}) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-border shrink-0 flex-wrap">
@@ -364,6 +377,8 @@ function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestB
             value={body.raw}
             onChange={(v) => onChange({ ...body, raw: v })}
             language={RAW_TYPE_LANG[body.rawContentType] ?? "plaintext"}
+            variableSuggestions={variableSuggestions}
+            variableResolvedMap={variableResolvedMap}
           />
         )}
         {body.type === "form-data" && (
@@ -447,6 +462,8 @@ function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestB
                   value={body.graphqlQuery}
                   onChange={(v) => onChange({ ...body, graphqlQuery: v })}
                   language="graphql"
+                  variableSuggestions={variableSuggestions}
+                  variableResolvedMap={variableResolvedMap}
                 />
               </div>
             </div>
@@ -461,6 +478,8 @@ function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestB
                   value={body.graphqlVariables}
                   onChange={(v) => onChange({ ...body, graphqlVariables: v })}
                   language="json"
+                  variableSuggestions={variableSuggestions}
+                  variableResolvedMap={variableResolvedMap}
                 />
               </div>
             </div>
@@ -802,11 +821,21 @@ function makeKV(): KeyValuePair {
 
 export function RequestPane() {
   const { tabs, activeTabId, updateTab, updateTabRequest, setTabSubTab } = useTabsStore()
+  const findRequest = useWorkspaceStore((s) => s.findRequest)
+  const collections = useWorkspaceStore((s) => s.collections)
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const request = activeTab?.request
   const isSending = activeTab?.isSending ?? false
   const requestSubTab = activeTab?.requestSubTab ?? "params"
+
+  const collectionId = useMemo(() => {
+    if (activeTab?.collectionId) return activeTab.collectionId
+    if (activeTab?.requestId) return findRequest(activeTab.requestId)?.collectionId
+    return undefined
+  }, [activeTab?.collectionId, activeTab?.requestId, collections, findRequest])
+
+  const { resolvedMap, allKeys } = useVariableScope(collectionId)
 
   const handleKVChange = useCallback(
     (field: "params" | "headers") =>
@@ -920,10 +949,9 @@ export function RequestPane() {
           </SelectContent>
         </Select>
 
-        <Input
+        <VariableInput
           value={request.url}
-          onChange={(e) => {
-            const newUrl = e.target.value
+          onChange={(newUrl) => {
             const parsed = parseQueryParams(newUrl)
             updateTab(activeTabId, { title: newUrl || "New Request", dirty: true })
             updateTabRequest(activeTabId, (r) => ({
@@ -932,9 +960,10 @@ export function RequestPane() {
               params: parsed.length > 0 ? parsed : newUrl.includes("?") ? [] : r.params,
             }))
           }}
+          resolvedMap={resolvedMap}
+          suggestions={allKeys}
           placeholder="Enter URL or paste text"
-          className="h-8 flex-1 text-[13px] font-mono bg-muted/30 border-border/60"
-          spellCheck={false}
+          className="h-8 flex-1"
         />
 
         <Button
@@ -1047,6 +1076,8 @@ export function RequestPane() {
           <BodyTab
             body={request.body}
             onChange={(b) => updateTabRequest(activeTabId, (r) => ({ ...r, body: b }))}
+            variableSuggestions={allKeys}
+            variableResolvedMap={resolvedMap}
           />
         </TabsContent>
 
