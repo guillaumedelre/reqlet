@@ -4,9 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/guillaumedelre/reqlet/engine/parser"
 )
 
 func minimalCollection() *parser.Collection {
@@ -49,8 +50,8 @@ func minimalCollection() *parser.Collection {
 							Method: "POST",
 							URL:    parser.URL{Raw: "{{baseUrl}}/users"},
 							Body: &parser.Body{
-								Mode: parser.BodyModeRaw,
-								Raw:  `{"name":"Alice"}`,
+								Mode:    parser.BodyModeRaw,
+								Raw:     `{"name":"Alice"}`,
 								Options: &parser.BodyOptions{Raw: &parser.RawOptions{Language: "json"}},
 							},
 						},

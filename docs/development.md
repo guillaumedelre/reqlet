@@ -263,6 +263,8 @@ The environment editor (`src/components/layout/environment-editor.tsx`) is a mod
 - Selecting the active environment
 - Editing the variable list via `VariableEditor`
 
+**Active environment invariant:** deleting the currently active environment automatically resets `activeEnvironmentId` to `null`, which causes the environment selector in the header to fall back to the "No Environment" placeholder. This is handled in `SidePanel > EnvironmentsPanel` before calling `deleteEnvironment`.
+
 The globals editor is embedded in the globals tab (tab type `"globals"`), not in the environment editor.
 
 Variables have two value fields: **initial value** (committed, safe to share) and **current value** (runtime, never synced). Both are stored in the Zustand environment store and in the collection JSON on save.

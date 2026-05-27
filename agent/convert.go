@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+
 	"github.com/guillaumedelre/reqlet/engine/parser"
 )
 
@@ -70,18 +71,18 @@ type feAuthDigest struct {
 }
 
 type feAuthOAuth1 struct {
-	ConsumerKey      string `json:"consumerKey"`
-	ConsumerSecret   string `json:"consumerSecret"`
-	Token            string `json:"token"`
-	TokenSecret      string `json:"tokenSecret"`
-	SignatureMethod  string `json:"signatureMethod"`
+	ConsumerKey     string `json:"consumerKey"`
+	ConsumerSecret  string `json:"consumerSecret"`
+	Token           string `json:"token"`
+	TokenSecret     string `json:"tokenSecret"`
+	SignatureMethod string `json:"signatureMethod"`
 }
 
 type feAuthOAuth2 struct {
-	GrantType    string `json:"grantType"`
-	AccessToken  string `json:"accessToken"`
-	TokenType    string `json:"tokenType"`
-	AddTokenTo   string `json:"addTokenTo"`
+	GrantType   string `json:"grantType"`
+	AccessToken string `json:"accessToken"`
+	TokenType   string `json:"tokenType"`
+	AddTokenTo  string `json:"addTokenTo"`
 }
 
 type feAuthHawk struct {
@@ -513,12 +514,12 @@ func convertItemToFrontend(item parser.Item) json.RawMessage {
 			items = append(items, convertItemToFrontend(child))
 		}
 		folder := struct {
-			ID                string            `json:"id"`
-			Name              string            `json:"name"`
-			Auth              feAuth            `json:"auth"`
-			PreRequestScript  string            `json:"preRequestScript"`
-			TestScript        string            `json:"testScript"`
-			Items             []json.RawMessage `json:"items"`
+			ID               string            `json:"id"`
+			Name             string            `json:"name"`
+			Auth             feAuth            `json:"auth"`
+			PreRequestScript string            `json:"preRequestScript"`
+			TestScript       string            `json:"testScript"`
+			Items            []json.RawMessage `json:"items"`
 		}{
 			ID:               newID(),
 			Name:             item.Name,
@@ -652,16 +653,16 @@ type feCollectionIn struct {
 }
 
 type feRequestIn struct {
-	ID               string            `json:"id"`
-	Name             string            `json:"name"`
-	Method           string            `json:"method"`
-	URL              string            `json:"url"`
-	Params           []feKV            `json:"params"`
-	Headers          []feKV            `json:"headers"`
-	Body             feBody            `json:"body"`
-	Auth             feAuth            `json:"auth"`
-	PreRequestScript string            `json:"preRequestScript"`
-	TestScript       string            `json:"testScript"`
+	ID               string `json:"id"`
+	Name             string `json:"name"`
+	Method           string `json:"method"`
+	URL              string `json:"url"`
+	Params           []feKV `json:"params"`
+	Headers          []feKV `json:"headers"`
+	Body             feBody `json:"body"`
+	Auth             feAuth `json:"auth"`
+	PreRequestScript string `json:"preRequestScript"`
+	TestScript       string `json:"testScript"`
 }
 
 type feFolderIn struct {
