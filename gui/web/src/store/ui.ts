@@ -1,48 +1,42 @@
 import { create } from 'zustand';
-import type { ResponseData } from '@/types';
+import { persist } from 'zustand/middleware';
 
 export type SidePanel = 'collections' | 'environments' | 'history';
-export type RequestSubTab = 'params' | 'auth' | 'headers' | 'body' | 'scripts';
-export type ResponseSubTab = 'body' | 'headers' | 'cookies' | 'timeline';
 
 interface UiState {
   activePanel: SidePanel | null;
   setActivePanel: (panel: SidePanel | null) => void;
   togglePanel: (panel: SidePanel) => void;
 
-  requestSubTab: RequestSubTab;
-  setRequestSubTab: (t: RequestSubTab) => void;
-
-  responseSubTab: ResponseSubTab;
-  setResponseSubTab: (t: ResponseSubTab) => void;
-
   activeEnvironmentId: string | null;
   setActiveEnvironment: (id: string | null) => void;
 
-  isSending: boolean;
-  setSending: (v: boolean) => void;
+  searchOpen: boolean;
+  setSearchOpen: (open: boolean) => void;
 
-  response: ResponseData | null;
-  setResponse: (r: ResponseData | null) => void;
+  settingsOpen: boolean;
+  setSettingsOpen: (open: boolean) => void;
 }
 
-export const useUiStore = create<UiState>((set) => ({
-  activePanel: 'collections',
-  setActivePanel: (panel) => set({ activePanel: panel }),
-  togglePanel: (panel) => set((s) => ({ activePanel: s.activePanel === panel ? null : panel })),
+export const useUiStore = create<UiState>()(
+  persist(
+    (set) => ({
+      activePanel: 'collections',
+      setActivePanel: (panel) => set({ activePanel: panel }),
+      togglePanel: (panel) => set((s) => ({ activePanel: s.activePanel === panel ? null : panel })),
 
-  requestSubTab: 'params',
-  setRequestSubTab: (t) => set({ requestSubTab: t }),
+      activeEnvironmentId: 'env-dev',
+      setActiveEnvironment: (id) => set({ activeEnvironmentId: id }),
 
-  responseSubTab: 'body',
-  setResponseSubTab: (t) => set({ responseSubTab: t }),
+      searchOpen: false,
+      setSearchOpen: (open) => set({ searchOpen: open }),
 
-  activeEnvironmentId: 'env-dev',
-  setActiveEnvironment: (id) => set({ activeEnvironmentId: id }),
-
-  isSending: false,
-  setSending: (v) => set({ isSending: v }),
-
-  response: null,
-  setResponse: (r) => set({ response: r }),
-}));
+      settingsOpen: false,
+      setSettingsOpen: (open) => set({ settingsOpen: open }),
+    }),
+    {
+      name: 'reqlet-ui',
+      partialize: (s) => ({ activePanel: s.activePanel, activeEnvironmentId: s.activeEnvironmentId }),
+    },
+  ),
+);

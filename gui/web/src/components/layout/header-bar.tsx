@@ -1,4 +1,4 @@
-import { Search, Sun, Moon, Settings2 } from 'lucide-react';
+import { Search, Sun, Moon, Monitor, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
@@ -9,8 +9,8 @@ import { useUiStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
 
 export function HeaderBar() {
-  const { isDark, toggleTheme } = useTheme();
-  const { activeEnvironmentId, setActiveEnvironment } = useUiStore();
+  const { theme, isDark, toggleTheme } = useTheme();
+  const { activeEnvironmentId, setActiveEnvironment, setSearchOpen, setSettingsOpen } = useUiStore();
   const { environments } = useWorkspaceStore();
 
   return (
@@ -52,6 +52,7 @@ export function HeaderBar() {
             variant="ghost"
             size="sm"
             className="h-6 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground rounded-md"
+            onClick={() => setSearchOpen(true)}
           >
             <Search className="h-3 w-3" />
             <span className="hidden sm:inline">Search</span>
@@ -72,10 +73,18 @@ export function HeaderBar() {
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
             onClick={toggleTheme}
           >
-            {isDark ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+            {theme === 'system' ? (
+              <Monitor className="h-3.5 w-3.5" />
+            ) : isDark ? (
+              <Sun className="h-3.5 w-3.5" />
+            ) : (
+              <Moon className="h-3.5 w-3.5" />
+            )}
           </Button>
         </TooltipTrigger>
-        <TooltipContent className="text-xs">{isDark ? 'Light mode' : 'Dark mode'}</TooltipContent>
+        <TooltipContent className="text-xs">
+          {theme === 'light' ? 'Switch to dark' : theme === 'dark' ? 'Switch to system' : 'Switch to light'}
+        </TooltipContent>
       </Tooltip>
 
       {/* Settings */}
@@ -85,6 +94,7 @@ export function HeaderBar() {
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={() => setSettingsOpen(true)}
           >
             <Settings2 className="h-3.5 w-3.5" />
           </Button>

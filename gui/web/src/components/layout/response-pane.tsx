@@ -1,13 +1,40 @@
-import { Copy, Check, Clock, Database, ArrowDown } from 'lucide-react';
+import { Copy, Check, Clock, Database, ArrowDown, Download, AlignLeft, AlignJustify } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
+import { CodeEditor } from '@/components/ui/code-editor';
 import { cn } from '@/lib/utils';
 import { getStatusClasses, formatTime, formatSize } from '@/lib/http';
-import { useUiStore } from '@/store/ui';
+import { useTabsStore } from '@/store/tabs';
+import type { ResponseSubTab } from '@/types';
+
+function guessLanguage(contentType: string): string {
+  if (contentType.includes('json')) return 'json';
+  if (contentType.includes('xml')) return 'xml';
+  if (contentType.includes('html')) return 'html';
+  if (contentType.includes('javascript')) return 'javascript';
+  if (contentType.includes('css')) return 'css';
+  return 'plaintext';
+}
+
+function downloadBody(body: string, contentType: string) {
+  const ext = contentType.includes('json') ? '.json'
+    : contentType.includes('xml') ? '.xml'
+    : contentType.includes('html') ? '.html'
+    : contentType.includes('css') ? '.css'
+    : contentType.includes('javascript') ? '.js'
+    : '.txt';
+  const blob = new Blob([body], { type: contentType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `response${ext}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -60,16 +87,40 @@ function LoadingState() {
   );
 }
 
-function ResponseBody({ body, contentType }: { body: string; contentType: string }) {
+type BodyView = 'pretty' | 'raw' | 'preview';
+
+function parseCookies(headers: Record<string, string>): Array<{ name: string; value: string; domain: string; path: string; expires: string; httpOnly: boolean; secure: boolean }> {
+  const raw = headers['set-cookie'] ?? headers['Set-Cookie'] ?? '';
+  if (!raw) return [];
+  return raw.split('\n').filter(Boolean).map((line) => {
+    const [nameVal, ...attrs] = line.split(';').map((s) => s.trim());
+    const eq = nameVal.indexOf('=');
+    const name = eq === -1 ? nameVal : nameVal.slice(0, eq).trim();
+    const value = eq === -1 ? '' : nameVal.slice(eq + 1).trim();
+    const attrMap: Record<string, string | boolean> = {};
+    for (const a of attrs) {
+      const aEq = a.indexOf('=');
+      if (aEq === -1) attrMap[a.toLowerCase()] = true;
+      else attrMap[a.slice(0, aEq).toLowerCase()] = a.slice(aEq + 1);
+    }
+    return {
+      name, value,
+      domain: (attrMap['domain'] as string) ?? '',
+      path: (attrMap['path'] as string) ?? '/',
+      expires: (attrMap['expires'] as string) ?? '',
+      httpOnly: 'httponly' in attrMap,
+      secure: 'secure' in attrMap,
+    };
+  });
+}
+
+function ResponseBody({ body, contentType, view, wordWrap }: { body: string; contentType: string; view: BodyView; wordWrap: boolean }) {
   const isJson = contentType.includes('json');
+  const isHtml = contentType.includes('html');
 
   let formatted = body;
-  if (isJson && body) {
-    try {
-      formatted = JSON.stringify(JSON.parse(body), null, 2);
-    } catch {
-      // keep as-is
-    }
+  if (view === 'pretty' && isJson && body) {
+    try { formatted = JSON.stringify(JSON.parse(body), null, 2); } catch { /* keep */ }
   }
 
   if (!body) {
@@ -80,19 +131,26 @@ function ResponseBody({ body, contentType }: { body: string; contentType: string
     );
   }
 
+  if (view === 'preview') {
+    return isHtml
+      ? <iframe sandbox="allow-scripts" srcDoc={body} className="w-full h-full border-0" title="response-preview" />
+      : <div className="h-full flex items-center justify-center"><p className="text-xs text-muted-foreground">Preview only available for HTML responses</p></div>;
+  }
+
   return (
     <div className="relative h-full">
-      <div className="absolute top-2 right-3 z-10 flex items-center gap-1">
+      <div className="absolute top-2 right-3 z-10 flex items-center gap-1 pointer-events-auto">
         <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
           {isJson ? 'JSON' : contentType.split('/')[1] ?? 'text'}
         </Badge>
         <CopyButton text={formatted} />
       </div>
-      <ScrollArea className="h-full">
-        <pre className="text-[12px] font-mono text-foreground leading-relaxed whitespace-pre-wrap p-3 pt-2">
-          {formatted}
-        </pre>
-      </ScrollArea>
+      <CodeEditor
+        value={formatted}
+        readOnly
+        language={guessLanguage(contentType)}
+        wordWrap={wordWrap}
+      />
     </div>
   );
 }
@@ -174,7 +232,15 @@ function Timeline({ time }: { time: number }) {
 }
 
 export function ResponsePane() {
-  const { isSending, response, responseSubTab, setResponseSubTab } = useUiStore();
+  const { tabs, activeTabId, setTabResponseSubTab } = useTabsStore();
+  const [bodyView, setBodyView] = useState<BodyView>('pretty');
+  const [wordWrap, setWordWrap] = useState(true);
+
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isSending = activeTab?.isSending ?? false;
+  const response = activeTab?.response ?? null;
+  const responseSubTab = activeTab?.responseSubTab ?? 'body';
+  const setResponseSubTab = (v: ResponseSubTab) => setTabResponseSubTab(activeTabId, v);
 
   if (isSending) return <LoadingState />;
   if (!response) return <EmptyState />;
@@ -201,6 +267,18 @@ export function ResponsePane() {
           <Database className="h-3 w-3" />
           <span className="font-mono">{formatSize(response.size)}</span>
         </div>
+
+        <div className="flex-1" />
+
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          onClick={() => downloadBody(response.body, response.contentType)}
+          title="Save response"
+        >
+          <Download className="h-3 w-3" />
+        </Button>
       </div>
 
       {/* Sub-tabs */}
@@ -227,8 +305,38 @@ export function ResponsePane() {
           </TabsList>
         </div>
 
-        <TabsContent value="body" className="flex-1 overflow-hidden mt-0">
-          <ResponseBody body={response.body} contentType={response.contentType} />
+        <TabsContent value="body" className="flex-1 overflow-hidden mt-0 flex flex-col">
+          {/* Body toolbar */}
+          <div className="flex items-center gap-1 px-2 border-b border-border shrink-0 h-7">
+            {(['pretty', 'raw', 'preview'] as BodyView[]).map((v) => (
+              <button
+                key={v}
+                onClick={() => setBodyView(v)}
+                className={cn(
+                  'px-2 py-0.5 text-[11px] rounded transition-colors capitalize',
+                  bodyView === v
+                    ? 'bg-muted text-foreground font-medium'
+                    : 'text-muted-foreground hover:text-foreground',
+                )}
+              >
+                {v}
+              </button>
+            ))}
+            <div className="flex-1" />
+            <button
+              onClick={() => setWordWrap((w) => !w)}
+              title={wordWrap ? 'Disable word wrap' : 'Enable word wrap'}
+              className={cn(
+                'h-5 w-5 flex items-center justify-center rounded transition-colors',
+                wordWrap ? 'text-primary' : 'text-muted-foreground hover:text-foreground',
+              )}
+            >
+              {wordWrap ? <AlignJustify className="h-3 w-3" /> : <AlignLeft className="h-3 w-3" />}
+            </button>
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <ResponseBody body={response.body} contentType={response.contentType} view={bodyView} wordWrap={wordWrap} />
+          </div>
         </TabsContent>
 
         <TabsContent value="headers" className="flex-1 overflow-hidden mt-0">
@@ -236,9 +344,35 @@ export function ResponsePane() {
         </TabsContent>
 
         <TabsContent value="cookies" className="flex-1 overflow-hidden mt-0">
-          <div className="h-full flex items-center justify-center">
-            <p className="text-xs text-muted-foreground">No cookies received</p>
-          </div>
+          {(() => {
+            const cookies = parseCookies(response.headers);
+            if (!cookies.length) return (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-xs text-muted-foreground">No cookies received</p>
+              </div>
+            );
+            return (
+              <ScrollArea className="h-full">
+                <div className="p-2">
+                  <div className="flex text-[10px] font-medium text-muted-foreground uppercase tracking-wider px-2 py-1 border-b border-border mb-1 gap-2">
+                    <span className="w-32 shrink-0">Name</span>
+                    <span className="flex-1">Value</span>
+                    <span className="w-16 shrink-0 text-right">Flags</span>
+                  </div>
+                  {cookies.map((c, i) => (
+                    <div key={i} className="flex items-start gap-2 px-2 py-1 hover:bg-muted/30 rounded group">
+                      <span className="w-32 shrink-0 text-xs font-mono text-primary truncate">{c.name}</span>
+                      <span className="flex-1 text-xs font-mono text-foreground break-all">{c.value}</span>
+                      <div className="w-16 shrink-0 flex justify-end gap-1">
+                        {c.httpOnly && <span className="text-[9px] bg-muted px-1 rounded font-medium">HttpOnly</span>}
+                        {c.secure && <span className="text-[9px] bg-muted px-1 rounded font-medium">Secure</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
+            );
+          })()}
         </TabsContent>
 
         <TabsContent value="timeline" className="flex-1 overflow-hidden mt-0">

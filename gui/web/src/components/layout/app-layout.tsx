@@ -6,8 +6,12 @@ import { SidePanel } from './side-panel';
 import { TabBar } from './tab-bar';
 import { RequestPane } from './request-pane';
 import { ResponsePane } from './response-pane';
+import { CollectionPane } from './collection-pane';
+import { EnvironmentPane } from './environment-pane';
+import { GlobalsPane } from './globals-pane';
 import { StatusBar } from './status-bar';
 import { useUiStore } from '@/store/ui';
+import { useTabsStore } from '@/store/tabs';
 import { cn } from '@/lib/utils';
 
 const SIDE_PANEL_DEFAULT = 260;
@@ -16,6 +20,11 @@ const SIDE_PANEL_MAX = 480;
 
 export function AppLayout() {
   const { activePanel } = useUiStore();
+  const { tabs, activeTabId } = useTabsStore();
+  const activeTab = tabs.find((t) => t.id === activeTabId);
+  const isCollectionOrFolder = activeTab?.type === 'collection' || activeTab?.type === 'folder';
+  const isEnvironment = activeTab?.type === 'environment';
+  const isGlobals = activeTab?.type === 'globals';
   const [sideWidth, setSideWidth] = useState(SIDE_PANEL_DEFAULT);
   const dragging = useRef(false);
   const startX = useRef(0);
@@ -71,18 +80,32 @@ export function AppLayout() {
         <div className="flex-1 flex flex-col overflow-hidden min-w-0">
           <TabBar />
 
-          <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">
-            <ResizablePanel defaultSize={50} minSize={20} className="overflow-hidden">
-              <RequestPane />
-            </ResizablePanel>
-            <ResizableHandle className={cn(
-              'h-px bg-border hover:bg-primary/30',
-              'data-[resize-handle-active]:bg-primary/40 transition-colors',
-            )} />
-            <ResizablePanel defaultSize={50} minSize={15} className="overflow-hidden">
-              <ResponsePane />
-            </ResizablePanel>
-          </ResizablePanelGroup>
+          {isCollectionOrFolder ? (
+            <div className="flex-1 overflow-hidden">
+              <CollectionPane />
+            </div>
+          ) : isEnvironment ? (
+            <div className="flex-1 overflow-hidden">
+              <EnvironmentPane />
+            </div>
+          ) : isGlobals ? (
+            <div className="flex-1 overflow-hidden">
+              <GlobalsPane />
+            </div>
+          ) : (
+            <ResizablePanelGroup orientation="vertical" className="flex-1 overflow-hidden">
+              <ResizablePanel defaultSize={50} minSize={20} className="overflow-hidden">
+                <RequestPane />
+              </ResizablePanel>
+              <ResizableHandle className={cn(
+                'h-px bg-border hover:bg-primary/30',
+                'data-[resize-handle-active]:bg-primary/40 transition-colors',
+              )} />
+              <ResizablePanel defaultSize={50} minSize={15} className="overflow-hidden">
+                <ResponsePane />
+              </ResizablePanel>
+            </ResizablePanelGroup>
+          )}
         </div>
       </div>
 

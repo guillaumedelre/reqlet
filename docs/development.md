@@ -435,23 +435,19 @@ present it renders a status bar (status badge, time, size, **Save** button) and 
 the response `Content-Type` via `guessExt` (`src/lib/response.ts`): `json`, `xml`, `html`, `css`,
 `js`, `csv`, or `txt` as fallback.
 
-#### URL utilities (`src/lib/url.ts`)
+#### URL ↔ Params sync (`src/components/layout/request-pane.tsx`)
 
-Four pure functions manage the relationship between the raw URL string and the
-structured params/path-variables arrays:
+Two inline helpers in `RequestPane` keep the URL field and the Params table in sync:
 
-| Function | Purpose |
+| Helper | Purpose |
 |---|---|
-| `assembleUrl(base, params)` | Build the display URL from the base and enabled params |
-| `parseUrl(raw)` | Split a raw URL into `{ base, params[] }` |
-| `mergeParams(existing, parsed)` | Reconcile the params array after a URL edit (preserves IDs, keeps disabled items) |
-| `extractPathVarNames(url)` | Return the list of variable names found in the path — `:param` and `{{param}}` syntax, ignores the query string |
-| `mergePathVars(existing, names)` | Reconcile the path-vars array with the extracted names (preserves user-entered values, drops removed vars) |
+| `parseQueryParams(url)` | Extract `KeyValuePair[]` from the query string of a raw URL |
+| `buildUrlWithParams(url, params)` | Reconstruct the URL from its base (before `?`) and the enabled params |
 
-The `url` field on a tab stores the base URL only (no query string). `params` is
-the structured list. `pathVars` holds the extracted path variables with their
-user-supplied values (substituted at send time). Both arrays are kept in sync via
-the above functions on every URL field edit.
+The `url` field on a tab stores the full raw URL including the query string.
+On every URL input change, `parseQueryParams` replaces the params array.
+On every params table change (add/edit/delete), `buildUrlWithParams` rebuilds
+the URL. Template variables like `{{baseUrl}}` are preserved as-is (no encoding).
 
 [swagger-ui]: https://swagger.io/tools/swagger-ui/
 

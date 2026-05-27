@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   Folder,
@@ -12,6 +12,7 @@ import {
   Copy,
   Download,
   Upload,
+  Globe2,
 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -32,43 +33,129 @@ import { useUiStore } from '@/store/ui';
 import type { Collection, CollectionItem, FolderItem, RequestItem } from '@/types';
 import { isRequest } from '@/types';
 
+// ---------- Drag-and-drop context ----------
+
+interface DragCtx {
+  draggedId: string | null;
+  dragOverId: string | null;
+  startDrag: (id: string, collectionId: string) => void;
+  endDrag: () => void;
+  setDragOver: (id: string | null) => void;
+  drop: (targetCollectionId: string, targetFolderId: string | null) => void;
+}
+
+const DragContext = createContext<DragCtx>({
+  draggedId: null,
+  dragOverId: null,
+  startDrag: () => {},
+  endDrag: () => {},
+  setDragOver: () => {},
+  drop: () => {},
+});
+
+// ---------- Inline rename input ----------
+
+interface InlineRenameProps {
+  name: string;
+  onCommit: (name: string) => void;
+  onCancel: () => void;
+  className?: string;
+}
+
+function InlineRename({ name, onCommit, onCancel, className }: InlineRenameProps) {
+  const [value, setValue] = useState(name);
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    ref.current?.select();
+  }, []);
+
+  return (
+    <input
+      ref={ref}
+      value={value}
+      autoFocus
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => onCommit(value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') { e.preventDefault(); onCommit(value); }
+        if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+        e.stopPropagation();
+      }}
+      onClick={(e) => e.stopPropagation()}
+      className={cn(
+        'flex-1 min-w-0 text-[12px] bg-transparent border-b border-primary/60 focus:outline-none px-0 leading-none',
+        className,
+      )}
+    />
+  );
+}
+
 // ---------- Tree nodes ----------
 
 interface RequestNodeProps {
   item: RequestItem;
   depth: number;
+  collectionId: string;
 }
 
-function RequestNode({ item, depth }: RequestNodeProps) {
-  const { openRequestTab } = useTabsStore();
+function RequestNode({ item, depth, collectionId }: RequestNodeProps) {
+  const { openRequestTab, tabs, updateTab } = useTabsStore();
+  const { renameItem, duplicateItem, deleteItem } = useWorkspaceStore();
+  const { startDrag, endDrag } = useContext(DragContext);
+  const [editing, setEditing] = useState(false);
+
+  const handleCommitRename = (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== item.name) {
+      renameItem(collectionId, item.id, trimmed);
+      const tab = tabs.find((t) => t.requestId === item.id);
+      if (tab) updateTab(tab.id, { title: trimmed });
+    }
+    setEditing(false);
+  };
 
   return (
     <div
+      draggable
+      onDragStart={(e) => { e.stopPropagation(); startDrag(item.id, collectionId); }}
+      onDragEnd={endDrag}
       className={cn(
         'group flex items-center gap-1.5 h-7 pr-1 rounded cursor-pointer select-none transition-colors',
         'hover:bg-accent/60',
       )}
       style={{ paddingLeft: `${8 + depth * 16}px` }}
-      onClick={() => openRequestTab(item)}
+      onClick={() => !editing && openRequestTab(item)}
     >
       <MethodBadge method={item.method} className="w-[46px]" />
-      <span className="flex-1 text-[12px] text-foreground truncate leading-none">{item.name}</span>
+      {editing ? (
+        <InlineRename
+          name={item.name}
+          onCommit={handleCommitRename}
+          onCancel={() => setEditing(false)}
+        />
+      ) : (
+        <span className="flex-1 text-[12px] text-foreground truncate leading-none">{item.name}</span>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-          <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
+          <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
             <MoreHorizontal className="h-3 w-3" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-44 text-xs">
-          <DropdownMenuItem className="text-xs gap-2">
+          <DropdownMenuItem className="text-xs gap-2" onSelect={() => setEditing(true)}>
             <Pencil className="h-3 w-3" />Rename
           </DropdownMenuItem>
-          <DropdownMenuItem className="text-xs gap-2">
+          <DropdownMenuItem className="text-xs gap-2" onSelect={() => duplicateItem(collectionId, item.id)}>
             <Copy className="h-3 w-3" />Duplicate
           </DropdownMenuItem>
           <DropdownMenuSeparator />
-          <DropdownMenuItem className="text-xs gap-2 text-destructive focus:text-destructive">
+          <DropdownMenuItem
+            className="text-xs gap-2 text-destructive focus:text-destructive"
+            onSelect={() => deleteItem(collectionId, item.id)}
+          >
             <Trash2 className="h-3 w-3" />Delete
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -80,18 +167,58 @@ function RequestNode({ item, depth }: RequestNodeProps) {
 interface FolderNodeProps {
   item: FolderItem;
   depth: number;
+  collectionId: string;
 }
 
-function FolderNode({ item, depth }: FolderNodeProps) {
-  const { isExpanded, toggleExpand } = useWorkspaceStore();
+function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
+  const { isExpanded, toggleExpand, renameItem, duplicateItem, deleteItem, addRequest, addFolder } = useWorkspaceStore();
+  const { openFolderTab, openRequestTab, tabs, updateTab } = useTabsStore();
+  const { startDrag, endDrag, draggedId, dragOverId, setDragOver, drop } = useContext(DragContext);
   const expanded = isExpanded(item.id);
+  const [editing, setEditing] = useState(false);
+
+  const handleCommitRename = (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== item.name) {
+      renameItem(collectionId, item.id, trimmed);
+      const tab = tabs.find((t) => t.folderId === item.id);
+      if (tab) updateTab(tab.id, { title: trimmed });
+    }
+    setEditing(false);
+  };
+
+  const handleAddRequest = () => {
+    const req = addRequest(collectionId, item.id);
+    if (!expanded) toggleExpand(item.id);
+    openRequestTab(req);
+  };
+
+  const handleAddFolder = () => {
+    addFolder(collectionId, item.id);
+    if (!expanded) toggleExpand(item.id);
+  };
+
+  const isDropTarget = dragOverId === item.id && draggedId !== item.id;
 
   return (
     <div>
       <div
-        className="group flex items-center gap-1 h-7 pr-1 rounded cursor-pointer select-none transition-colors hover:bg-accent/60"
+        draggable
+        onDragStart={(e) => { e.stopPropagation(); startDrag(item.id, collectionId); }}
+        onDragEnd={endDrag}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setDragOver(item.id); }}
+        onDragLeave={(e) => { e.stopPropagation(); setDragOver(null); }}
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); drop(collectionId, item.id); }}
+        className={cn(
+          'group flex items-center gap-1 h-7 pr-1 rounded cursor-pointer select-none transition-colors hover:bg-accent/60',
+          isDropTarget && 'ring-1 ring-primary/60 bg-primary/5',
+        )}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={() => toggleExpand(item.id)}
+        onClick={() => {
+          if (editing) return;
+          toggleExpand(item.id);
+          openFolderTab(item, collectionId);
+        }}
       >
         <ChevronRight
           className={cn('h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-150', expanded && 'rotate-90')}
@@ -101,30 +228,42 @@ function FolderNode({ item, depth }: FolderNodeProps) {
         ) : (
           <Folder className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         )}
-        <span className="flex-1 text-[12px] text-foreground truncate leading-none">{item.name}</span>
+
+        {editing ? (
+          <InlineRename
+            name={item.name}
+            onCommit={handleCommitRename}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <span className="flex-1 text-[12px] text-foreground truncate leading-none">{item.name}</span>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
+            <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <MoreHorizontal className="h-3 w-3" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-44">
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={handleAddRequest}>
               <FileText className="h-3 w-3" />Add Request
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={handleAddFolder}>
               <Folder className="h-3 w-3" />Add Folder
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={() => setEditing(true)}>
               <Pencil className="h-3 w-3" />Rename
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={() => duplicateItem(collectionId, item.id)}>
               <Copy className="h-3 w-3" />Duplicate
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs gap-2 text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-xs gap-2 text-destructive focus:text-destructive"
+              onSelect={() => deleteItem(collectionId, item.id)}
+            >
               <Trash2 className="h-3 w-3" />Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -134,7 +273,7 @@ function FolderNode({ item, depth }: FolderNodeProps) {
       {expanded && (
         <div>
           {item.items.map((child) => (
-            <TreeNode key={child.id} item={child} depth={depth + 1} />
+            <TreeNode key={child.id} item={child} depth={depth + 1} collectionId={collectionId} />
           ))}
         </div>
       )}
@@ -142,16 +281,20 @@ function FolderNode({ item, depth }: FolderNodeProps) {
   );
 }
 
-function TreeNode({ item, depth }: { item: CollectionItem; depth: number }) {
-  if (isRequest(item)) return <RequestNode item={item} depth={depth} />;
-  return <FolderNode item={item} depth={depth} />;
+function TreeNode({ item, depth, collectionId }: { item: CollectionItem; depth: number; collectionId: string }) {
+  if (isRequest(item)) return <RequestNode item={item} depth={depth} collectionId={collectionId} />;
+  return <FolderNode item={item} depth={depth} collectionId={collectionId} />;
 }
 
 // ---------- Collection card ----------
 
 function CollectionCard({ collection }: { collection: Collection }) {
-  const { isExpanded, toggleExpand } = useWorkspaceStore();
+  const { isExpanded, toggleExpand, renameCollection, duplicateCollection, deleteCollection, addRequest, addFolder } = useWorkspaceStore();
+  const { openCollectionTab, openRequestTab, tabs, updateTab } = useTabsStore();
+  const { draggedId, dragOverId, setDragOver, drop } = useContext(DragContext);
   const expanded = isExpanded(collection.id);
+  const [editing, setEditing] = useState(false);
+  const isDropTarget = dragOverId === collection.id && draggedId !== collection.id;
 
   const requestCount = (items: CollectionItem[]): number =>
     items.reduce((acc, item) => {
@@ -159,46 +302,86 @@ function CollectionCard({ collection }: { collection: Collection }) {
       return acc + requestCount(item.items);
     }, 0);
 
+  const handleCommitRename = (name: string) => {
+    const trimmed = name.trim();
+    if (trimmed && trimmed !== collection.name) {
+      renameCollection(collection.id, trimmed);
+      const tab = tabs.find((t) => t.collectionId === collection.id && t.type === 'collection');
+      if (tab) updateTab(tab.id, { title: trimmed });
+    }
+    setEditing(false);
+  };
+
+  const handleAddRequest = () => {
+    const req = addRequest(collection.id);
+    if (!expanded) toggleExpand(collection.id);
+    openRequestTab(req);
+  };
+
+  const handleAddFolder = () => {
+    addFolder(collection.id);
+    if (!expanded) toggleExpand(collection.id);
+  };
+
   return (
     <div className="mb-0.5">
       <div
-        className="group flex items-center gap-1.5 h-8 px-2 rounded cursor-pointer select-none transition-colors hover:bg-accent/60"
-        onClick={() => toggleExpand(collection.id)}
+        onDragOver={(e) => { e.preventDefault(); setDragOver(collection.id); }}
+        onDragLeave={() => setDragOver(null)}
+        onDrop={(e) => { e.preventDefault(); drop(collection.id, null); }}
+        className={cn(
+          'group flex items-center gap-1.5 h-8 px-2 rounded cursor-pointer select-none transition-colors hover:bg-accent/60',
+          isDropTarget && 'ring-1 ring-primary/60 bg-primary/5',
+        )}
+        onClick={() => !editing && openCollectionTab(collection)}
       >
         <ChevronRight
           className={cn('h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-150', expanded && 'rotate-90')}
+          onClick={(e) => { e.stopPropagation(); toggleExpand(collection.id); }}
         />
         <FolderOpen className="h-3.5 w-3.5 text-primary shrink-0" />
-        <span className="flex-1 text-[12px] font-medium text-foreground truncate leading-none">
-          {collection.name}
-        </span>
-        <span className="text-[10px] text-muted-foreground shrink-0">{requestCount(collection.items)}</span>
+
+        {editing ? (
+          <InlineRename
+            name={collection.name}
+            onCommit={handleCommitRename}
+            onCancel={() => setEditing(false)}
+          />
+        ) : (
+          <span className="flex-1 text-[12px] font-medium text-foreground truncate leading-none">
+            {collection.name}
+          </span>
+        )}
+
+        {!editing && (
+          <span className="text-[10px] text-muted-foreground shrink-0">{requestCount(collection.items)}</span>
+        )}
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-            <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity">
+            <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
               <MoreHorizontal className="h-3 w-3" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={handleAddRequest}>
               <FileText className="h-3 w-3" />Add Request
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={handleAddFolder}>
               <Folder className="h-3 w-3" />Add Folder
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs gap-2">
-              <Pencil className="h-3 w-3" />Edit
-            </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem className="text-xs gap-2" onSelect={() => duplicateCollection(collection.id)}>
               <Copy className="h-3 w-3" />Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem className="text-xs gap-2">
               <Download className="h-3 w-3" />Export
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-xs gap-2 text-destructive focus:text-destructive">
+            <DropdownMenuItem
+              className="text-xs gap-2 text-destructive focus:text-destructive"
+              onSelect={() => deleteCollection(collection.id)}
+            >
               <Trash2 className="h-3 w-3" />Delete
             </DropdownMenuItem>
           </DropdownMenuContent>
@@ -208,7 +391,7 @@ function CollectionCard({ collection }: { collection: Collection }) {
       {expanded && (
         <div className="pb-0.5">
           {collection.items.map((item) => (
-            <TreeNode key={item.id} item={item} depth={1} />
+            <TreeNode key={item.id} item={item} depth={1} collectionId={collection.id} />
           ))}
         </div>
       )}
@@ -219,29 +402,59 @@ function CollectionCard({ collection }: { collection: Collection }) {
 // ---------- Panel views ----------
 
 function CollectionsPanel() {
-  const { collections } = useWorkspaceStore();
+  const { collections, moveItem } = useWorkspaceStore();
   const [query, setQuery] = useState('');
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverId, setDragOver] = useState<string | null>(null);
+  const dragSourceRef = useRef<{ id: string; collectionId: string } | null>(null);
+
+  const startDrag = useCallback((id: string, collectionId: string) => {
+    dragSourceRef.current = { id, collectionId };
+    setDraggedId(id);
+  }, []);
+
+  const endDrag = useCallback(() => {
+    dragSourceRef.current = null;
+    setDraggedId(null);
+    setDragOver(null);
+  }, []);
+
+  const drop = useCallback((targetCollectionId: string, targetFolderId: string | null) => {
+    const src = dragSourceRef.current;
+    if (!src || src.id === targetFolderId) { endDrag(); return; }
+    moveItem(src.collectionId, src.id, targetCollectionId, targetFolderId);
+    endDrag();
+  }, [moveItem, endDrag]);
 
   const filtered = query.trim()
     ? collections.filter((c) => c.name.toLowerCase().includes(query.toLowerCase()))
     : collections;
 
   return (
+    <DragContext.Provider value={{ draggedId, dragOverId, startDrag, endDrag, setDragOver, drop }}>
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Collections</span>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
-              <Plus className="h-3.5 w-3.5" />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent className="text-xs">New Collection</TooltipContent>
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
+                <Upload className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">Import collection</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">New Collection</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
-      {/* Search */}
       <div className="px-2 py-1.5 border-b border-border shrink-0">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
@@ -254,15 +467,6 @@ function CollectionsPanel() {
         </div>
       </div>
 
-      {/* Import */}
-      <div className="px-2 py-1 border-b border-border shrink-0">
-        <button className="flex items-center gap-1.5 w-full text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5">
-          <Upload className="h-3 w-3" />
-          Import collection
-        </button>
-      </div>
-
-      {/* Tree */}
       <ScrollArea className="flex-1 px-1 py-1">
         {filtered.length === 0 ? (
           <div className="py-8 text-center text-xs text-muted-foreground">No collections found</div>
@@ -271,33 +475,82 @@ function CollectionsPanel() {
         )}
       </ScrollArea>
     </div>
+    </DragContext.Provider>
   );
 }
 
 function EnvironmentsPanel() {
-  const { environments } = useWorkspaceStore();
-  const { activeEnvironmentId, setActiveEnvironment } = useUiStore();
+  const { environments, globalVariables, addEnvironment, deleteEnvironment, renameEnvironment } = useWorkspaceStore();
+  const { activeEnvironmentId } = useUiStore();
+  const { openEnvironmentTab, openGlobalsTab, tabs, updateTab } = useTabsStore();
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const handleAdd = () => {
+    const env = addEnvironment('New Environment');
+    openEnvironmentTab(env);
+    setEditingId(env.id);
+  };
+
+  const handleCommitRename = (id: string, name: string) => {
+    const trimmed = name.trim();
+    if (trimmed) {
+      renameEnvironment(id, trimmed);
+      const tab = tabs.find((t) => t.environmentId === id);
+      if (tab) updateTab(tab.id, { title: trimmed });
+    }
+    setEditingId(null);
+  };
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
         <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Environments</span>
-        <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
+                <Upload className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">Import environment</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground" onClick={handleAdd}>
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent className="text-xs">New Environment</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-0.5">
+          {/* Globals entry — singleton */}
+          <div
+            className="flex items-center gap-2 h-8 px-2 rounded cursor-pointer transition-colors hover:bg-accent/60 text-foreground"
+            onClick={openGlobalsTab}
+          >
+            <Globe2 className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="flex-1 text-[12px]">Globals</span>
+            <span className="text-[10px] text-muted-foreground">{globalVariables.length} vars</span>
+          </div>
+
+          <div className="h-px bg-border mx-1 my-0.5" />
+
           {environments.map((env) => (
             <div
               key={env.id}
-              onClick={() => setActiveEnvironment(env.id)}
               className={cn(
-                'flex items-center gap-2 h-8 px-2 rounded cursor-pointer transition-colors',
+                'group flex items-center gap-2 h-8 px-2 rounded cursor-pointer transition-colors',
                 activeEnvironmentId === env.id
                   ? 'bg-primary/10 text-primary'
                   : 'hover:bg-accent/60 text-foreground',
               )}
+              onClick={() => {
+                if (editingId === env.id) return;
+                openEnvironmentTab(env);
+              }}
             >
               <div
                 className={cn(
@@ -305,10 +558,43 @@ function EnvironmentsPanel() {
                   activeEnvironmentId === env.id ? 'bg-primary' : 'bg-muted-foreground/40',
                 )}
               />
-              <span className="text-[12px] truncate">{env.name}</span>
-              <span className="ml-auto text-[10px] text-muted-foreground">{env.variables.length} vars</span>
+              {editingId === env.id ? (
+                <InlineRename
+                  name={env.name}
+                  onCommit={(name) => handleCommitRename(env.id, name)}
+                  onCancel={() => setEditingId(null)}
+                />
+              ) : (
+                <span className="flex-1 text-[12px] truncate">{env.name}</span>
+              )}
+              {editingId !== env.id && (
+                <span className="text-[10px] text-muted-foreground">{env.variables.length} vars</span>
+              )}
+
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                  <button className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <MoreHorizontal className="h-3 w-3" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-44">
+                  <DropdownMenuItem className="text-xs gap-2" onSelect={() => setEditingId(env.id)}>
+                    <Pencil className="h-3 w-3" />Rename
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-xs gap-2 text-destructive focus:text-destructive"
+                    onSelect={() => deleteEnvironment(env.id)}
+                  >
+                    <Trash2 className="h-3 w-3" />Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           ))}
+          {environments.length === 0 && (
+            <div className="py-8 text-center text-xs text-muted-foreground">No environments yet</div>
+          )}
         </div>
       </ScrollArea>
     </div>
