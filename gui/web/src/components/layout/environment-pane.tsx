@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTabsStore } from '@/store/tabs';
+import { useDeleteConfirm } from '@/hooks/use-delete-confirm';
 import type { EnvVariable } from '@/types';
 
 function EnvRow({
@@ -16,9 +17,11 @@ function EnvRow({
   envId: string;
 }) {
   const { updateEnvironmentVariable, deleteEnvironmentVariable } = useWorkspaceStore();
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
 
   return (
     <div className="group flex items-center gap-2 px-3 py-1.5 border-b border-border/40 hover:bg-muted/20">
+      {deleteDialog}
       <Checkbox
         checked={variable.enabled}
         onCheckedChange={(checked) =>
@@ -45,7 +48,7 @@ function EnvRow({
         className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <button
-        onClick={() => deleteEnvironmentVariable(envId, variable.id)}
+        onClick={() => requestDelete(variable.key || '', () => deleteEnvironmentVariable(envId, variable.id))}
         className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
       >
         <Trash2 className="h-3 w-3" />

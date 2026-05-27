@@ -9,7 +9,7 @@ import { useUiStore } from '@/store/ui';
 import { useWorkspaceStore } from '@/store/workspace';
 
 export function HeaderBar() {
-  const { theme, isDark, toggleTheme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const { activeEnvironmentId, setActiveEnvironment, setSearchOpen, setSettingsOpen } = useUiStore();
   const { environments } = useWorkspaceStore();
 
@@ -65,27 +65,25 @@ export function HeaderBar() {
       <Separator orientation="vertical" className="h-4" />
 
       {/* Theme */}
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={toggleTheme}
-          >
-            {theme === 'system' ? (
-              <Monitor className="h-3.5 w-3.5" />
-            ) : isDark ? (
-              <Sun className="h-3.5 w-3.5" />
-            ) : (
-              <Moon className="h-3.5 w-3.5" />
-            )}
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent className="text-xs">
-          {theme === 'light' ? 'Switch to dark' : theme === 'dark' ? 'Switch to system' : 'Switch to light'}
-        </TooltipContent>
-      </Tooltip>
+      <Select value={theme} onValueChange={(v) => setTheme(v as 'light' | 'dark' | 'system')}>
+        <SelectTrigger className="h-6 w-28 text-xs rounded-md border-border/60 bg-transparent hover:bg-muted/50 gap-1">
+          {theme === 'light' && <Sun className="h-3 w-3 shrink-0" />}
+          {theme === 'dark' && <Moon className="h-3 w-3 shrink-0" />}
+          {theme === 'system' && <Monitor className="h-3 w-3 shrink-0" />}
+          <span className="capitalize">{theme}</span>
+        </SelectTrigger>
+        <SelectContent position="popper" align="end">
+          <SelectItem value="light" className="text-xs">
+            <Sun className="h-3.5 w-3.5" />Light
+          </SelectItem>
+          <SelectItem value="dark" className="text-xs">
+            <Moon className="h-3.5 w-3.5" />Dark
+          </SelectItem>
+          <SelectItem value="system" className="text-xs">
+            <Monitor className="h-3.5 w-3.5" />System
+          </SelectItem>
+        </SelectContent>
+      </Select>
 
       {/* Settings */}
       <Tooltip>
@@ -94,7 +92,8 @@ export function HeaderBar() {
             variant="ghost"
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={() => setSettingsOpen(true)}
+            aria-label="Settings"
+          onClick={() => setSettingsOpen(true)}
           >
             <Settings2 className="h-3.5 w-3.5" />
           </Button>

@@ -9,10 +9,20 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { MethodBadge } from '@/components/method-badge';
 import { cn } from '@/lib/utils';
 import { useTabsStore } from '@/store/tabs';
 import type { Tab } from '@/types';
+
+interface PendingClose {
+  count: number;
+  title: string;
+  onConfirm: () => void;
+}
 
 interface TabItemProps {
   tab: Tab;
@@ -111,6 +121,38 @@ export function TabBar() {
   const [dragSrcId, setDragSrcId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const dragSrcIdRef = useRef<string | null>(null);
+  const [pendingClose, setPendingClose] = useState<PendingClose | null>(null);
+
+  const requestClose = (count: number, title: string, onConfirm: () => void) =>
+    setPendingClose({ count, title, onConfirm });
+
+  const handleClose = (tab: Tab) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (tab.dirty) {
+      requestClose(1, tab.title, () => closeTab(tab.id));
+    } else {
+      closeTab(tab.id);
+    }
+  };
+
+  const handleCloseOthers = (tab: Tab) => () => {
+    const dirty = tabs.filter((t) => t.id !== tab.id && t.dirty);
+    if (dirty.length > 0) {
+      requestClose(dirty.length, dirty[0].title, () => closeOtherTabs(tab.id));
+    } else {
+      closeOtherTabs(tab.id);
+    }
+  };
+
+  const handleCloseRight = (tab: Tab) => () => {
+    const idx = tabs.findIndex((t) => t.id === tab.id);
+    const dirty = idx === -1 ? [] : tabs.slice(idx + 1).filter((t) => t.dirty);
+    if (dirty.length > 0) {
+      requestClose(dirty.length, dirty[0].title, () => closeTabsToRight(tab.id));
+    } else {
+      closeTabsToRight(tab.id);
+    }
+  };
 
   const handleDragStart = (tab: Tab) => (e: React.DragEvent) => {
     setDragSrcId(tab.id);
@@ -151,6 +193,29 @@ export function TabBar() {
 
   return (
     <div className="h-8 flex items-stretch border-b border-border bg-card shrink-0 overflow-hidden">
+      {pendingClose && (
+        <AlertDialog open onOpenChange={(open) => { if (!open) setPendingClose(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Fermer sans enregistrer ?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingClose.count === 1
+                  ? `« ${pendingClose.title} » a des modifications non enregistrées. Elles seront perdues.`
+                  : `${pendingClose.count} onglets ont des modifications non enregistrées. Elles seront perdues.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingClose(null)}>Continuer l'édition</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => { pendingClose.onConfirm(); setPendingClose(null); }}
+              >
+                Fermer quand même
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
       <ScrollArea className="flex-1 h-full" type="scroll">
         <div className="flex items-stretch h-8">
           {tabs.map((tab) => (
@@ -160,13 +225,10 @@ export function TabBar() {
               active={tab.id === activeTabId}
               isDragOver={dragOverId === tab.id && dragSrcId !== tab.id}
               onSelect={() => setActiveTab(tab.id)}
-              onClose={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-              }}
+              onClose={handleClose(tab)}
               onDuplicate={() => duplicateTab(tab.id)}
-              onCloseOthers={() => closeOtherTabs(tab.id)}
-              onCloseRight={() => closeTabsToRight(tab.id)}
+              onCloseOthers={handleCloseOthers(tab)}
+              onCloseRight={handleCloseRight(tab)}
               onDragStart={handleDragStart(tab)}
               onDragOver={handleDragOver(tab)}
               onDragLeave={handleDragLeave(tab)}

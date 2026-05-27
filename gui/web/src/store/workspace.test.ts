@@ -20,6 +20,23 @@ beforeEach(() => {
 
 // ── Environments ───────────────────────────────────────────────────────────
 
+describe('addCollection', () => {
+  it('adds a new collection and returns it', () => {
+    const col = useWorkspaceStore.getState().addCollection('My API');
+    const { collections } = useWorkspaceStore.getState();
+    expect(collections).toHaveLength(1);
+    expect(collections[0].id).toBe(col.id);
+    expect(collections[0].name).toBe('My API');
+    expect(collections[0].items).toEqual([]);
+  });
+
+  it('does not affect existing collections', () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection('c1')] });
+    useWorkspaceStore.getState().addCollection('New');
+    expect(useWorkspaceStore.getState().collections).toHaveLength(2);
+  });
+});
+
 describe('addEnvironment', () => {
   it('adds a new environment and returns it', () => {
     const env = useWorkspaceStore.getState().addEnvironment('Production');

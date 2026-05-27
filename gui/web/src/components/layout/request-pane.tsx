@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { Send, Plus, Trash2, Loader2 } from 'lucide-react';
+import { useDeleteConfirm } from '@/hooks/use-delete-confirm';
 import { CodeSnippets } from '@/components/code-gen-dialog';
 import { CodeEditor } from '@/components/ui/code-editor';
 import { Button } from '@/components/ui/button';
@@ -28,8 +29,11 @@ interface KVRow {
 }
 
 function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
+
   return (
     <div className="group flex items-center gap-1 px-2 py-0.5 hover:bg-muted/30 rounded transition-colors">
+      {deleteDialog}
       <Checkbox
         checked={kv.enabled}
         onCheckedChange={(v) => onChange(kv.id, 'enabled', !!v)}
@@ -49,7 +53,7 @@ function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
         className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
       />
       <button
-        onClick={() => onDelete(kv.id)}
+        onClick={() => requestDelete(kv.key || '', () => onDelete(kv.id))}
         className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-0.5 rounded"
       >
         <Trash2 className="h-3 w-3" />

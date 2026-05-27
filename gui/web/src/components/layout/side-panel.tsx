@@ -30,6 +30,7 @@ import { cn } from '@/lib/utils';
 import { useWorkspaceStore } from '@/store/workspace';
 import { useTabsStore } from '@/store/tabs';
 import { useUiStore } from '@/store/ui';
+import { useDeleteConfirm } from '@/hooks/use-delete-confirm';
 import type { Collection, CollectionItem, FolderItem, RequestItem } from '@/types';
 import { isRequest } from '@/types';
 
@@ -104,6 +105,7 @@ function RequestNode({ item, depth, collectionId }: RequestNodeProps) {
   const { renameItem, duplicateItem, deleteItem } = useWorkspaceStore();
   const { startDrag, endDrag } = useContext(DragContext);
   const [editing, setEditing] = useState(false);
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
 
   const handleCommitRename = (name: string) => {
     const trimmed = name.trim();
@@ -127,6 +129,7 @@ function RequestNode({ item, depth, collectionId }: RequestNodeProps) {
       style={{ paddingLeft: `${8 + depth * 16}px` }}
       onClick={() => !editing && openRequestTab(item)}
     >
+      {deleteDialog}
       <MethodBadge method={item.method} className="w-[46px]" />
       {editing ? (
         <InlineRename
@@ -154,7 +157,7 @@ function RequestNode({ item, depth, collectionId }: RequestNodeProps) {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-xs gap-2 text-destructive focus:text-destructive"
-            onSelect={() => deleteItem(collectionId, item.id)}
+            onSelect={() => requestDelete(item.name, () => deleteItem(collectionId, item.id))}
           >
             <Trash2 className="h-3 w-3" />Delete
           </DropdownMenuItem>
@@ -176,6 +179,8 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
   const { startDrag, endDrag, draggedId, dragOverId, setDragOver, drop } = useContext(DragContext);
   const expanded = isExpanded(item.id);
   const [editing, setEditing] = useState(false);
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
+  const actionTakenRef = useRef(false);
 
   const handleCommitRename = (name: string) => {
     const trimmed = name.trim();
@@ -191,17 +196,21 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
     const req = addRequest(collectionId, item.id);
     if (!expanded) toggleExpand(item.id);
     openRequestTab(req);
+    actionTakenRef.current = true;
   };
 
   const handleAddFolder = () => {
-    addFolder(collectionId, item.id);
+    const folder = addFolder(collectionId, item.id);
     if (!expanded) toggleExpand(item.id);
+    openFolderTab(folder, collectionId);
+    actionTakenRef.current = true;
   };
 
   const isDropTarget = dragOverId === item.id && draggedId !== item.id;
 
   return (
     <div>
+      {deleteDialog}
       <div
         draggable
         onDragStart={(e) => { e.stopPropagation(); startDrag(item.id, collectionId); }}
@@ -216,6 +225,7 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => {
           if (editing) return;
+          if (actionTakenRef.current) { actionTakenRef.current = false; return; }
           toggleExpand(item.id);
           openFolderTab(item, collectionId);
         }}
@@ -262,7 +272,7 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-xs gap-2 text-destructive focus:text-destructive"
-              onSelect={() => deleteItem(collectionId, item.id)}
+              onSelect={() => requestDelete(item.name, () => deleteItem(collectionId, item.id))}
             >
               <Trash2 className="h-3 w-3" />Delete
             </DropdownMenuItem>
@@ -288,12 +298,18 @@ function TreeNode({ item, depth, collectionId }: { item: CollectionItem; depth: 
 
 // ---------- Collection card ----------
 
-function CollectionCard({ collection }: { collection: Collection }) {
+function CollectionCard({ collection, autoEdit }: { collection: Collection; autoEdit?: boolean }) {
   const { isExpanded, toggleExpand, renameCollection, duplicateCollection, deleteCollection, addRequest, addFolder } = useWorkspaceStore();
-  const { openCollectionTab, openRequestTab, tabs, updateTab } = useTabsStore();
+  const { openCollectionTab, openFolderTab, openRequestTab, tabs, updateTab } = useTabsStore();
   const { draggedId, dragOverId, setDragOver, drop } = useContext(DragContext);
   const expanded = isExpanded(collection.id);
   const [editing, setEditing] = useState(false);
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
+  const actionTakenRef = useRef(false);
+
+  useEffect(() => {
+    if (autoEdit) setEditing(true);
+  }, [autoEdit]);
   const isDropTarget = dragOverId === collection.id && draggedId !== collection.id;
 
   const requestCount = (items: CollectionItem[]): number =>
@@ -316,15 +332,19 @@ function CollectionCard({ collection }: { collection: Collection }) {
     const req = addRequest(collection.id);
     if (!expanded) toggleExpand(collection.id);
     openRequestTab(req);
+    actionTakenRef.current = true;
   };
 
   const handleAddFolder = () => {
-    addFolder(collection.id);
+    const folder = addFolder(collection.id);
     if (!expanded) toggleExpand(collection.id);
+    openFolderTab(folder, collection.id);
+    actionTakenRef.current = true;
   };
 
   return (
     <div className="mb-0.5">
+      {deleteDialog}
       <div
         onDragOver={(e) => { e.preventDefault(); setDragOver(collection.id); }}
         onDragLeave={() => setDragOver(null)}
@@ -333,7 +353,11 @@ function CollectionCard({ collection }: { collection: Collection }) {
           'group flex items-center gap-1.5 h-8 px-2 rounded cursor-pointer select-none transition-colors hover:bg-accent/60',
           isDropTarget && 'ring-1 ring-primary/60 bg-primary/5',
         )}
-        onClick={() => !editing && openCollectionTab(collection)}
+        onClick={() => {
+          if (editing) return;
+          if (actionTakenRef.current) { actionTakenRef.current = false; return; }
+          openCollectionTab(collection);
+        }}
       >
         <ChevronRight
           className={cn('h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-150', expanded && 'rotate-90')}
@@ -380,7 +404,7 @@ function CollectionCard({ collection }: { collection: Collection }) {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-xs gap-2 text-destructive focus:text-destructive"
-              onSelect={() => deleteCollection(collection.id)}
+              onSelect={() => requestDelete(collection.name, () => deleteCollection(collection.id))}
             >
               <Trash2 className="h-3 w-3" />Delete
             </DropdownMenuItem>
@@ -402,11 +426,19 @@ function CollectionCard({ collection }: { collection: Collection }) {
 // ---------- Panel views ----------
 
 function CollectionsPanel() {
-  const { collections, moveItem } = useWorkspaceStore();
+  const { collections, moveItem, addCollection } = useWorkspaceStore();
+  const { openCollectionTab } = useTabsStore();
   const [query, setQuery] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOver] = useState<string | null>(null);
   const dragSourceRef = useRef<{ id: string; collectionId: string } | null>(null);
+
+  const handleAdd = () => {
+    const col = addCollection('New Collection');
+    openCollectionTab(col);
+    setEditingId(col.id);
+  };
 
   const startDrag = useCallback((id: string, collectionId: string) => {
     dragSourceRef.current = { id, collectionId };
@@ -446,7 +478,7 @@ function CollectionsPanel() {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground">
+              <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-foreground" onClick={handleAdd}>
                 <Plus className="h-3.5 w-3.5" />
               </Button>
             </TooltipTrigger>
@@ -471,7 +503,7 @@ function CollectionsPanel() {
         {filtered.length === 0 ? (
           <div className="py-8 text-center text-xs text-muted-foreground">No collections found</div>
         ) : (
-          filtered.map((col) => <CollectionCard key={col.id} collection={col} />)
+          filtered.map((col) => <CollectionCard key={col.id} collection={col} autoEdit={editingId === col.id} />)
         )}
       </ScrollArea>
     </div>
@@ -484,6 +516,7 @@ function EnvironmentsPanel() {
   const { activeEnvironmentId } = useUiStore();
   const { openEnvironmentTab, openGlobalsTab, tabs, updateTab } = useTabsStore();
   const [editingId, setEditingId] = useState<string | null>(null);
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
 
   const handleAdd = () => {
     const env = addEnvironment('New Environment');
@@ -524,6 +557,7 @@ function EnvironmentsPanel() {
           </Tooltip>
         </div>
       </div>
+      {deleteDialog}
       <ScrollArea className="flex-1 p-2">
         <div className="space-y-0.5">
           {/* Globals entry — singleton */}
@@ -584,7 +618,7 @@ function EnvironmentsPanel() {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-xs gap-2 text-destructive focus:text-destructive"
-                    onSelect={() => deleteEnvironment(env.id)}
+                    onSelect={() => requestDelete(env.name, () => deleteEnvironment(env.id))}
                   >
                     <Trash2 className="h-3 w-3" />Delete
                   </DropdownMenuItem>

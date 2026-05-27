@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { HeaderBar } from './header-bar';
 import { IconRail } from './icon-rail';
@@ -12,7 +12,41 @@ import { GlobalsPane } from './globals-pane';
 import { StatusBar } from './status-bar';
 import { useUiStore } from '@/store/ui';
 import { useTabsStore } from '@/store/tabs';
+import { useWorkspaceStore } from '@/store/workspace';
+import type { CollectionItem } from '@/types';
 import { cn } from '@/lib/utils';
+
+function collectItemIds(items: CollectionItem[], requestIds: Set<string>, folderIds: Set<string>) {
+  for (const item of items) {
+    if ('method' in item) {
+      requestIds.add(item.id);
+    } else {
+      folderIds.add(item.id);
+      collectItemIds(item.items, requestIds, folderIds);
+    }
+  }
+}
+
+export function useOrphanTabCleanup() {
+  const { tabs, closeTab } = useTabsStore();
+  const { collections } = useWorkspaceStore();
+
+  useEffect(() => {
+    const collectionIds = new Set(collections.map((c) => c.id));
+    const requestIds = new Set<string>();
+    const folderIds = new Set<string>();
+    collections.forEach((c) => collectItemIds(c.items, requestIds, folderIds));
+
+    tabs
+      .filter((t) => {
+        if (t.collectionId && !collectionIds.has(t.collectionId)) return true;
+        if (t.type === 'request' && t.requestId && !requestIds.has(t.requestId)) return true;
+        if (t.type === 'folder' && t.folderId && !folderIds.has(t.folderId)) return true;
+        return false;
+      })
+      .forEach((t) => closeTab(t.id));
+  }, [collections, tabs, closeTab]);
+}
 
 const SIDE_PANEL_DEFAULT = 260;
 const SIDE_PANEL_MIN = 180;
@@ -21,6 +55,8 @@ const SIDE_PANEL_MAX = 480;
 export function AppLayout() {
   const { activePanel } = useUiStore();
   const { tabs, activeTabId } = useTabsStore();
+
+  useOrphanTabCleanup();
   const activeTab = tabs.find((t) => t.id === activeTabId);
   const isCollectionOrFolder = activeTab?.type === 'collection' || activeTab?.type === 'folder';
   const isEnvironment = activeTab?.type === 'environment';

@@ -199,7 +199,7 @@ describe('EnvRow — variable editing', () => {
     });
   });
 
-  it('deletes the variable when clicking the delete button', async () => {
+  it('deletes the variable after confirming the dialog', async () => {
     setEnvs([ENV_WITH_VAR]);
     useTabsStore.setState({ tabs: [ENV_TAB], activeTabId: 'tab-env', closedTabs: [] });
     render(<EnvironmentPane />);
@@ -209,6 +209,12 @@ describe('EnvRow — variable editing', () => {
 
     act(() => {
       fireEvent.click(deleteBtn);
+    });
+
+    // confirm in the dialog
+    const confirmBtn = await screen.findByRole('button', { name: /supprimer/i });
+    act(() => {
+      fireEvent.click(confirmBtn);
     });
 
     await waitFor(() => {

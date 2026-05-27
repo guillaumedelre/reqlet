@@ -175,14 +175,13 @@ describe('closeTab', () => {
     expect(useTabsStore.getState().tabs.find(t => t.id === tab.id)).toBeUndefined();
   });
 
-  it('creates a blank tab when closing the last one', () => {
+  it('leaves tabs empty when closing the last one', () => {
     useTabsStore.getState().openNewTab();
     const tabId = useTabsStore.getState().tabs[0].id;
     useTabsStore.getState().closeTab(tabId);
-    const { tabs } = useTabsStore.getState();
-    expect(tabs).toHaveLength(1);
-    expect(tabs[0].type).toBe('request');
-    expect(tabs[0].id).not.toBe(tabId);
+    const { tabs, activeTabId } = useTabsStore.getState();
+    expect(tabs).toHaveLength(0);
+    expect(activeTabId).toBe('');
   });
 
   it('adds the closed tab to closedTabs', () => {

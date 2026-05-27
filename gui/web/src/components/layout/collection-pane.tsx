@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Play, ChevronRight, Plus, Trash2 } from 'lucide-react';
+import { useDeleteConfirm } from '@/hooks/use-delete-confirm';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Input } from '@/components/ui/input';
@@ -54,8 +55,48 @@ function Breadcrumb({
 
 // ---------- Variables editor ----------
 
+function VariableRow({ collectionId, variable }: { collectionId: string; variable: EnvVariable }) {
+  const { deleteCollectionVariable, updateCollectionVariable } = useWorkspaceStore();
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm();
+
+  return (
+    <div className="group flex items-center gap-2 px-3 py-1.5 border-b border-border/40 hover:bg-muted/20">
+      {deleteDialog}
+      <Checkbox
+        checked={variable.enabled}
+        onCheckedChange={(checked) => updateCollectionVariable(collectionId, variable.id, { enabled: !!checked })}
+        className="shrink-0"
+      />
+      <Input
+        value={variable.key}
+        onChange={(e) => updateCollectionVariable(collectionId, variable.id, { key: e.target.value })}
+        placeholder="Variable"
+        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+      />
+      <Input
+        value={variable.initialValue}
+        onChange={(e) => updateCollectionVariable(collectionId, variable.id, { initialValue: e.target.value })}
+        placeholder="Initial value"
+        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+      />
+      <Input
+        value={variable.currentValue}
+        onChange={(e) => updateCollectionVariable(collectionId, variable.id, { currentValue: e.target.value })}
+        placeholder="Current value"
+        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+      />
+      <button
+        onClick={() => requestDelete(variable.key || '', () => deleteCollectionVariable(collectionId, variable.id))}
+        className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 function VariablesTab({ collectionId, variables }: { collectionId: string; variables: EnvVariable[] }) {
-  const { addCollectionVariable, deleteCollectionVariable, updateCollectionVariable } = useWorkspaceStore();
+  const { addCollectionVariable } = useWorkspaceStore();
 
   return (
     <div className="flex flex-col h-full">
@@ -68,37 +109,7 @@ function VariablesTab({ collectionId, variables }: { collectionId: string; varia
       </div>
       <ScrollArea className="flex-1">
         {variables.map((v) => (
-          <div key={v.id} className="group flex items-center gap-2 px-3 py-1.5 border-b border-border/40 hover:bg-muted/20">
-            <Checkbox
-              checked={v.enabled}
-              onCheckedChange={(checked) => updateCollectionVariable(collectionId, v.id, { enabled: !!checked })}
-              className="shrink-0"
-            />
-            <Input
-              value={v.key}
-              onChange={(e) => updateCollectionVariable(collectionId, v.id, { key: e.target.value })}
-              placeholder="Variable"
-              className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
-            />
-            <Input
-              value={v.initialValue}
-              onChange={(e) => updateCollectionVariable(collectionId, v.id, { initialValue: e.target.value })}
-              placeholder="Initial value"
-              className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
-            />
-            <Input
-              value={v.currentValue}
-              onChange={(e) => updateCollectionVariable(collectionId, v.id, { currentValue: e.target.value })}
-              placeholder="Current value"
-              className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
-            />
-            <button
-              onClick={() => deleteCollectionVariable(collectionId, v.id)}
-              className="h-5 w-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-            >
-              <Trash2 className="h-3 w-3" />
-            </button>
-          </div>
+          <VariableRow key={v.id} collectionId={collectionId} variable={v} />
         ))}
         {variables.length === 0 && (
           <div className="flex items-center justify-center py-12">

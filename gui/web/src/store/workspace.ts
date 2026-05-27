@@ -286,6 +286,7 @@ interface WorkspaceState {
   isExpanded: (id: string) => boolean;
   findRequest: (id: string) => RequestWithCollection | null;
   findFolderPath: (folderId: string) => PathSegment[] | null;
+  addCollection: (name: string) => Collection;
   deleteCollection: (id: string) => void;
   deleteItem: (collectionId: string, itemId: string) => void;
   renameCollection: (id: string, name: string) => void;
@@ -443,6 +444,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       if (path) return path;
     }
     return null;
+  },
+
+  addCollection: (name) => {
+    const col: Collection = { id: newId(), name, description: '', items: [], variables: [], preRequestScript: '', testScript: '', auth: { type: 'none' } };
+    set((s) => ({ collections: [...s.collections, col] }));
+    return col;
   },
 
   deleteCollection: (id) =>

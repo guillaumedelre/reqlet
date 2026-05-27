@@ -221,8 +221,7 @@ export const useTabsStore = create<TabsState>()(
         const remaining = tabs.filter((t) => t.id !== id);
         const nextClosed = tab ? [...closedTabs.slice(-9), tab] : closedTabs;
         if (remaining.length === 0) {
-          const blank = newRequestTab();
-          set({ tabs: [blank], activeTabId: blank.id, closedTabs: nextClosed });
+          set({ tabs: [], activeTabId: '', closedTabs: nextClosed });
           return;
         }
         const nextActive =
