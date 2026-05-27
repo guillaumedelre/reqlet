@@ -6,18 +6,12 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Button } from "@/components/ui/button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { CodeEditor } from "@/components/ui/code-editor"
 import { cn } from "@/lib/utils"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
-import type { CollectionSubTab, FolderSubTab, AuthConfig, EnvVariable } from "@/types"
+import { AuthPanel } from "./auth-panel"
+import type { CollectionSubTab, FolderSubTab, EnvVariable } from "@/types"
 
 // ---------- Sub-tab trigger style ----------
 
@@ -164,39 +158,6 @@ function VariablesTab({
   )
 }
 
-// ---------- Auth placeholder ----------
-
-function AuthPlaceholder({ auth }: { auth: AuthConfig }) {
-  return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground w-16 shrink-0">Type</span>
-        <Select value={auth.type}>
-          <SelectTrigger className="h-7 text-xs w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inherit" className="text-xs">
-              Inherit from parent
-            </SelectItem>
-            <SelectItem value="none" className="text-xs">
-              No Auth
-            </SelectItem>
-            <SelectItem value="bearer" className="text-xs">
-              Bearer Token
-            </SelectItem>
-            <SelectItem value="basic" className="text-xs">
-              Basic Auth
-            </SelectItem>
-            <SelectItem value="api-key" className="text-xs">
-              API Key
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  )
-}
 
 // ---------- Scripts tab ----------
 
@@ -298,8 +259,14 @@ function Overview({
 
 export function CollectionPane() {
   const { tabs, activeTabId, setTabCollectionSubTab } = useTabsStore()
-  const { collections, findFolderPath, updateCollectionScript, updateItemScript } =
-    useWorkspaceStore()
+  const {
+    collections,
+    findFolderPath,
+    updateCollectionScript,
+    updateItemScript,
+    updateCollectionAuth,
+    updateItemAuth,
+  } = useWorkspaceStore()
   const { openCollectionTab, openFolderTab } = useTabsStore()
 
   const activeTab = tabs.find((t) => t.id === activeTabId)
@@ -425,7 +392,15 @@ export function CollectionPane() {
         </TabsContent>
 
         <TabsContent value="authorization" className="flex-1 overflow-auto mt-0">
-          <AuthPlaceholder auth={auth} />
+          <AuthPanel
+            auth={auth}
+            hideInherit={isCollection}
+            onChange={(a) =>
+              isCollection
+                ? updateCollectionAuth(collection.id, a)
+                : updateItemAuth(collection.id, activeTab.folderId!, a)
+            }
+          />
         </TabsContent>
 
         {isCollection && (

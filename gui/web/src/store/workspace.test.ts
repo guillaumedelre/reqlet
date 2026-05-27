@@ -329,6 +329,62 @@ describe("updateCollectionVariable", () => {
   })
 })
 
+// ── Collection auth ────────────────────────────────────────────────────────
+
+describe("updateCollectionAuth", () => {
+  it("updates auth on the target collection", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    useWorkspaceStore
+      .getState()
+      .updateCollectionAuth("c1", { type: "bearer", bearer: { token: "tok" } })
+    expect(useWorkspaceStore.getState().collections[0].auth).toEqual({
+      type: "bearer",
+      bearer: { token: "tok" },
+    })
+  })
+
+  it("does not affect other collections", () => {
+    useWorkspaceStore.setState({
+      ...EMPTY,
+      collections: [makeCollection("c1"), makeCollection("c2")],
+    })
+    useWorkspaceStore.getState().updateCollectionAuth("c1", { type: "none" })
+    expect(useWorkspaceStore.getState().collections[1].auth).toEqual({ type: "none" })
+  })
+})
+
+describe("updateItemAuth", () => {
+  it("updates auth on a folder at collection root", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    const f = useWorkspaceStore.getState().addFolder("c1")
+    useWorkspaceStore
+      .getState()
+      .updateItemAuth("c1", f.id, { type: "basic", basic: { username: "u", password: "p" } })
+    const folder = useWorkspaceStore.getState().collections[0].items[0] as FolderItem
+    expect(folder.auth).toEqual({ type: "basic", basic: { username: "u", password: "p" } })
+  })
+
+  it("updates auth on a folder nested inside another folder", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    const outer = useWorkspaceStore.getState().addFolder("c1")
+    const inner = useWorkspaceStore.getState().addFolder("c1", outer.id)
+    useWorkspaceStore.getState().updateItemAuth("c1", inner.id, { type: "inherit" })
+    const outerFolder = useWorkspaceStore.getState().collections[0].items[0] as FolderItem
+    const innerFolder = outerFolder.items[0] as FolderItem
+    expect(innerFolder.auth).toEqual({ type: "inherit" })
+  })
+
+  it("does not affect other collections", () => {
+    useWorkspaceStore.setState({
+      ...EMPTY,
+      collections: [makeCollection("c1"), makeCollection("c2")],
+    })
+    const f = useWorkspaceStore.getState().addFolder("c1")
+    useWorkspaceStore.getState().updateItemAuth("c1", f.id, { type: "none" })
+    expect(useWorkspaceStore.getState().collections[1].items).toHaveLength(0)
+  })
+})
+
 // ── Collection scripts ─────────────────────────────────────────────────────
 
 describe("updateCollectionScript", () => {
@@ -565,6 +621,19 @@ describe("collection operations leave sibling collections unchanged", () => {
     const varId = useWorkspaceStore.getState().collections[0].variables[0].id
     useWorkspaceStore.getState().updateCollectionVariable("c1", varId, { key: "X" })
     expect(useWorkspaceStore.getState().collections[1].variables).toHaveLength(0)
+  })
+
+  it("updateCollectionAuth does not touch the other collection", () => {
+    setup2Cols()
+    useWorkspaceStore.getState().updateCollectionAuth("c1", { type: "bearer", bearer: { token: "t" } })
+    expect(useWorkspaceStore.getState().collections[1].auth).toEqual({ type: "none" })
+  })
+
+  it("updateItemAuth does not touch the other collection", () => {
+    setup2Cols()
+    const f = useWorkspaceStore.getState().addFolder("c1")
+    useWorkspaceStore.getState().updateItemAuth("c1", f.id, { type: "none" })
+    expect(useWorkspaceStore.getState().collections[1].items).toHaveLength(0)
   })
 })
 
