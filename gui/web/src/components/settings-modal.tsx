@@ -21,7 +21,7 @@ function Row({
     <div className="flex items-center justify-between gap-4 py-2.5">
       <div className="min-w-0">
         <p className="text-xs text-foreground">{label}</p>
-        {hint && <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>}
+        {hint && <p className="text-[0.625rem] text-muted-foreground mt-0.5">{hint}</p>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -31,7 +31,7 @@ function Row({
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground mb-1">
         {title}
       </p>
       <div className="divide-y divide-border/50">{children}</div>

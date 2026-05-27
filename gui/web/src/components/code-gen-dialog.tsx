@@ -3,11 +3,12 @@ import { Copy, Check } from "lucide-react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
+import { CodeEditor } from "@/components/ui/code-editor"
 import type { RequestState, KeyValuePair, AuthConfig } from "@/types"
 
 // ---------- Generators ----------
 
-function buildFinalUrl(url: string, params: KeyValuePair[]): string {
+export function buildFinalUrl(url: string, params: KeyValuePair[]): string {
   const enabled = params.filter((p) => p.enabled && p.key)
   if (!enabled.length) return url
   const base = url.includes("?") ? url.slice(0, url.indexOf("?")) : url
@@ -42,7 +43,7 @@ function bodyString(req: RequestState): string {
   return ""
 }
 
-function genCurl(req: RequestState): string {
+export function genCurl(req: RequestState): string {
   const url = buildFinalUrl(req.url, req.params)
   const lines: string[] = [`curl -X ${req.method} '${url}'`]
   for (const [k, v] of allHeaders(req)) lines.push(`  -H '${k}: ${v}'`)
@@ -53,7 +54,7 @@ function genCurl(req: RequestState): string {
   return lines.join(" \\\n")
 }
 
-function genPython(req: RequestState): string {
+export function genPython(req: RequestState): string {
   const url = buildFinalUrl(req.url, req.params)
   const headers = allHeaders(req)
   if (req.body.type === "raw" && req.body.rawContentType)
@@ -80,7 +81,7 @@ function genPython(req: RequestState): string {
   return lines.join("\n")
 }
 
-function genJS(req: RequestState): string {
+export function genJS(req: RequestState): string {
   const url = buildFinalUrl(req.url, req.params)
   const headers = allHeaders(req)
   if (req.body.type === "raw" && req.body.rawContentType)
@@ -105,7 +106,7 @@ function genJS(req: RequestState): string {
   ].join("\n")
 }
 
-function genGo(req: RequestState): string {
+export function genGo(req: RequestState): string {
   const url = buildFinalUrl(req.url, req.params)
   const headers = allHeaders(req)
   if (req.body.type === "raw" && req.body.rawContentType)
@@ -166,10 +167,10 @@ function CopySnippet({ text }: { text: string }) {
 // ---------- CodeSnippets (tab content, reusable) ----------
 
 const LANGS = [
-  { id: "curl", label: "cURL", gen: genCurl },
-  { id: "python", label: "Python", gen: genPython },
-  { id: "javascript", label: "JavaScript", gen: genJS },
-  { id: "go", label: "Go", gen: genGo },
+  { id: "curl", label: "cURL", gen: genCurl, monacoLang: "shell" },
+  { id: "python", label: "Python", gen: genPython, monacoLang: "python" },
+  { id: "javascript", label: "JavaScript", gen: genJS, monacoLang: "javascript" },
+  { id: "go", label: "Go", gen: genGo, monacoLang: "go" },
 ] as const
 
 export function CodeSnippets({ request }: { request: RequestState }) {
@@ -192,14 +193,12 @@ export function CodeSnippets({ request }: { request: RequestState }) {
       </div>
       <div className="flex-1 overflow-hidden relative">
         {LANGS.map((l) => (
-          <TabsContent key={l.id} value={l.id} className="absolute inset-0 mt-0 overflow-auto">
-            <div className="relative">
+          <TabsContent key={l.id} value={l.id} className="absolute inset-0 mt-0">
+            <div className="relative h-full">
               <div className="absolute top-2 right-2 z-10">
                 <CopySnippet text={l.gen(request)} />
               </div>
-              <pre className="p-4 pr-10 text-[12px] font-mono leading-relaxed text-foreground whitespace-pre-wrap break-all">
-                {l.gen(request)}
-              </pre>
+              <CodeEditor value={l.gen(request)} language={l.monacoLang} readOnly wordWrap />
             </div>
           </TabsContent>
         ))}

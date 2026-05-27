@@ -46,9 +46,11 @@ interface KVRow {
   onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void
   onDelete: (id: string) => void
   keyListId?: string
+  resolvedMap?: Map<string, string>
+  suggestions?: string[]
 }
 
-function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
+function KVRow({ kv, onChange, onDelete, keyListId, resolvedMap, suggestions }: KVRow) {
   const { requestDelete, dialog: deleteDialog } = useDeleteConfirm()
 
   return (
@@ -66,11 +68,14 @@ function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
         list={keyListId}
         className="flex-1 h-6 text-xs border-0 bg-transparent outline-none focus:border-b focus:border-primary/40 rounded-none px-1 min-w-0"
       />
-      <Input
+      <VariableInput
         value={kv.value}
-        onChange={(e) => onChange(kv.id, "value", e.target.value)}
+        onChange={(v) => onChange(kv.id, "value", v)}
+        resolvedMap={resolvedMap}
+        suggestions={suggestions}
         placeholder="Value"
-        className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+        cell
+        className="flex-1 h-6"
       />
       <button
         onClick={() => requestDelete(kv.key || "", () => onDelete(kv.id))}
@@ -88,12 +93,16 @@ function KVTable({
   onDelete,
   onAdd,
   keySuggestions,
+  resolvedMap,
+  suggestions,
 }: {
   pairs: KeyValuePair[]
   onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void
   onDelete: (id: string) => void
   onAdd: () => void
   keySuggestions?: string[]
+  resolvedMap?: Map<string, string>
+  suggestions?: string[]
 }) {
   const listId = keySuggestions ? "kv-key-suggestions" : undefined
   return (
@@ -105,7 +114,7 @@ function KVTable({
           ))}
         </datalist>
       )}
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Key</span>
         <span className="flex-1">Value</span>
@@ -114,7 +123,15 @@ function KVTable({
       <ScrollArea className="flex-1">
         <div className="py-1">
           {pairs.map((kv) => (
-            <KVRow key={kv.id} kv={kv} onChange={onChange} onDelete={onDelete} keyListId={listId} />
+            <KVRow
+              key={kv.id}
+              kv={kv}
+              onChange={onChange}
+              onDelete={onDelete}
+              keyListId={listId}
+              resolvedMap={resolvedMap}
+              suggestions={suggestions}
+            />
           ))}
           <div className="px-2 pt-1">
             <button
@@ -182,7 +199,7 @@ function FormDataRow({
           })
         }
       >
-        <SelectTrigger className="h-6 w-14 text-[11px] border-0 bg-transparent focus:ring-0 px-1 shrink-0">
+        <SelectTrigger className="h-6 w-14 text-[0.6875rem] border-0 bg-transparent focus:ring-0 px-1 shrink-0">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -209,7 +226,7 @@ function FormDataRow({
           value={item.value}
           onChange={(e) => onChangeItem(item.id, { value: e.target.value })}
           placeholder="Value"
-          className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+          className="flex-1 h-6 text-xs md:text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
         />
       )}
       <button
@@ -235,7 +252,7 @@ function FormDataTable({
 }) {
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Key</span>
         <span className="w-14 shrink-0">Type</span>
@@ -351,7 +368,7 @@ function BodyTab({
               value={body.rawContentType}
               onValueChange={(v) => onChange({ ...body, rawContentType: v as RawContentType })}
             >
-              <SelectTrigger className="h-5 w-28 text-[11px] border-0 bg-transparent p-0 gap-1 focus:ring-0">
+              <SelectTrigger className="h-5 w-28 text-[0.6875rem] border-0 bg-transparent p-0 gap-1 focus:ring-0">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -443,7 +460,7 @@ function BodyTab({
             <label className="flex flex-col items-center gap-2 cursor-pointer group">
               <div className="border-2 border-dashed border-border rounded-lg px-8 py-6 text-center group-hover:border-primary/40 transition-colors">
                 <p className="text-xs text-muted-foreground">Click to select a file</p>
-                <p className="text-[10px] text-muted-foreground/60 mt-1">Any file type</p>
+                <p className="text-[0.625rem] text-muted-foreground/60 mt-1">Any file type</p>
               </div>
               <input type="file" className="hidden" onChange={() => {}} />
             </label>
@@ -453,7 +470,7 @@ function BodyTab({
           <div className="flex flex-col h-full">
             <div className="flex-[2] overflow-hidden border-b border-border">
               <div className="flex items-center px-3 h-6 border-b border-border/50 bg-muted/20">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <span className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
                   Query
                 </span>
               </div>
@@ -469,7 +486,7 @@ function BodyTab({
             </div>
             <div className="flex-1 overflow-hidden">
               <div className="flex items-center px-3 h-6 border-b border-border/50 bg-muted/20">
-                <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                <span className="text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
                   Variables
                 </span>
               </div>
@@ -554,7 +571,7 @@ function SRow({
     <div className="flex items-center justify-between gap-4 py-2 border-b border-border/40 last:border-0">
       <div>
         <p className="text-xs text-foreground">{label}</p>
-        {hint && <p className="text-[10px] text-muted-foreground mt-0.5">{hint}</p>}
+        {hint && <p className="text-[0.625rem] text-muted-foreground mt-0.5">{hint}</p>}
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -564,7 +581,7 @@ function SRow({
 function SSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className="space-y-0">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1 pt-1">
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-muted-foreground mb-1 pt-1">
         {title}
       </p>
       {children}
@@ -588,6 +605,7 @@ function SettingsTab({
         <SSection title="General">
           <SRow label="Follow Redirects">
             <Switch
+              size="sm"
               checked={settings.followRedirects}
               onCheckedChange={(v) => set("followRedirects", v)}
             />
@@ -600,7 +618,7 @@ function SettingsTab({
               max={30}
               disabled={!settings.followRedirects}
               onChange={(e) => set("maxRedirects", parseInt(e.target.value) || 0)}
-              className="h-6 w-16 text-xs"
+              className="h-6 w-16 text-xs md:text-xs"
             />
           </SRow>
           <SRow label="Timeout (ms)" hint="0 = no timeout">
@@ -609,20 +627,32 @@ function SettingsTab({
               value={settings.timeout}
               min={0}
               onChange={(e) => set("timeout", parseInt(e.target.value) || 0)}
-              className="h-6 w-20 text-xs"
+              className="h-6 w-20 text-xs md:text-xs"
             />
           </SRow>
           <SRow label="Encode URL">
-            <Switch checked={settings.encodeUrl} onCheckedChange={(v) => set("encodeUrl", v)} />
+            <Switch
+              size="sm"
+              checked={settings.encodeUrl}
+              onCheckedChange={(v) => set("encodeUrl", v)}
+            />
           </SRow>
           <SRow label="Cookie Jar">
-            <Switch checked={settings.cookieJar} onCheckedChange={(v) => set("cookieJar", v)} />
+            <Switch
+              size="sm"
+              checked={settings.cookieJar}
+              onCheckedChange={(v) => set("cookieJar", v)}
+            />
           </SRow>
         </SSection>
 
         <SSection title="SSL / TLS">
           <SRow label="Verify SSL Certificate" hint="Disable only for local/self-signed certs">
-            <Switch checked={settings.sslVerify} onCheckedChange={(v) => set("sslVerify", v)} />
+            <Switch
+              size="sm"
+              checked={settings.sslVerify}
+              onCheckedChange={(v) => set("sslVerify", v)}
+            />
           </SRow>
         </SSection>
 
@@ -653,18 +683,21 @@ function SettingsTab({
         <SSection title="Redirect Behavior">
           <SRow label="Follow Original Method" hint="Preserve GET/POST on 301/302">
             <Switch
+              size="sm"
               checked={settings.followOriginalMethod}
               onCheckedChange={(v) => set("followOriginalMethod", v)}
             />
           </SRow>
           <SRow label="Send Auth on Redirect">
             <Switch
+              size="sm"
               checked={settings.followAuthHeader}
               onCheckedChange={(v) => set("followAuthHeader", v)}
             />
           </SRow>
           <SRow label="Remove Referer on Redirect">
             <Switch
+              size="sm"
               checked={settings.removeReferer}
               onCheckedChange={(v) => set("removeReferer", v)}
             />
@@ -674,6 +707,7 @@ function SettingsTab({
         <SSection title="Proxy">
           <SRow label="Use Proxy">
             <Switch
+              size="sm"
               checked={settings.proxy.enabled}
               onCheckedChange={(v) => set("proxy", { ...settings.proxy, enabled: v })}
             />
@@ -684,21 +718,21 @@ function SettingsTab({
                 value={settings.proxy.url}
                 placeholder="http://proxy.example.com:8080"
                 onChange={(e) => set("proxy", { ...settings.proxy, url: e.target.value })}
-                className="h-7 text-xs"
+                className="h-6 text-xs md:text-xs"
               />
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={settings.proxy.username}
                   placeholder="Username"
                   onChange={(e) => set("proxy", { ...settings.proxy, username: e.target.value })}
-                  className="h-7 text-xs"
+                  className="h-6 text-xs md:text-xs"
                 />
                 <Input
                   type="password"
                   value={settings.proxy.password}
                   placeholder="Password"
                   onChange={(e) => set("proxy", { ...settings.proxy, password: e.target.value })}
-                  className="h-7 text-xs"
+                  className="h-6 text-xs md:text-xs"
                 />
               </div>
             </div>
@@ -707,7 +741,7 @@ function SettingsTab({
 
         <div className="pt-1">
           <button
-            className="text-[10px] text-muted-foreground hover:text-foreground transition-colors"
+            className="text-[0.625rem] text-muted-foreground hover:text-foreground transition-colors"
             onClick={() => onChange({ ...DEFAULT_REQUEST_SETTINGS })}
           >
             Reset to defaults
@@ -755,10 +789,10 @@ function PathVarsSection({
 
   return (
     <div className="border-t border-border mt-1">
-      <div className="px-3 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
+      <div className="px-3 py-1 text-[0.625rem] font-semibold text-muted-foreground uppercase tracking-wider bg-muted/20">
         Path Variables
       </div>
-      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-border text-[0.625rem] text-muted-foreground font-medium uppercase tracking-wider">
         <span className="w-4 shrink-0" />
         <span className="flex-1">Variable</span>
         <span className="flex-1">Value</span>
@@ -1037,6 +1071,8 @@ export function RequestPane() {
                 onChange={handleKVChange("params")}
                 onDelete={handleKVDelete("params")}
                 onAdd={handleKVAdd("params")}
+                resolvedMap={resolvedMap}
+                suggestions={allKeys}
               />
             </div>
             <PathVarsSection
@@ -1069,6 +1105,8 @@ export function RequestPane() {
             onDelete={handleKVDelete("headers")}
             onAdd={handleKVAdd("headers")}
             keySuggestions={COMMON_REQUEST_HEADERS}
+            resolvedMap={resolvedMap}
+            suggestions={allKeys}
           />
         </TabsContent>
 

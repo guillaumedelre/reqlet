@@ -27,7 +27,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
         value={variable.key}
         onChange={(e) => updateEnvironmentVariable(envId, variable.id, { key: e.target.value })}
         placeholder="Variable"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <Input
         value={variable.initialValue}
@@ -35,7 +35,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
           updateEnvironmentVariable(envId, variable.id, { initialValue: e.target.value })
         }
         placeholder="Initial value"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <Input
         value={variable.currentValue}
@@ -43,7 +43,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
           updateEnvironmentVariable(envId, variable.id, { currentValue: e.target.value })
         }
         placeholder="Current value"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <button
         onClick={() =>
@@ -83,20 +83,20 @@ export function EnvironmentPane() {
       {/* Column headers */}
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border shrink-0 bg-muted/30">
         <div className="w-4 shrink-0" />
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Variable
         </span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Initial Value
         </span>
-        <span className="flex-1 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <span className="flex-1 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider">
           Current Value
         </span>
         <div className="w-5 shrink-0" />
       </div>
 
       {/* Rows */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         {env.variables.map((v) => (
           <EnvRow key={v.id} variable={v} envId={env.id} />
         ))}

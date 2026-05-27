@@ -48,15 +48,18 @@ export interface VariableInputProps extends Omit<
 > {
   value: string
   onChange: (value: string) => void
-  resolvedMap: Map<string, string>
-  suggestions: string[]
+  resolvedMap?: Map<string, string>
+  suggestions?: string[]
+  /** Compact table-cell mode: no border, no background, smaller font */
+  cell?: boolean
 }
 
 export function VariableInput({
   value,
   onChange,
-  resolvedMap,
-  suggestions,
+  resolvedMap = new Map(),
+  suggestions = [],
+  cell = false,
   className,
   onKeyDown,
   onFocus,
@@ -170,7 +173,14 @@ export function VariableInput({
   return (
     <div className={cn("relative min-w-0", className)}>
       {/* Visual container — overflow-hidden clips the mirror scroll */}
-      <div className="h-full rounded-md border border-border/60 bg-muted/30 overflow-hidden relative">
+      <div
+        className={cn(
+          "h-full overflow-hidden relative",
+          cell
+            ? "border-b border-transparent focus-within:border-primary/40"
+            : "rounded-md border border-border/60 bg-muted/30",
+        )}
+      >
         {/* Input first so it sits below the mirror in stacking order */}
         <input
           ref={inputRef}
@@ -183,8 +193,9 @@ export function VariableInput({
           className={cn(
             "reqlet-variable-input",
             "absolute inset-0 w-full h-full bg-transparent",
-            "font-mono text-[13px] px-3 border-0 outline-none",
+            "font-mono border-0 outline-none",
             "caret-foreground",
+            cell ? "text-xs px-1" : "text-[0.8125rem] px-3",
             hasVars ? "text-transparent" : "text-foreground",
           )}
           spellCheck={false}
@@ -198,8 +209,11 @@ export function VariableInput({
           className="absolute inset-0 pointer-events-none flex items-center overflow-hidden"
         >
           <div
-            className="whitespace-nowrap font-mono text-[13px] shrink-0"
-            style={{ paddingInline: 12, transform: `translateX(${-scrollLeft}px)` }}
+            className={cn(
+              "whitespace-nowrap font-mono shrink-0",
+              cell ? "text-xs" : "text-[0.8125rem]",
+            )}
+            style={{ paddingInline: cell ? 4 : 12, transform: `translateX(${-scrollLeft}px)` }}
           >
             {tokens.map((token, i) => {
               if (token.type !== "var") {
@@ -239,8 +253,8 @@ export function VariableInput({
         </div>
       </div>
 
-      {/* Focus ring rendered outside overflow-hidden so it isn't clipped */}
-      {isFocused && (
+      {/* Focus ring — only in full (non-cell) mode */}
+      {!cell && isFocused && (
         <div className="absolute inset-0 rounded-md ring-1 ring-ring pointer-events-none" />
       )}
 
