@@ -92,6 +92,8 @@ ignore:
   - "docs/**"
   - "gui/web/src/test/**"
   - "gui/web/src/components/**"
+  - "gui/web/src/App.tsx"
+  - "gui/web/src/main.tsx"
   - "gui/web/src/lib/backend.ts"
   - "cli/main.go"
   - "agent/main.go"

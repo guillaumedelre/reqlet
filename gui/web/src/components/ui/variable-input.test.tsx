@@ -68,7 +68,7 @@ describe("tokenizeVariables", () => {
 
 function renderInput(
   value: string,
-  onChange = (_v: string) => {},
+  onChange = () => {},
   props: Partial<React.ComponentProps<typeof VariableInput>> = {},
 ) {
   return render(
