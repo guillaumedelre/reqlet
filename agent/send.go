@@ -6,30 +6,77 @@ import (
 	"strings"
 	"time"
 
+	engineauth "github.com/guillaumedelre/reqlet/engine/auth"
 	enginehttp "github.com/guillaumedelre/reqlet/engine/http"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
 
 type sendReq struct {
-	Method             string   `json:"method"`
-	URL                string   `json:"url"`
-	Headers            []kvItem `json:"headers"`
-	BodyType           string   `json:"bodyType"`
-	BodyRaw            string   `json:"bodyRaw"`
-	BodyRawContentType string   `json:"bodyRawContentType"`
-	BodyFormData       []kvItem `json:"bodyFormData"`
-	BodyUrlencoded     []kvItem `json:"bodyUrlencoded"`
-	FollowRedirects    bool     `json:"followRedirects"`
-	SslVerification    bool     `json:"sslVerification"`
-	Timeout            int      `json:"timeout"` // milliseconds, 0 = no timeout
-	IgnoreProxy        bool     `json:"ignoreProxy"`
+	Method               string   `json:"method"`
+	URL                  string   `json:"url"`
+	Headers              []kvItem `json:"headers"`
+	BodyType             string   `json:"bodyType"`
+	BodyRaw              string   `json:"bodyRaw"`
+	BodyRawContentType   string   `json:"bodyRawContentType"`
+	BodyFormData         []kvItem `json:"bodyFormData"`
+	BodyUrlencoded       []kvItem `json:"bodyUrlencoded"`
+	BodyGraphQLQuery     string   `json:"bodyGraphQLQuery"`
+	BodyGraphQLVariables string   `json:"bodyGraphQLVariables"`
+	Auth                 *authCfg `json:"auth,omitempty"`
+	FollowRedirects      bool     `json:"followRedirects"`
+	SslVerification      bool     `json:"sslVerification"`
+	Timeout              int      `json:"timeout"` // milliseconds, 0 = no timeout
+	IgnoreProxy          bool     `json:"ignoreProxy"`
 }
 
 type kvItem struct {
-	Key     string `json:"key"`
-	Value   string `json:"value"`
-	Enabled bool   `json:"enabled"`
+	Key         string `json:"key"`
+	Value       string `json:"value"`
+	Enabled     bool   `json:"enabled"`
+	ValueType   string `json:"valueType,omitempty"`   // "text" | "file"
+	FileName    string `json:"fileName,omitempty"`    // original filename for file items
+	FileContent string `json:"fileContent,omitempty"` // base64-encoded content for file items
+}
+
+// authCfg mirrors the frontend AuthConfig type.
+type authCfg struct {
+	Type   string          `json:"type"`
+	Bearer *bearerCfg      `json:"bearer,omitempty"`
+	Basic  *credentialsCfg `json:"basic,omitempty"`
+	APIKey *apiKeyCfg      `json:"apiKey,omitempty"`
+	Digest *credentialsCfg `json:"digest,omitempty"`
+	OAuth2 *oauth2Cfg      `json:"oauth2,omitempty"`
+	AwsSig *awsSigCfg      `json:"awsSignature,omitempty"`
+}
+
+type bearerCfg struct {
+	Token string `json:"token"`
+}
+
+type credentialsCfg struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type apiKeyCfg struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+	AddTo string `json:"addTo"`
+}
+
+type oauth2Cfg struct {
+	AccessToken string `json:"accessToken"`
+	TokenType   string `json:"tokenType"`
+	AddTokenTo  string `json:"addTokenTo"`
+}
+
+type awsSigCfg struct {
+	AccessKey    string `json:"accessKey"`
+	SecretKey    string `json:"secretKey"`
+	Region       string `json:"region"`
+	Service      string `json:"service"`
+	SessionToken string `json:"sessionToken,omitempty"`
 }
 
 type sendResp struct {
@@ -74,10 +121,16 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	applier, err := engineauth.New(toParserAuth(req.Auth))
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errResp{Error: err.Error(), Code: "internal_error"})
+		return
+	}
+
 	parsedReq := buildParserReq(req)
 	resolver := variables.NewResolver()
 
-	resp, err := client.Execute(r.Context(), parsedReq, resolver, nil)
+	resp, err := client.Execute(r.Context(), parsedReq, resolver, applier)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, errResp{Error: err.Error(), Code: networkErrorCode(err)})
 		return
@@ -126,12 +179,22 @@ func buildParserReq(req sendReq) *parser.Request {
 	case "form-data":
 		var items []parser.FormDataParam
 		for _, item := range req.BodyFormData {
-			if item.Enabled && item.Key != "" {
+			if !item.Enabled || item.Key == "" {
+				continue
+			}
+			if item.ValueType == "file" {
+				items = append(items, parser.FormDataParam{
+					Key:   item.Key,
+					Value: item.FileContent,
+					Src:   item.FileName,
+					Type:  "file",
+				})
+			} else {
 				items = append(items, parser.FormDataParam{Key: item.Key, Value: item.Value, Type: "text"})
 			}
 		}
 		pr.Body = &parser.Body{Mode: parser.BodyModeFormData, FormData: items}
-	case "urlencoded":
+	case "urlencoded", "x-www-form-urlencoded":
 		var items []parser.URLEncodedParam
 		for _, item := range req.BodyUrlencoded {
 			if item.Enabled && item.Key != "" {
@@ -139,20 +202,110 @@ func buildParserReq(req sendReq) *parser.Request {
 			}
 		}
 		pr.Body = &parser.Body{Mode: parser.BodyModeURLEncoded, URLEncoded: items}
+	case "graphql":
+		pr.Body = &parser.Body{
+			Mode: parser.BodyModeGraphQL,
+			GraphQL: &parser.GraphQLBody{
+				Query:     req.BodyGraphQLQuery,
+				Variables: req.BodyGraphQLVariables,
+			},
+		}
 	}
 
 	return pr
 }
 
+// toParserAuth converts the frontend auth config into the engine/parser.Auth format.
+func toParserAuth(a *authCfg) *parser.Auth {
+	if a == nil {
+		return nil
+	}
+	switch a.Type {
+	case "none", "inherit", "":
+		return &parser.Auth{Type: parser.AuthTypeNoAuth}
+	case "bearer":
+		if a.Bearer == nil {
+			return &parser.Auth{Type: parser.AuthTypeBearer}
+		}
+		return &parser.Auth{
+			Type:   parser.AuthTypeBearer,
+			Bearer: []parser.AuthParam{{Key: "token", Value: a.Bearer.Token, Type: "string"}},
+		}
+	case "basic":
+		if a.Basic == nil {
+			return &parser.Auth{Type: parser.AuthTypeBasic}
+		}
+		return &parser.Auth{
+			Type: parser.AuthTypeBasic,
+			Basic: []parser.AuthParam{
+				{Key: "username", Value: a.Basic.Username, Type: "string"},
+				{Key: "password", Value: a.Basic.Password, Type: "string"},
+			},
+		}
+	case "digest":
+		if a.Digest == nil {
+			return &parser.Auth{Type: parser.AuthTypeDigest}
+		}
+		return &parser.Auth{
+			Type: parser.AuthTypeDigest,
+			Digest: []parser.AuthParam{
+				{Key: "username", Value: a.Digest.Username, Type: "string"},
+				{Key: "password", Value: a.Digest.Password, Type: "string"},
+			},
+		}
+	case "api-key":
+		if a.APIKey == nil {
+			return &parser.Auth{Type: parser.AuthTypeAPIKey}
+		}
+		return &parser.Auth{
+			Type: parser.AuthTypeAPIKey,
+			APIKey: []parser.AuthParam{
+				{Key: "key", Value: a.APIKey.Key, Type: "string"},
+				{Key: "value", Value: a.APIKey.Value, Type: "string"},
+				{Key: "in", Value: a.APIKey.AddTo, Type: "string"},
+			},
+		}
+	case "oauth2":
+		if a.OAuth2 == nil {
+			return &parser.Auth{Type: parser.AuthTypeOAuth2}
+		}
+		return &parser.Auth{
+			Type: parser.AuthTypeOAuth2,
+			OAuth2: []parser.AuthParam{
+				{Key: "accessToken", Value: a.OAuth2.AccessToken, Type: "string"},
+				{Key: "tokenType", Value: a.OAuth2.TokenType, Type: "string"},
+				{Key: "addTokenTo", Value: a.OAuth2.AddTokenTo, Type: "string"},
+			},
+		}
+	case "aws-signature":
+		if a.AwsSig == nil {
+			return &parser.Auth{Type: parser.AuthTypeAWSV4}
+		}
+		params := []parser.AuthParam{
+			{Key: "accessKey", Value: a.AwsSig.AccessKey, Type: "string"},
+			{Key: "secretKey", Value: a.AwsSig.SecretKey, Type: "string"},
+			{Key: "region", Value: a.AwsSig.Region, Type: "string"},
+			{Key: "service", Value: a.AwsSig.Service, Type: "string"},
+		}
+		if a.AwsSig.SessionToken != "" {
+			params = append(params, parser.AuthParam{Key: "sessionToken", Value: a.AwsSig.SessionToken, Type: "string"})
+		}
+		return &parser.Auth{Type: parser.AuthTypeAWSV4, AWSV4: params}
+	default:
+		// jwt, hawk, oauth1, ntlm, akamai-edgegrid, asap: not yet in engine/auth
+		return &parser.Auth{Type: parser.AuthTypeNoAuth}
+	}
+}
+
 func rawLang(contentType string) string {
 	switch contentType {
-	case "JSON":
+	case "application/json", "JSON":
 		return "json"
-	case "XML":
+	case "application/xml", "XML":
 		return "xml"
-	case "HTML":
+	case "text/html", "HTML":
 		return "html"
-	case "JavaScript":
+	case "application/javascript", "JavaScript":
 		return "javascript"
 	default:
 		return "text"

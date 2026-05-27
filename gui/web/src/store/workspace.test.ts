@@ -625,7 +625,9 @@ describe("collection operations leave sibling collections unchanged", () => {
 
   it("updateCollectionAuth does not touch the other collection", () => {
     setup2Cols()
-    useWorkspaceStore.getState().updateCollectionAuth("c1", { type: "bearer", bearer: { token: "t" } })
+    useWorkspaceStore
+      .getState()
+      .updateCollectionAuth("c1", { type: "bearer", bearer: { token: "t" } })
     expect(useWorkspaceStore.getState().collections[1].auth).toEqual({ type: "none" })
   })
 

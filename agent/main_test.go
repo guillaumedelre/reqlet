@@ -63,3 +63,21 @@ func TestStatic_NotFoundForMissingFile(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
+
+func TestStatic_SPAFallback(t *testing.T) {
+	mux := newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/some-spa-route", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "ok")
+}
+
+func TestStatic_SPAFallback_NestedRoute(t *testing.T) {
+	mux := newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/collections/abc-123", nil))
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Body.String(), "ok")
+}

@@ -158,7 +158,6 @@ function VariablesTab({
   )
 }
 
-
 // ---------- Scripts tab ----------
 
 function ScriptsTab({
