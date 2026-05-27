@@ -188,8 +188,9 @@ flowchart TD
 
 ## Frontend transport abstraction
 
-`gui/web/src/lib/backend.ts` provides a unified call interface for all React
-components. It detects the runtime context at call time:
+Two layers handle communication between the React frontend and Go backends:
+
+**`gui/web/src/lib/backend.ts`** handles the `POST /api/send` call (and future Wails bindings). It detects the runtime context at call time:
 
 ```mermaid
 flowchart TD
@@ -206,8 +207,11 @@ flowchart TD
     Q -- no --> F
 ```
 
-This keeps the React codebase identical regardless of whether it runs inside
-the Wails desktop app or is served by `reqlet-agent`.
+**`gui/web/src/lib/api.ts`** provides typed CRUD methods for collections and environments (`api.collections.*`, `api.environments.*`) via `fetch /api/...`. These are consumed by `hooks/use-workspace-sync.ts`, which:
+1. Populates `useWorkspaceStore` on startup via TanStack Query (`staleTime: Infinity`).
+2. Subscribes to store changes after init and fires fire-and-forget API calls for every create/update/delete diff.
+
+This keeps the React codebase identical regardless of whether it runs inside the Wails desktop app or is served by `reqlet-agent`.
 
 ## Storage
 
@@ -218,11 +222,9 @@ Local data is split into two categories with distinct storage strategies:
 | **Content** | Collections, environments, variables | JSON files on disk — git-friendly, portable |
 | **System** | History, preferences, settings | SQLite — relational, transactional |
 
-### Content — filesystem (`engine/workspace/`)
+### Content — filesystem
 
-`engine/workspace` takes a `basePath` parameter and never resolves the path
-itself. Callers supply the final path from `REQLET_WORKSPACE_PATH` or the
-OS-appropriate default:
+Collections and environments are stored as JSON blobs on disk. The path is supplied by the caller from `REQLET_WORKSPACE_PATH` or the OS default — never resolved internally.
 
 | Context | Path |
 |---------|------|
@@ -232,14 +234,13 @@ OS-appropriate default:
 
 ```
 <workspace>/
-├── collections/   ← one JSON file per collection (Postman v2.1 format)
-└── environments/  ← one JSON file per environment
+├── collections/   ← one {id}.json file per collection (frontend native format)
+└── environments/  ← one {id}.json file per environment
 ```
 
-`git init <workspace>` works out of the box in any context — no extra
-configuration needed. This layout is the foundation for Phase 4 git-based team
-sync (push/pull to GitHub, GitLab, Gitea, or a self-hosted
-[reqlet-hub](#reqlet-hub)).
+**reqlet-agent** uses `agent/store.go` (`jsonStore`) — a thin blob store that reads/writes raw JSON as-is. The format is the frontend's native representation, not Postman v2.1. Postman conversion is planned at the API boundary (`POST /api/collections/import` via `engine/loader`, `GET /api/collections/:id/export`) — neither endpoint is implemented yet.
+
+`git init <workspace>` works out of the box in any context — no extra configuration needed. This layout is the foundation for Phase 4 git-based team sync (push/pull to GitHub, GitLab, Gitea, or a self-hosted [reqlet-hub](#reqlet-hub)).
 
 ### System — SQLite (`engine/storage/`)
 
