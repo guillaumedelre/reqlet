@@ -57,13 +57,13 @@ export const METHOD_LABEL_WIDTH: Record<HttpMethod, string> = {
 };
 
 export const METHOD_COLORS: Record<HttpMethod, { text: string; dark: string }> = {
-  GET:     { text: 'text-blue-600',    dark: 'dark:text-blue-400' },
-  POST:    { text: 'text-emerald-600', dark: 'dark:text-emerald-400' },
-  PUT:     { text: 'text-orange-500',  dark: 'dark:text-orange-400' },
-  PATCH:   { text: 'text-amber-600',   dark: 'dark:text-amber-400' },
-  DELETE:  { text: 'text-rose-600',    dark: 'dark:text-rose-400' },
-  OPTIONS: { text: 'text-violet-600',  dark: 'dark:text-violet-400' },
-  HEAD:    { text: 'text-slate-500',   dark: 'dark:text-slate-400' },
+  GET:     { text: 'text-[#61affe]',  dark: 'dark:text-[#61affe]' },
+  POST:    { text: 'text-[#49cc90]',  dark: 'dark:text-[#49cc90]' },
+  PUT:     { text: 'text-[#fca130]',  dark: 'dark:text-[#fca130]' },
+  PATCH:   { text: 'text-[#50e3c2]',  dark: 'dark:text-[#50e3c2]' },
+  DELETE:  { text: 'text-[#f93e3e]',  dark: 'dark:text-[#f93e3e]' },
+  OPTIONS: { text: 'text-[#0d5aa7]',  dark: 'dark:text-[#61affe]' },
+  HEAD:    { text: 'text-[#9012fe]',  dark: 'dark:text-[#c084fc]' },
 };
 
 export function getStatusClasses(status: number): string {
