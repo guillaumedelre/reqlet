@@ -16,7 +16,7 @@ DC      := docker compose run --rm
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-cli build-agent build-gui build-web build-hub dev-agent dev-agent-prod dev-web dev-stack dev-hub dev-hub-prod test-all test-coverage test-unit test-integration go-lint go-fmt go-check shell-go shell-node shell-web
+.PHONY: help build-cli build-agent build-gui build-web build-hub dev-agent dev-agent-prod dev-web dev-stack dev-hub dev-hub-prod test-all test-coverage test-unit test-integration go-lint go-fmt go-check web-fmt-check web-lint web-test runner-lint runner-test shell-go shell-node shell-web
 
 help: ## Show this help message
 	@printf "\n$(BOLD)Reqlet — build & dev targets$(RESET)\n\n"
@@ -102,6 +102,26 @@ go-fmt: ## Format Go source files with gofumpt
 go-check: ## Check formatting without modifying files
 	$(INFO) @printf "Checking formatting...\n"
 	$(DC) go gofumpt -l .
+
+web-fmt-check: ## Check frontend formatting (Prettier) — mirrors CI format:check
+	$(INFO) @printf "Checking frontend formatting...\n"
+	$(DC) web npm run format:check
+
+web-lint: ## Lint the frontend (ESLint) — mirrors CI lint
+	$(INFO) @printf "Linting frontend...\n"
+	$(DC) web npm run lint
+
+web-test: ## Run frontend tests with coverage — mirrors CI test:ci
+	$(INFO) @printf "Running frontend tests...\n"
+	$(DC) web npm run test:ci
+
+runner-lint: ## Lint the runner (ESLint) — mirrors CI lint
+	$(INFO) @printf "Linting runner...\n"
+	$(DC) node npm run lint
+
+runner-test: ## Run runner tests with coverage — mirrors CI test:ci
+	$(INFO) @printf "Running runner tests...\n"
+	$(DC) node npm run test:ci
 
 shell-go: ## Open an interactive Go dev shell (engine/, cli/, agent/)
 	$(INFO) @printf "Opening Go shell...\n"

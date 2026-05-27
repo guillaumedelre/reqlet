@@ -67,19 +67,36 @@ C'est le workflow recommandé dès que Phase 2.14 sera disponible.
 
 ```bash
 make help            # list all targets
+
+# Build
 make build-cli       # build dist/reqlet-cli
 make build-web       # build gui/web/dist/
 make build-agent     # build Docker image reqlet-agent
+
+# Dev
 make dev-web         # start Vite dev server at http://localhost:5173 (HMR, no API)
 make dev-agent       # start web agent at http://localhost:3001 (prod-like, no HMR)
 make dev-stack       # start Vite + agent in parallel (HMR + API via proxy)
-make test-all        # full test suite (engine/ + cli/ + agent/)
+
+# Go tests & quality
+make test-all        # full test suite (engine/ + cli/ + agent/ + hub/)
 make test-unit       # unit tests only
 make test-integration
 make test-coverage   # generates coverage.html
-make go-lint         # golangci-lint
+make go-lint         # golangci-lint (gofumpt + goimports + all linters)
 make go-fmt          # apply gofumpt
 make go-check        # check formatting without modifying
+
+# Frontend (gui/web/) — mirrors CI reqlet-web job
+make web-fmt-check   # Prettier check (same as CI format:check)
+make web-lint        # ESLint (same as CI lint)
+make web-test        # vitest + coverage threshold check (same as CI test:ci)
+
+# Runner — mirrors CI reqlet-runner job
+make runner-lint     # ESLint on runner/ (same as CI lint)
+make runner-test     # jest + coverage on runner/ (same as CI test:ci)
+
+# Shells
 make shell-go        # interactive Go shell
 make shell-node      # interactive Node.js shell (runner/)
 make shell-web       # interactive shell in web container (gui/web/)
