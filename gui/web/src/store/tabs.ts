@@ -1,275 +1,279 @@
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
+import type {
+  Tab,
+  RequestState,
+  RequestSubTab,
+  ResponseSubTab,
+  RequestItem,
+  Collection,
+  FolderItem,
+  Environment,
+  CollectionSubTab,
+  FolderSubTab,
+} from "@/types"
+import { DEFAULT_REQUEST } from "@/types"
 
-export type TabType = "request" | "environment" | "globals"
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-export type RequestSubTab =
-  | "Params"
-  | "Auth"
-  | "Headers"
-  | "Body"
-  | "Pre-request Script"
-  | "Tests"
-  | "Settings"
-  | "Code"
-export type BodyType = "none" | "raw" | "form-data" | "urlencoded" | "binary" | "GraphQL"
-export type RawContentType = "JSON" | "XML" | "Text" | "HTML" | "JavaScript"
-
-export interface KeyValueItem {
-  id: string
-  key: string
-  value: string
-  enabled: boolean
-  type?: "text" | "file"
+function nextId(): string {
+  return `t-${crypto.randomUUID().slice(0, 8)}`
 }
 
-export interface HttpTimings {
-  dns: number
-  tcp: number
-  tls: number
-  ttfb: number
-  download: number
+const TAB_DEFAULTS = {
+  request: { ...DEFAULT_REQUEST },
+  isSending: false,
+  response: null,
+  requestSubTab: "params" as RequestSubTab,
+  responseSubTab: "body" as ResponseSubTab,
+  collectionSubTab: "overview" as CollectionSubTab | FolderSubTab,
 }
 
-export interface ResponseData {
-  status: number
-  statusText: string
-  time: number
-  size: number
-  headers: Record<string, string>
-  body: string
-  contentType: string
-  timings?: HttpTimings
-}
-
-export interface Tab {
-  id: string
-  type: TabType
-  envId?: string
-  method: HttpMethod
-  url: string
-  params: KeyValueItem[]
-  headers: KeyValueItem[]
-  pathVars: KeyValueItem[]
-  bodyType: BodyType
-  bodyRaw: string
-  bodyRawContentType: RawContentType
-  bodyFormData: KeyValueItem[]
-  bodyUrlencoded: KeyValueItem[]
-  response: ResponseData | null
-  dirty: boolean
-  activeSubTab: RequestSubTab
-  preRequestScript: string
-  testScript: string
-  followRedirects: boolean
-  followOriginalMethod: boolean
-  followAuthorizationHeader: boolean
-  removeRefererOnRedirect: boolean
-  maxRedirects: number
-  sslVerification: boolean
-  encodeUrl: boolean
-  disableCookieJar: boolean
-  httpVersion: "auto" | "http1" | "http2"
-  timeout: number
-  ignoreProxy: boolean
-}
-
-function newTab(patch?: Partial<Tab>): Tab {
+function newRequestTab(overrides: Partial<Tab> = {}): Tab {
   return {
-    id: crypto.randomUUID(),
+    id: nextId(),
     type: "request",
-    envId: undefined,
-    method: "GET",
-    url: "",
-    params: [],
-    headers: [],
-    pathVars: [],
-    bodyType: "none",
-    bodyRaw: "",
-    bodyRawContentType: "JSON",
-    bodyFormData: [],
-    bodyUrlencoded: [],
-    response: null,
+    title: "New Request",
     dirty: false,
-    activeSubTab: "Params",
-    preRequestScript: "",
-    testScript: "",
-    followRedirects: true,
-    followOriginalMethod: false,
-    followAuthorizationHeader: false,
-    removeRefererOnRedirect: false,
-    maxRedirects: 0,
-    sslVerification: true,
-    encodeUrl: true,
-    disableCookieJar: false,
-    httpVersion: "http1",
-    timeout: 0,
-    ignoreProxy: false,
-    ...patch,
+    ...TAB_DEFAULTS,
+    ...overrides,
   }
 }
 
+const INITIAL_TAB = newRequestTab({ id: "tab-init" })
+
 interface TabsState {
   tabs: Tab[]
-  activeTabId: string | null
-  closedTabHistory: Tab[]
-  openTab: () => void
-  closeTab: (id: string) => void
-  closeOthers: (id: string) => void
-  closeToRight: (id: string) => void
-  activateTab: (id: string) => void
-  duplicateTab: (id: string) => void
-  reopenLastTab: () => void
-  reorderTabs: (fromId: string, toId: string) => void
-  updateTab: (id: string, patch: Partial<Omit<Tab, "id">>) => void
-  openEnvTab: (envId: string) => void
+  activeTabId: string
+  closedTabs: Tab[]
+  setActiveTab: (id: string) => void
+  reopenLastClosedTab: () => void
+  openRequestTab: (request: RequestItem) => void
+  openEnvironmentTab: (env: Environment) => void
   openGlobalsTab: () => void
+  openCollectionTab: (collection: Collection) => void
+  openFolderTab: (folder: FolderItem, collectionId: string) => void
+  openNewTab: () => void
+  closeTab: (id: string) => void
+  duplicateTab: (id: string) => void
+  closeOtherTabs: (id: string) => void
+  closeTabsToRight: (id: string) => void
+  reorderTabs: (fromIdx: number, toIdx: number) => void
+  updateTab: (id: string, patch: Partial<Tab>) => void
+  updateTabRequest: (id: string, updater: (r: RequestState) => RequestState) => void
+  setTabSubTab: (id: string, tab: RequestSubTab) => void
+  setTabResponseSubTab: (id: string, tab: ResponseSubTab) => void
+  setTabCollectionSubTab: (id: string, sub: CollectionSubTab | FolderSubTab) => void
 }
-
-const initial = newTab()
 
 export const useTabsStore = create<TabsState>()(
   persist(
-    (set) => ({
-      tabs: [initial],
-      activeTabId: initial.id,
-      closedTabHistory: [],
+    (set, get) => ({
+      tabs: [INITIAL_TAB],
+      activeTabId: INITIAL_TAB.id,
+      closedTabs: [],
 
-      openTab: () =>
-        set((s) => {
-          const tab = newTab()
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
+      setActiveTab: (id) => set({ activeTabId: id }),
 
-      closeTab: (id) =>
-        set((s) => {
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          if (idx === -1) return s
-          const closed = s.tabs[idx]
-          const remaining = s.tabs.filter((t) => t.id !== id)
-          const history = [closed, ...s.closedTabHistory].slice(0, 20)
-          if (remaining.length === 0) {
-            const tab = newTab()
-            return { tabs: [tab], activeTabId: tab.id, closedTabHistory: history }
-          }
-          let activeTabId = s.activeTabId
-          if (activeTabId === id) {
-            activeTabId = (remaining[idx] ?? remaining[idx - 1]).id
-          }
-          return { tabs: remaining, activeTabId, closedTabHistory: history }
-        }),
+      reopenLastClosedTab: () => {
+        const { closedTabs, tabs } = get()
+        if (closedTabs.length === 0) return
+        const last = closedTabs[closedTabs.length - 1]
+        const restored = { ...last, id: nextId() }
+        set({
+          tabs: [...tabs, restored],
+          activeTabId: restored.id,
+          closedTabs: closedTabs.slice(0, -1),
+        })
+      },
 
-      closeOthers: (id) =>
-        set((s) => {
-          const tab = s.tabs.find((t) => t.id === id)
-          if (!tab) return s
-          const closing = s.tabs.filter((t) => t.id !== id)
-          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
-          return { tabs: [tab], activeTabId: id, closedTabHistory: history }
-        }),
+      openCollectionTab: (collection: Collection) => {
+        const { tabs } = get()
+        const existing = tabs.find(
+          (t) => t.type === "collection" && t.collectionId === collection.id,
+        )
+        if (existing) {
+          set({ activeTabId: existing.id })
+          return
+        }
+        const tab: Tab = {
+          id: nextId(),
+          type: "collection",
+          title: collection.name,
+          dirty: false,
+          collectionId: collection.id,
+          ...TAB_DEFAULTS,
+        }
+        set({ tabs: [...tabs, tab], activeTabId: tab.id })
+      },
 
-      closeToRight: (id) =>
-        set((s) => {
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          if (idx === -1 || idx === s.tabs.length - 1) return s
-          const closing = s.tabs.slice(idx + 1)
-          const remaining = s.tabs.slice(0, idx + 1)
-          const history = [...closing, ...s.closedTabHistory].slice(0, 20)
-          const activeTabId = remaining.find((t) => t.id === s.activeTabId)
-            ? s.activeTabId
-            : remaining[remaining.length - 1].id
-          return { tabs: remaining, activeTabId, closedTabHistory: history }
-        }),
+      openFolderTab: (folder: FolderItem, collectionId: string) => {
+        const { tabs } = get()
+        const existing = tabs.find((t) => t.type === "folder" && t.folderId === folder.id)
+        if (existing) {
+          set({ activeTabId: existing.id })
+          return
+        }
+        const tab: Tab = {
+          id: nextId(),
+          type: "folder",
+          title: folder.name,
+          dirty: false,
+          folderId: folder.id,
+          collectionId,
+          ...TAB_DEFAULTS,
+        }
+        set({ tabs: [...tabs, tab], activeTabId: tab.id })
+      },
 
-      activateTab: (id) => set({ activeTabId: id }),
+      openGlobalsTab: () => {
+        const { tabs } = get()
+        const existing = tabs.find((t) => t.type === "globals")
+        if (existing) {
+          set({ activeTabId: existing.id })
+          return
+        }
+        const tab: Tab = {
+          id: nextId(),
+          type: "globals",
+          title: "Globals",
+          dirty: false,
+          ...TAB_DEFAULTS,
+        }
+        set({ tabs: [...tabs, tab], activeTabId: tab.id })
+      },
 
-      duplicateTab: (id) =>
-        set((s) => {
-          const source = s.tabs.find((t) => t.id === id)
-          if (!source) return s
-          const dup = { ...source, id: crypto.randomUUID(), response: null }
-          const idx = s.tabs.findIndex((t) => t.id === id)
-          const tabs = [...s.tabs.slice(0, idx + 1), dup, ...s.tabs.slice(idx + 1)]
-          return { tabs, activeTabId: dup.id }
-        }),
+      openEnvironmentTab: (env: Environment) => {
+        const { tabs } = get()
+        const existing = tabs.find((t) => t.type === "environment" && t.environmentId === env.id)
+        if (existing) {
+          set({ activeTabId: existing.id })
+          return
+        }
+        const tab: Tab = {
+          id: nextId(),
+          type: "environment",
+          title: env.name,
+          dirty: false,
+          environmentId: env.id,
+          ...TAB_DEFAULTS,
+        }
+        set({ tabs: [...tabs, tab], activeTabId: tab.id })
+      },
 
-      reopenLastTab: () =>
-        set((s) => {
-          const [tab, ...rest] = s.closedTabHistory
-          if (!tab) return s
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id, closedTabHistory: rest }
-        }),
+      openRequestTab: (item: RequestItem) => {
+        const { tabs } = get()
+        const existing = tabs.find((t) => t.requestId === item.id)
+        if (existing) {
+          set({ activeTabId: existing.id })
+          return
+        }
+        const tab = newRequestTab({
+          title: item.name,
+          requestId: item.id,
+          request: {
+            method: item.method,
+            url: item.url,
+            params: item.params,
+            headers: item.headers,
+            body: item.body,
+            auth: item.auth,
+            preRequestScript: item.preRequestScript,
+            testScript: item.testScript,
+          },
+        })
+        set({ tabs: [...tabs, tab], activeTabId: tab.id })
+      },
 
-      reorderTabs: (fromId, toId) =>
-        set((s) => {
-          const fromIdx = s.tabs.findIndex((t) => t.id === fromId)
-          const toIdx = s.tabs.findIndex((t) => t.id === toId)
-          if (fromIdx === -1 || toIdx === -1 || fromIdx === toIdx) return s
-          const tabs = [...s.tabs]
-          const [moved] = tabs.splice(fromIdx, 1)
-          tabs.splice(toIdx, 0, moved)
-          return { tabs }
-        }),
+      openNewTab: () => {
+        const tab = newRequestTab()
+        set((s) => ({ tabs: [...s.tabs, tab], activeTabId: tab.id }))
+      },
+
+      duplicateTab: (id) => {
+        const { tabs } = get()
+        const idx = tabs.findIndex((t) => t.id === id)
+        if (idx === -1) return
+        const copy = { ...tabs[idx], id: nextId(), dirty: false }
+        const next = [...tabs.slice(0, idx + 1), copy, ...tabs.slice(idx + 1)]
+        set({ tabs: next, activeTabId: copy.id })
+      },
+
+      closeOtherTabs: (id) => {
+        const { tabs, closedTabs } = get()
+        const kept = tabs.find((t) => t.id === id)
+        if (!kept) return
+        const closed = tabs.filter((t) => t.id !== id)
+        const nextClosed = [...closedTabs, ...closed].slice(-10)
+        set({ tabs: [kept], activeTabId: kept.id, closedTabs: nextClosed })
+      },
+
+      closeTabsToRight: (id) => {
+        const { tabs, activeTabId, closedTabs } = get()
+        const idx = tabs.findIndex((t) => t.id === id)
+        if (idx === -1) return
+        const kept = tabs.slice(0, idx + 1)
+        const closed = tabs.slice(idx + 1)
+        if (closed.length === 0) return
+        const nextClosed = [...closedTabs, ...closed].slice(-10)
+        const nextActive = kept.some((t) => t.id === activeTabId)
+          ? activeTabId
+          : kept[kept.length - 1].id
+        set({ tabs: kept, activeTabId: nextActive, closedTabs: nextClosed })
+      },
+
+      reorderTabs: (fromIdx, toIdx) => {
+        const { tabs } = get()
+        if (fromIdx === toIdx) return
+        const next = [...tabs]
+        const [moved] = next.splice(fromIdx, 1)
+        next.splice(toIdx, 0, moved)
+        set({ tabs: next })
+      },
+
+      closeTab: (id) => {
+        const { tabs, activeTabId, closedTabs } = get()
+        const tab = tabs.find((t) => t.id === id)
+        const idx = tabs.findIndex((t) => t.id === id)
+        const remaining = tabs.filter((t) => t.id !== id)
+        const nextClosed = tab ? [...closedTabs.slice(-9), tab] : closedTabs
+        if (remaining.length === 0) {
+          set({ tabs: [], activeTabId: "", closedTabs: nextClosed })
+          return
+        }
+        const nextActive =
+          activeTabId === id ? remaining[Math.min(idx, remaining.length - 1)].id : activeTabId
+        set({ tabs: remaining, activeTabId: nextActive, closedTabs: nextClosed })
+      },
 
       updateTab: (id, patch) =>
+        set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)) })),
+
+      updateTabRequest: (id, updater) =>
         set((s) => ({
-          tabs: s.tabs.map((t) => (t.id === id ? { ...t, ...patch } : t)),
+          tabs: s.tabs.map((t) =>
+            t.id === id ? { ...t, request: updater(t.request), dirty: true } : t,
+          ),
         })),
 
-      openEnvTab: (envId) =>
-        set((s) => {
-          const existing = s.tabs.find((t) => t.type === "environment" && t.envId === envId)
-          if (existing) return { activeTabId: existing.id }
-          const tab = newTab({ type: "environment", envId })
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
+      setTabSubTab: (id, tab) =>
+        set((s) => ({ tabs: s.tabs.map((t) => (t.id === id ? { ...t, requestSubTab: tab } : t)) })),
 
-      openGlobalsTab: () =>
-        set((s) => {
-          const existing = s.tabs.find((t) => t.type === "globals")
-          if (existing) return { activeTabId: existing.id }
-          const tab = newTab({ type: "globals" })
-          return { tabs: [...s.tabs, tab], activeTabId: tab.id }
-        }),
+      setTabResponseSubTab: (id, tab) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.id === id ? { ...t, responseSubTab: tab } : t)),
+        })),
+
+      setTabCollectionSubTab: (id, sub) =>
+        set((s) => ({
+          tabs: s.tabs.map((t) => (t.id === id ? { ...t, collectionSubTab: sub } : t)),
+        })),
     }),
     {
       name: "reqlet-tabs",
-      version: 10,
-      migrate(persisted: unknown) {
-        const s = persisted as { tabs?: unknown[]; [k: string]: unknown }
-        return {
-          ...s,
-          tabs: (s.tabs ?? []).map((t: unknown) => ({
-            type: "request",
-            envId: undefined,
-            params: [],
-            headers: [],
-            pathVars: [],
-            bodyType: "none",
-            bodyRaw: "",
-            bodyRawContentType: "JSON",
-            bodyFormData: [],
-            bodyUrlencoded: [],
-            dirty: false,
-            activeSubTab: "Params",
-            response: null,
-            preRequestScript: "",
-            testScript: "",
-            followRedirects: true,
-            followOriginalMethod: false,
-            followAuthorizationHeader: false,
-            removeRefererOnRedirect: false,
-            maxRedirects: 0,
-            sslVerification: true,
-            encodeUrl: true,
-            disableCookieJar: false,
-            httpVersion: "http1",
-            timeout: 0,
-            ignoreProxy: false,
-            ...(t as object),
-          })),
-        }
-      },
+      partialize: (state) => ({
+        tabs: state.tabs.map((t) => ({ ...t, isSending: false })),
+        activeTabId: state.activeTabId,
+        // closedTabs is session-only, not persisted
+      }),
     },
   ),
 )

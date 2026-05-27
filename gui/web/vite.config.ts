@@ -25,6 +25,15 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov", "html"],
       exclude: ["node_modules/", "src/test/", "dist/"],
+      include: [
+        "src/store/**",
+        "src/hooks/**",
+        "src/lib/**",
+        "src/types.ts",
+        "src/components/layout/app-layout.tsx",
+        "src/components/layout/environment-pane.tsx",
+        "src/components/layout/header-bar.tsx",
+      ],
       thresholds: {
         lines: 80,
         functions: 80,

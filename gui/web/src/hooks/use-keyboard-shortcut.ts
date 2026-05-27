@@ -1,26 +1,28 @@
 import { useEffect, useRef } from "react"
 
-interface Options {
-  ctrlOrMeta?: boolean
-  shift?: boolean
-}
-
-export function useKeyboardShortcut(key: string, handler: () => void, options: Options = {}) {
-  const handlerRef = useRef(handler)
-  handlerRef.current = handler
-
-  const { ctrlOrMeta, shift } = options
+export function useKeyboardShortcut(
+  key: string,
+  handler: () => void,
+  ctrl = false,
+  shift = false,
+  alt = false,
+): void {
+  const ref = useRef(handler)
+  ref.current = handler
 
   useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const modOk = ctrlOrMeta ? e.ctrlKey || e.metaKey : true
-      const shiftOk = shift !== undefined ? e.shiftKey === shift : true
-      if (e.key.toLowerCase() === key.toLowerCase() && modOk && shiftOk) {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key.toLowerCase() === key.toLowerCase() &&
+        (ctrl ? e.ctrlKey || e.metaKey : !e.ctrlKey && !e.metaKey) &&
+        shift === e.shiftKey &&
+        alt === e.altKey
+      ) {
         e.preventDefault()
-        handlerRef.current()
+        ref.current()
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [key, ctrlOrMeta, shift])
+  }, [key, ctrl, shift, alt])
 }

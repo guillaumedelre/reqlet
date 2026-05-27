@@ -206,6 +206,68 @@ run on native GitHub Actions runners.
 
 ### UI conventions
 
+#### Keyboard shortcuts
+
+All keyboard shortcuts are registered via the `useKeyboardShortcut` hook (`src/hooks/use-keyboard-shortcut.ts`). This hook attaches a `keydown` listener on `window` and handles modifier normalization across platforms.
+
+| Shortcut | Action |
+|---|---|
+| `Ctrl+T` | Open new request tab |
+| `Ctrl+W` | Close current tab |
+| `Ctrl+Shift+T` | Reopen last closed tab |
+| `Ctrl+K` | Open global search modal |
+| `Ctrl+F` | Trigger Monaco find widget in the response body |
+| `Alt+Ctrl+C` | Open console (Phase 2.6) |
+
+Never wire shortcuts inline in components — always go through `useKeyboardShortcut` so shortcuts are centralised and don't stack on remount.
+
+#### Sidebar and icon rail
+
+The sidebar has two parts:
+
+- **Icon rail** (narrow left strip): icon buttons for Collections, Environments, History. Clicking an icon switches the active panel. The active panel is stored in Zustand (`useSidebarStore`).
+- **Panel area**: shows the tree/list for the active panel (collection tree, environment list, or request history).
+
+The sidebar can be collapsed via a toggle button; collapsed state is persisted via `useSidebarStore` + localStorage.
+
+#### Tab types and Zustand tab store
+
+Tabs in the tab bar are typed. The `TabType` union currently has three members:
+
+```ts
+type TabType = "request" | "environment" | "globals"
+```
+
+Each tab is identified by a stable `id` (UUID). The active tab ID and the ordered list of open tabs live in `useTabStore` (Zustand, persisted via localStorage). Rules:
+
+- A `"request"` tab holds the full request state (method, URL, headers, body, response, scripts, settings).
+- An `"environment"` tab holds the `envId` it is editing; at most one tab per environment.
+- A `"globals"` tab is a singleton; only one can be open at a time.
+- Collection and folder properties are **not** tabs — they open as breadcrumb views in the main panel (see *Collection properties view* below).
+
+#### Zustand stores
+
+| Store | File | Persisted | Responsibility |
+|---|---|---|---|
+| `useTabStore` | `src/store/tabs.ts` | localStorage | Open tabs, active tab, tab state |
+| `useEnvironmentStore` | `src/store/environments.ts` | localStorage | Environment list, active env ID, variables per env |
+| `useGlobalsStore` | `src/store/globals.ts` | localStorage | Global variable list |
+| `useSidebarStore` | `src/store/ui.ts` | localStorage | Sidebar collapsed state, active panel |
+| `useCollectionStore` | `src/store/collections.ts` | localStorage | Collection tree, collection variables |
+
+Stores are read by TanStack Query hooks when the backend is available (Phase 2.14+). Until then they are the source of truth.
+
+#### Environment and globals editor
+
+The environment editor (`src/components/layout/environment-editor.tsx`) is a modal/overlay that manages:
+- Creating, renaming, and deleting environments
+- Selecting the active environment
+- Editing the variable list via `VariableEditor`
+
+The globals editor is embedded in the globals tab (tab type `"globals"`), not in the environment editor.
+
+Variables have two value fields: **initial value** (committed, safe to share) and **current value** (runtime, never synced). Both are stored in the Zustand environment store and in the collection JSON on save.
+
 #### HTTP method colors
 
 HTTP methods are color-coded throughout the UI (tab badges, method selector) using the
@@ -284,6 +346,34 @@ Both use `CodeEditor` in JavaScript mode. Their content is stored in `preRequest
 `testScript` on the tab (Zustand store, persisted). Execution requires the runner
 (section 2.14 — GUI-Go bindings, not yet wired).
 
+#### Collection properties view
+
+Clicking a collection name in the sidebar opens a **breadcrumb view** in the main panel — not a tab in the tab bar. The breadcrumb shows the navigation path (e.g. `My Collection`). Five sub-tabs are available:
+
+| Sub-tab | Content | Phase |
+|---------|---------|-------|
+| Overview | Editable name, Markdown description, request count, Run / Share buttons | 2.4 |
+| Authorization | Auth type selector — same component as the request Auth panel | 2.5 |
+| Variables | Collection-level variable editor (key, initial value, current value, enabled toggle) | 2.4 |
+| Scripts | Monaco editors for pre-request and post-response scripts | 2.6 (placeholder in 2.4) |
+| Runs | Run history for this collection | 2.7 (empty scaffold in 2.4) |
+
+Collection variables are stored in a per-collection `collectionVariables` map in the Zustand store.
+
+#### Folder properties view
+
+Clicking a folder name in the sidebar opens the same breadcrumb view. The breadcrumb reflects the full path (e.g. `My Collection / Auth / Tokens`). Three sub-tabs only:
+
+| Sub-tab | Content | Phase |
+|---------|---------|-------|
+| Overview | Editable name, Markdown description, request count | 2.4 |
+| Authorization | Auth type selector with "Inherit auth from parent" option | 2.5 |
+| Scripts | Monaco editors for pre-request and post-response scripts | 2.6 (placeholder in 2.4) |
+
+Folders have no Variables or Runs tabs.
+
+Both views use the same breadcrumb navigation component. The "Inherit auth from parent" option is also available in the Auth panel of individual requests.
+
 #### Settings tab
 
 Per-request settings are grouped into five sections in the Settings sub-tab.
@@ -345,23 +435,19 @@ present it renders a status bar (status badge, time, size, **Save** button) and 
 the response `Content-Type` via `guessExt` (`src/lib/response.ts`): `json`, `xml`, `html`, `css`,
 `js`, `csv`, or `txt` as fallback.
 
-#### URL utilities (`src/lib/url.ts`)
+#### URL ↔ Params sync (`src/components/layout/request-pane.tsx`)
 
-Four pure functions manage the relationship between the raw URL string and the
-structured params/path-variables arrays:
+Two inline helpers in `RequestPane` keep the URL field and the Params table in sync:
 
-| Function | Purpose |
+| Helper | Purpose |
 |---|---|
-| `assembleUrl(base, params)` | Build the display URL from the base and enabled params |
-| `parseUrl(raw)` | Split a raw URL into `{ base, params[] }` |
-| `mergeParams(existing, parsed)` | Reconcile the params array after a URL edit (preserves IDs, keeps disabled items) |
-| `extractPathVarNames(url)` | Return the list of variable names found in the path — `:param` and `{{param}}` syntax, ignores the query string |
-| `mergePathVars(existing, names)` | Reconcile the path-vars array with the extracted names (preserves user-entered values, drops removed vars) |
+| `parseQueryParams(url)` | Extract `KeyValuePair[]` from the query string of a raw URL |
+| `buildUrlWithParams(url, params)` | Reconstruct the URL from its base (before `?`) and the enabled params |
 
-The `url` field on a tab stores the base URL only (no query string). `params` is
-the structured list. `pathVars` holds the extracted path variables with their
-user-supplied values (substituted at send time). Both arrays are kept in sync via
-the above functions on every URL field edit.
+The `url` field on a tab stores the full raw URL including the query string.
+On every URL input change, `parseQueryParams` replaces the params array.
+On every params table change (add/edit/delete), `buildUrlWithParams` rebuilds
+the URL. Template variables like `{{baseUrl}}` are preserved as-is (no encoding).
 
 [swagger-ui]: https://swagger.io/tools/swagger-ui/
 

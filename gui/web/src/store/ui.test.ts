@@ -1,47 +1,83 @@
-import { afterEach, describe, expect, it } from "vitest"
-import { useUIStore } from "./ui"
+import { beforeEach, describe, expect, it } from "vitest"
+import { useUiStore } from "./ui"
 
-afterEach(() => {
-  useUIStore.setState({ sidebarCollapsed: false, sidebarSection: "collections", searchOpen: false })
+beforeEach(() => {
+  useUiStore.setState({
+    activePanel: null,
+    activeEnvironmentId: null,
+    searchOpen: false,
+    settingsOpen: false,
+  })
+  localStorage.clear()
 })
 
-describe("useUIStore", () => {
-  describe("toggleSidebar", () => {
-    it("collapses when expanded", () => {
-      useUIStore.getState().toggleSidebar()
-      expect(useUIStore.getState().sidebarCollapsed).toBe(true)
-    })
-
-    it("expands when collapsed", () => {
-      useUIStore.setState({ sidebarCollapsed: true })
-      useUIStore.getState().toggleSidebar()
-      expect(useUIStore.getState().sidebarCollapsed).toBe(false)
-    })
+describe("setActivePanel", () => {
+  it("sets the active panel", () => {
+    useUiStore.getState().setActivePanel("collections")
+    expect(useUiStore.getState().activePanel).toBe("collections")
   })
 
-  describe("setSidebarSection", () => {
-    it("updates the sidebar section", () => {
-      useUIStore.getState().setSidebarSection("environments")
-      expect(useUIStore.getState().sidebarSection).toBe("environments")
-    })
+  it("accepts null to clear the panel", () => {
+    useUiStore.getState().setActivePanel("environments")
+    useUiStore.getState().setActivePanel(null)
+    expect(useUiStore.getState().activePanel).toBeNull()
+  })
+})
 
-    it("switches back to collections", () => {
-      useUIStore.setState({ sidebarSection: "history" })
-      useUIStore.getState().setSidebarSection("collections")
-      expect(useUIStore.getState().sidebarSection).toBe("collections")
-    })
+describe("togglePanel", () => {
+  it("sets the panel when none is active", () => {
+    useUiStore.getState().togglePanel("collections")
+    expect(useUiStore.getState().activePanel).toBe("collections")
   })
 
-  describe("setSearchOpen", () => {
-    it("opens the search modal", () => {
-      useUIStore.getState().setSearchOpen(true)
-      expect(useUIStore.getState().searchOpen).toBe(true)
-    })
+  it("closes the panel when toggling the active one", () => {
+    useUiStore.getState().setActivePanel("collections")
+    useUiStore.getState().togglePanel("collections")
+    expect(useUiStore.getState().activePanel).toBeNull()
+  })
 
-    it("closes the search modal", () => {
-      useUIStore.setState({ searchOpen: true })
-      useUIStore.getState().setSearchOpen(false)
-      expect(useUIStore.getState().searchOpen).toBe(false)
-    })
+  it("switches to a different panel when one is already open", () => {
+    useUiStore.getState().setActivePanel("collections")
+    useUiStore.getState().togglePanel("environments")
+    expect(useUiStore.getState().activePanel).toBe("environments")
+  })
+})
+
+describe("setActiveEnvironment", () => {
+  it("sets the active environment id", () => {
+    useUiStore.getState().setActiveEnvironment("env-prod")
+    expect(useUiStore.getState().activeEnvironmentId).toBe("env-prod")
+  })
+
+  it("accepts null to clear the active environment", () => {
+    useUiStore.getState().setActiveEnvironment("env-prod")
+    useUiStore.getState().setActiveEnvironment(null)
+    expect(useUiStore.getState().activeEnvironmentId).toBeNull()
+  })
+})
+
+describe("setSearchOpen", () => {
+  it("opens the search modal", () => {
+    useUiStore.getState().setSearchOpen(true)
+    expect(useUiStore.getState().searchOpen).toBe(true)
+  })
+
+  it("closes the search modal", () => {
+    useUiStore.getState().setSearchOpen(true)
+    useUiStore.getState().setSearchOpen(false)
+    expect(useUiStore.getState().searchOpen).toBe(false)
+  })
+})
+
+describe("setSettingsOpen", () => {
+  it("opens the settings modal", () => {
+    useUiStore.getState().setSettingsOpen(true)
+    expect(useUiStore.getState().settingsOpen).toBe(true)
+  })
+
+  it("closes the settings modal", () => {
+    useUiStore.getState().setSettingsOpen(true)
+    useUiStore.getState().setSettingsOpen(false)
+    expect(useUiStore.getState().settingsOpen).toBe(false)
   })
 })

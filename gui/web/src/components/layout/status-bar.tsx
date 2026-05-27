@@ -1,242 +1,64 @@
-import { useEffect, useRef, useState } from "react"
-
-import { EnvironmentEditor } from "@/components/layout/environment-editor"
-import { type Theme, useTheme } from "@/hooks/use-theme"
-import { useEnvironmentsStore } from "@/store/environments"
-
-const THEMES: { value: Theme; label: string; icon: string }[] = [
-  { value: "system", label: "System", icon: "⊙" },
-  { value: "light", label: "Light", icon: "○" },
-  { value: "dark", label: "Dark", icon: "●" },
-]
-
-function ThemeSelect({ theme, setTheme }: { theme: Theme; setTheme: (t: Theme) => void }) {
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-  const current = THEMES.find((t) => t.value === theme)!
-
-  useEffect(() => {
-    if (!open) return
-    function onMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onMouseDown)
-    return () => document.removeEventListener("mousedown", onMouseDown)
-  }, [open])
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "2px 5px",
-          fontSize: 11,
-          borderRadius: 4,
-          border: "1px solid transparent",
-          background: "transparent",
-          color: "var(--fg-muted)",
-          cursor: "pointer",
-        }}
-      >
-        <span>{current.icon}</span>
-        <span>{current.label}</span>
-        <span style={{ fontSize: 9, lineHeight: 1 }}>▾</span>
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "calc(100% + 3px)",
-            right: 0,
-            zIndex: 100,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            minWidth: 100,
-          }}
-        >
-          {THEMES.map((t) => (
-            <button
-              key={t.value}
-              onClick={() => {
-                setTheme(t.value)
-                setOpen(false)
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                width: "100%",
-                padding: "5px 10px",
-                border: "none",
-                background: t.value === theme ? "var(--bg-panel)" : "transparent",
-                color: t.value === theme ? "var(--fg)" : "var(--fg-muted)",
-                fontSize: 11,
-                cursor: "pointer",
-                textAlign: "left",
-              }}
-            >
-              <span>{t.icon}</span>
-              <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function EnvSelect({ onManage }: { onManage: () => void }) {
-  const { environments, activeEnvironmentId, setActiveEnvironment } = useEnvironmentsStore()
-  const [open, setOpen] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
-
-  const activeEnv = environments.find((e) => e.id === activeEnvironmentId)
-
-  useEffect(() => {
-    if (!open) return
-    function onMouseDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false)
-    }
-    document.addEventListener("mousedown", onMouseDown)
-    return () => document.removeEventListener("mousedown", onMouseDown)
-  }, [open])
-
-  return (
-    <div ref={ref} style={{ position: "relative" }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 4,
-          padding: "2px 5px",
-          fontSize: 11,
-          borderRadius: 4,
-          border: "1px solid transparent",
-          background: "transparent",
-          color: activeEnv ? "var(--fg)" : "var(--fg-muted)",
-          cursor: "pointer",
-        }}
-      >
-        <span>{activeEnv ? activeEnv.name : "No environment"}</span>
-        <span style={{ fontSize: 9, lineHeight: 1 }}>▾</span>
-      </button>
-      {open && (
-        <div
-          style={{
-            position: "absolute",
-            bottom: "calc(100% + 3px)",
-            left: 0,
-            zIndex: 100,
-            background: "var(--bg)",
-            border: "1px solid var(--border)",
-            borderRadius: 4,
-            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-            minWidth: 160,
-          }}
-        >
-          <button
-            onClick={() => {
-              setActiveEnvironment(null)
-              setOpen(false)
-            }}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "5px 10px",
-              border: "none",
-              background: !activeEnvironmentId ? "var(--bg-panel)" : "transparent",
-              color: !activeEnvironmentId ? "var(--fg)" : "var(--fg-muted)",
-              fontSize: 11,
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-          >
-            No environment
-          </button>
-          {environments.map((env) => (
-            <button
-              key={env.id}
-              onClick={() => {
-                setActiveEnvironment(env.id)
-                setOpen(false)
-              }}
-              style={{
-                display: "block",
-                width: "100%",
-                padding: "5px 10px",
-                border: "none",
-                background: activeEnvironmentId === env.id ? "var(--bg-panel)" : "transparent",
-                color: activeEnvironmentId === env.id ? "var(--fg)" : "var(--fg-muted)",
-                fontSize: 11,
-                cursor: "pointer",
-                textAlign: "left",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {env.name}
-            </button>
-          ))}
-          {environments.length > 0 && (
-            <div style={{ borderTop: "1px solid var(--border)", marginTop: 2 }} />
-          )}
-          <button
-            onClick={() => {
-              setOpen(false)
-              onManage()
-            }}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "5px 10px",
-              border: "none",
-              background: "transparent",
-              color: "var(--accent)",
-              fontSize: 11,
-              cursor: "pointer",
-              textAlign: "left",
-            }}
-          >
-            Manage environments...
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
+import { Circle, Layers } from "lucide-react"
+import { useWorkspaceStore } from "@/store/workspace"
+import { useUiStore } from "@/store/ui"
+import { useTabsStore } from "@/store/tabs"
+import { getStatusClasses, formatSize, formatTime } from "@/lib/http"
+import { cn } from "@/lib/utils"
 
 export function StatusBar() {
-  const { theme, setTheme } = useTheme()
-  const [editorOpen, setEditorOpen] = useState(false)
+  const { environments } = useWorkspaceStore()
+  const { activeEnvironmentId } = useUiStore()
+  const { tabs, activeTabId } = useTabsStore()
+
+  const activeTab = tabs.find((t) => t.id === activeTabId)
+  const response = activeTab?.response ?? null
+  const activeEnv = environments.find((e) => e.id === activeEnvironmentId)
+  const dirtyCount = tabs.filter((t) => t.dirty).length
 
   return (
-    <>
-      <div
-        style={{
-          height: 24,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "0 12px",
-          borderTop: "1px solid var(--border)",
-          background: "var(--bg-sidebar)",
-          flexShrink: 0,
-        }}
-      >
-        <EnvSelect onManage={() => setEditorOpen(true)} />
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <ThemeSelect theme={theme} setTheme={setTheme} />
-          <span style={{ fontSize: 11, color: "var(--fg-muted)" }}>Reqlet v0.1.0</span>
-        </div>
+    <div className="h-5 flex items-center gap-3 px-3 border-t border-border bg-card shrink-0 select-none">
+      {/* Environment */}
+      <div className="flex items-center gap-1">
+        <Circle className="h-1.5 w-1.5 fill-current text-primary" />
+        <span className="text-[10px] text-muted-foreground">
+          {activeEnv ? activeEnv.name : "No Environment"}
+        </span>
       </div>
-      {editorOpen && <EnvironmentEditor onClose={() => setEditorOpen(false)} />}
-    </>
+
+      <div className="h-3 w-px bg-border" />
+
+      {/* Tab count */}
+      <div className="flex items-center gap-1">
+        <Layers className="h-2.5 w-2.5 text-muted-foreground/60" />
+        <span className="text-[10px] text-muted-foreground">
+          {tabs.length} tab{tabs.length !== 1 ? "s" : ""}
+          {dirtyCount > 0 && <span className="text-amber-500 ml-1">· {dirtyCount} unsaved</span>}
+        </span>
+      </div>
+
+      <div className="flex-1" />
+
+      {/* Response stats */}
+      {response && (
+        <>
+          <span
+            className={cn("text-[10px] font-mono font-medium", getStatusClasses(response.status))}
+          >
+            {response.status} {response.statusText}
+          </span>
+          <div className="h-3 w-px bg-border" />
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {formatTime(response.time)}
+          </span>
+          <div className="h-3 w-px bg-border" />
+          <span className="text-[10px] text-muted-foreground font-mono">
+            {formatSize(response.size)}
+          </span>
+          <div className="h-3 w-px bg-border" />
+        </>
+      )}
+
+      <span className="text-[10px] text-muted-foreground/50">Reqlet v0.1.0</span>
+    </div>
   )
 }

@@ -22,6 +22,10 @@ runner/dist/
 gui/web/coverage/
 gui/web/junit.xml
 
+# Runner test artifacts
+runner/coverage/
+runner/junit.xml
+
 # Frontend dev server cache
 gui/web/.vite/
 
@@ -50,6 +54,9 @@ dist/reqlet-cli*
 .vscode/
 *.swp
 *.swo
+
+# Claude Code
+.mcp.json
 
 # OS
 .DS_Store
