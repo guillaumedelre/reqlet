@@ -23,4 +23,9 @@ export default tseslint.config(
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
   },
+  // shadcn/ui generated files use @ts-nocheck — allow it
+  {
+    files: ["src/components/ui/**/*.{ts,tsx}"],
+    rules: { "@typescript-eslint/ban-ts-comment": "off" },
+  },
 )
