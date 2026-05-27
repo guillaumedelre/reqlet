@@ -7,7 +7,13 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { useUiStore } from "@/store/ui"
 import { useWorkspaceStore } from "@/store/workspace"
 import { useTabsStore } from "@/store/tabs"
-import type { Environment } from "@/types"
+import { toast } from "sonner"
+import { api } from "@/lib/api"
+import type { Collection, Environment } from "@/types"
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
 
 vi.mock("@/lib/api", () => ({
   api: {
@@ -131,5 +137,140 @@ describe("EnvironmentsPanel — delete active environment", () => {
       expect(useUiStore.getState().activeEnvironmentId).toBe("env-a")
     })
     expect(useWorkspaceStore.getState().environments).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CollectionsPanel — duplicate import guard
+// ---------------------------------------------------------------------------
+
+const BASE_COLLECTION: Collection = {
+  id: "col-a",
+  name: "My API",
+  description: "",
+  auth: { type: "none" },
+  variables: [],
+  preRequestScript: "",
+  testScript: "",
+  items: [],
+}
+
+describe("CollectionsPanel — duplicate import guard", () => {
+  beforeEach(() => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    vi.mocked(api.collections.import).mockClear()
+    vi.mocked(api.collections.import).mockResolvedValue(undefined as never)
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it("blocks import and shows error when collection with same name already exists", async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [BASE_COLLECTION] }))
+    renderPanel()
+
+    const file = new File(['{"info":{"name":"My API"},"item":[]}'], "api.json", {
+      type: "application/json",
+    })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("My API"))
+    })
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+  })
+
+  it("proceeds with import when no collection with same name exists", async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [] }))
+    renderPanel()
+
+    const file = new File(['{"info":{"name":"New API"},"item":[]}'], "api.json", {
+      type: "application/json",
+    })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(api.collections.import)).toHaveBeenCalled()
+    })
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("shows error toast for invalid JSON", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    const file = new File(["not valid json"], "bad.json", { type: "application/json" })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to import collection"),
+      )
+    })
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EnvironmentsPanel — duplicate import guard
+// ---------------------------------------------------------------------------
+
+describe("EnvironmentsPanel — duplicate import guard", () => {
+  beforeEach(() => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "environments" }))
+    vi.mocked(api.environments.import).mockClear()
+    vi.mocked(api.environments.import).mockResolvedValue(undefined as never)
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it("blocks import and shows error when environment with same name already exists", async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [ENV_A] }))
+    renderPanel()
+
+    const file = new File(['{"name":"Production","values":[]}'], "prod.json", {
+      type: "application/json",
+    })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("Production"))
+    })
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
+  })
+
+  it("proceeds with import when no environment with same name exists", async () => {
+    const user = userEvent.setup()
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [] }))
+    renderPanel()
+
+    const file = new File(['{"name":"QA","values":[]}'], "qa.json", { type: "application/json" })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(api.environments.import)).toHaveBeenCalled()
+    })
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("shows error toast for invalid JSON", async () => {
+    const user = userEvent.setup()
+    renderPanel()
+
+    const file = new File(["not valid json"], "bad.json", { type: "application/json" })
+    const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
+    await user.upload(input, file)
+
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to import environment"),
+      )
+    })
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
   })
 })
