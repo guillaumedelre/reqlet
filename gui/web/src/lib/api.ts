@@ -21,6 +21,35 @@ export const api = {
     get: (id: string) => request<Collection>("GET", `/collections/${id}`),
     update: (id: string, col: Collection) => request<Collection>("PUT", `/collections/${id}`, col),
     delete: (id: string) => request<void>("DELETE", `/collections/${id}`),
+    import: async (file: File): Promise<Collection> => {
+      const text = await file.text()
+      const res = await fetch("/api/collections/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }))
+        throw new Error((err as { error?: string }).error ?? "Request failed")
+      }
+      return res.json() as Promise<Collection>
+    },
+    export: async (id: string): Promise<void> => {
+      const res = await fetch(`/api/collections/${id}/export`)
+      if (!res.ok) throw new Error("Export failed")
+      const filename =
+        res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        "collection.postman_collection.json"
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
   },
   environments: {
     list: () => request<Environment[]>("GET", "/environments"),
@@ -29,5 +58,34 @@ export const api = {
     update: (id: string, env: Environment) =>
       request<Environment>("PUT", `/environments/${id}`, env),
     delete: (id: string) => request<void>("DELETE", `/environments/${id}`),
+    import: async (file: File): Promise<Environment> => {
+      const text = await file.text()
+      const res = await fetch("/api/environments/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: "Request failed" }))
+        throw new Error((err as { error?: string }).error ?? "Request failed")
+      }
+      return res.json() as Promise<Environment>
+    },
+    export: async (id: string): Promise<void> => {
+      const res = await fetch(`/api/environments/${id}/export`)
+      if (!res.ok) throw new Error("Export failed")
+      const filename =
+        res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        "environment.postman_environment.json"
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    },
   },
 }

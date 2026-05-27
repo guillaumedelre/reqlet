@@ -32,12 +32,16 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 
 	mux.HandleFunc("GET /api/collections", s.listCollections)
 	mux.HandleFunc("POST /api/collections", s.createCollection)
+	mux.HandleFunc("POST /api/collections/import", s.importCollection)
+	mux.HandleFunc("GET /api/collections/{id}/export", s.exportCollection)
 	mux.HandleFunc("GET /api/collections/{id}", s.getCollection)
 	mux.HandleFunc("PUT /api/collections/{id}", s.updateCollection)
 	mux.HandleFunc("DELETE /api/collections/{id}", s.deleteCollection)
 
 	mux.HandleFunc("GET /api/environments", s.listEnvironments)
 	mux.HandleFunc("POST /api/environments", s.createEnvironment)
+	mux.HandleFunc("POST /api/environments/import", s.importEnvironment)
+	mux.HandleFunc("GET /api/environments/{id}/export", s.exportEnvironment)
 	mux.HandleFunc("GET /api/environments/{id}", s.getEnvironment)
 	mux.HandleFunc("PUT /api/environments/{id}", s.updateEnvironment)
 	mux.HandleFunc("DELETE /api/environments/{id}", s.deleteEnvironment)

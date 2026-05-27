@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import {
   ChevronRight,
   Folder,
@@ -31,6 +32,7 @@ import { useWorkspaceStore } from "@/store/workspace"
 import { useTabsStore } from "@/store/tabs"
 import { useUiStore } from "@/store/ui"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
+import { api } from "@/lib/api"
 import type { Collection, CollectionItem, FolderItem, RequestItem } from "@/types"
 import { isRequest } from "@/types"
 
@@ -485,7 +487,10 @@ function CollectionCard({ collection, autoEdit }: { collection: Collection; auto
               <Copy className="h-3 w-3" />
               Duplicate
             </DropdownMenuItem>
-            <DropdownMenuItem className="text-xs gap-2">
+            <DropdownMenuItem
+              className="text-xs gap-2"
+              onSelect={() => api.collections.export(collection.id)}
+            >
               <Download className="h-3 w-3" />
               Export
             </DropdownMenuItem>
@@ -517,16 +522,30 @@ function CollectionCard({ collection, autoEdit }: { collection: Collection; auto
 function CollectionsPanel() {
   const { collections, moveItem, addCollection } = useWorkspaceStore()
   const { openCollectionTab } = useTabsStore()
+  const queryClient = useQueryClient()
   const [query, setQuery] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
   const [draggedId, setDraggedId] = useState<string | null>(null)
   const [dragOverId, setDragOver] = useState<string | null>(null)
   const dragSourceRef = useRef<{ id: string; collectionId: string } | null>(null)
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const handleAdd = () => {
     const col = addCollection("New Collection")
     openCollectionTab(col)
     setEditingId(col.id)
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ""
+    try {
+      await api.collections.import(file)
+      await queryClient.invalidateQueries({ queryKey: ["collections"] })
+    } catch {
+      // silently ignore import errors for now
+    }
   }
 
   const startDrag = useCallback((id: string, collectionId: string) => {
@@ -565,12 +584,20 @@ function CollectionsPanel() {
             Collections
           </span>
           <div className="flex items-center gap-0.5">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImport}
+            />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                  onClick={() => importInputRef.current?.click()}
                 >
                   <Upload className="h-3.5 w-3.5" />
                 </Button>
@@ -624,15 +651,29 @@ function CollectionsPanel() {
 function EnvironmentsPanel() {
   const { environments, globalVariables, addEnvironment, deleteEnvironment, renameEnvironment } =
     useWorkspaceStore()
-  const { activeEnvironmentId } = useUiStore()
+  const { activeEnvironmentId, setActiveEnvironment } = useUiStore()
   const { openEnvironmentTab, openGlobalsTab, tabs, updateTab } = useTabsStore()
+  const queryClient = useQueryClient()
   const [editingId, setEditingId] = useState<string | null>(null)
   const { requestDelete, dialog: deleteDialog } = useDeleteConfirm()
+  const importInputRef = useRef<HTMLInputElement>(null)
 
   const handleAdd = () => {
     const env = addEnvironment("New Environment")
     openEnvironmentTab(env)
     setEditingId(env.id)
+  }
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ""
+    try {
+      await api.environments.import(file)
+      await queryClient.invalidateQueries({ queryKey: ["environments"] })
+    } catch {
+      // silently ignore import errors for now
+    }
   }
 
   const handleCommitRename = (id: string, name: string) => {
@@ -652,12 +693,20 @@ function EnvironmentsPanel() {
           Environments
         </span>
         <div className="flex items-center gap-0.5">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={handleImport}
+          />
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                onClick={() => importInputRef.current?.click()}
               >
                 <Upload className="h-3.5 w-3.5" />
               </Button>
@@ -740,10 +789,22 @@ function EnvironmentsPanel() {
                     <Pencil className="h-3 w-3" />
                     Rename
                   </DropdownMenuItem>
+                  <DropdownMenuItem
+                    className="text-xs gap-2"
+                    onSelect={() => api.environments.export(env.id)}
+                  >
+                    <Download className="h-3 w-3" />
+                    Export
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-xs gap-2 text-destructive focus:text-destructive"
-                    onSelect={() => requestDelete(env.name, () => deleteEnvironment(env.id))}
+                    onSelect={() =>
+                      requestDelete(env.name, () => {
+                        if (activeEnvironmentId === env.id) setActiveEnvironment(null)
+                        deleteEnvironment(env.id)
+                      })
+                    }
                   >
                     <Trash2 className="h-3 w-3" />
                     Delete
