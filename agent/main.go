@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
+	"strings"
 	"time"
 )
 
@@ -21,8 +23,37 @@ func newMux(webContent fs.FS) http.Handler {
 	})
 	mux.HandleFunc("/api/send", handleSend)
 	mux.Handle("/api/", http.NotFoundHandler())
-	mux.Handle("/", http.FileServer(http.FS(webContent)))
+	mux.Handle("/", spaHandler(webContent))
 	return mux
+}
+
+// spaHandler serves static files and falls back to index.html for SPA routes.
+// Paths with a file extension that don't exist return 404 (missing asset).
+// Paths without extension that don't exist return index.html (client-side route).
+func spaHandler(content fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(content))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if p == "" {
+			p = "."
+		}
+		if _, err := content.Open(p); err == nil {
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+		if path.Ext(p) != "" {
+			http.NotFound(w, r)
+			return
+		}
+		// SPA route: serve index.html directly to avoid FileServer redirect logic.
+		data, err := fs.ReadFile(content, "index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(data)
+	})
 }
 
 func main() {

@@ -7,6 +7,7 @@ import type {
   CollectionItem,
   RequestItem,
   FolderItem,
+  AuthConfig,
 } from "@/types"
 
 let _id = 0
@@ -351,6 +352,8 @@ interface WorkspaceState {
     targetCollectionId: string,
     targetFolderId: string | null,
   ) => void
+  updateCollectionAuth: (collectionId: string, auth: AuthConfig) => void
+  updateItemAuth: (collectionId: string, itemId: string, auth: AuthConfig) => void
 }
 
 interface RequestWithCollection {
@@ -750,5 +753,26 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
         }),
       }
     })
+  },
+
+  updateCollectionAuth: (collectionId, auth) => {
+    set((s) => ({
+      collections: s.collections.map((c) => (c.id === collectionId ? { ...c, auth } : c)),
+    }))
+  },
+
+  updateItemAuth: (collectionId, itemId, auth) => {
+    function patch(items: CollectionItem[]): CollectionItem[] {
+      return items.map((item) => {
+        if (item.id === itemId) return { ...item, auth }
+        if (!("method" in item)) return { ...item, items: patch(item.items) }
+        return item
+      })
+    }
+    set((s) => ({
+      collections: s.collections.map((c) =>
+        c.id === collectionId ? { ...c, items: patch(c.items) } : c,
+      ),
+    }))
   },
 }))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func base64Encode(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
 
 func TestHandleSend_WrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/send", nil)
@@ -306,6 +311,13 @@ func TestNetworkErrorCode(t *testing.T) {
 
 func TestRawLang(t *testing.T) {
 	cases := map[string]string{
+		// MIME types (frontend canonical form)
+		"application/json":       "json",
+		"application/xml":        "xml",
+		"text/html":              "html",
+		"application/javascript": "javascript",
+		"text/plain":             "text",
+		// Display names (backward compat)
 		"JSON":       "json",
 		"XML":        "xml",
 		"HTML":       "html",
@@ -316,4 +328,275 @@ func TestRawLang(t *testing.T) {
 	for input, expected := range cases {
 		assert.Equal(t, expected, rawLang(input), "input: %s", input)
 	}
+}
+
+func TestHandleSend_GraphQLBody(t *testing.T) {
+	var receivedBody string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		receivedBody = buf.String()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:               "POST",
+		URL:                  target.URL,
+		BodyType:             "graphql",
+		BodyGraphQLQuery:     "{ user { id } }",
+		BodyGraphQLVariables: `{"id":1}`,
+		FollowRedirects:      true,
+		SslVerification:      true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, receivedBody, "user")
+}
+
+func TestHandleSend_BearerAuth(t *testing.T) {
+	var receivedAuth string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		Auth:            &authCfg{Type: "bearer", Bearer: &bearerCfg{Token: "my-token"}},
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "Bearer my-token", receivedAuth)
+}
+
+func TestHandleSend_BasicAuth(t *testing.T) {
+	var receivedUser, receivedPass string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedUser, receivedPass, _ = r.BasicAuth()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		Auth:            &authCfg{Type: "basic", Basic: &credentialsCfg{Username: "alice", Password: "secret"}},
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "alice", receivedUser)
+	assert.Equal(t, "secret", receivedPass)
+}
+
+func TestToParserAuth_NilReturnsNil(t *testing.T) {
+	assert.Nil(t, toParserAuth(nil))
+}
+
+func TestToParserAuth_InheritReturnsNoAuth(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "inherit"})
+	require.NotNil(t, a)
+	assert.Equal(t, "noauth", string(a.Type))
+}
+
+func TestToParserAuth_UnknownTypeReturnsNoAuth(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "hawk"})
+	require.NotNil(t, a)
+	assert.Equal(t, "noauth", string(a.Type))
+}
+
+func TestToParserAuth_Bearer(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "bearer", Bearer: &bearerCfg{Token: "tok"}})
+	require.NotNil(t, a)
+	assert.Equal(t, "bearer", string(a.Type))
+	require.Len(t, a.Bearer, 1)
+	assert.Equal(t, "token", a.Bearer[0].Key)
+	assert.Equal(t, "tok", a.Bearer[0].Value)
+}
+
+func TestToParserAuth_APIKey(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "api-key", APIKey: &apiKeyCfg{Key: "X-Key", Value: "abc", AddTo: "header"}})
+	require.NotNil(t, a)
+	assert.Equal(t, "apikey", string(a.Type))
+	require.Len(t, a.APIKey, 3)
+}
+
+func TestBuildParserReq_GraphQLBody(t *testing.T) {
+	req := sendReq{
+		Method:               "POST",
+		URL:                  "https://example.com/graphql",
+		BodyType:             "graphql",
+		BodyGraphQLQuery:     "query { users { id } }",
+		BodyGraphQLVariables: `{}`,
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "graphql", string(pr.Body.Mode))
+	require.NotNil(t, pr.Body.GraphQL)
+	assert.Equal(t, "query { users { id } }", pr.Body.GraphQL.Query)
+}
+
+func TestBuildParserReq_XWWWFormUrlencoded(t *testing.T) {
+	req := sendReq{
+		Method:   "POST",
+		URL:      "https://example.com",
+		BodyType: "x-www-form-urlencoded",
+		BodyUrlencoded: []kvItem{
+			{Key: "a", Value: "1", Enabled: true},
+		},
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "urlencoded", string(pr.Body.Mode))
+}
+
+func TestBuildParserReq_FormDataFileType(t *testing.T) {
+	req := sendReq{
+		Method:   "POST",
+		URL:      "https://example.com",
+		BodyType: "form-data",
+		BodyFormData: []kvItem{
+			{Key: "upload", ValueType: "file", FileName: "test.txt", FileContent: "aGVsbG8=", Enabled: true},
+			{Key: "field", Value: "hello", ValueType: "text", Enabled: true},
+		},
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	require.Len(t, pr.Body.FormData, 2)
+	assert.Equal(t, "file", pr.Body.FormData[0].Type)
+	assert.Equal(t, "test.txt", pr.Body.FormData[0].Src)
+	assert.Equal(t, "aGVsbG8=", pr.Body.FormData[0].Value)
+	assert.Equal(t, "text", pr.Body.FormData[1].Type)
+}
+
+func TestHandleSend_FormDataFileBody(t *testing.T) {
+	const fileContent = "hello file"
+	encoded := base64Encode(fileContent)
+
+	var receivedFileName, receivedContent string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, header, err := r.FormFile("upload")
+		require.NoError(t, err)
+		receivedFileName = header.Filename
+		f, _ := header.Open()
+		data := new(bytes.Buffer)
+		_, _ = data.ReadFrom(f)
+		receivedContent = data.String()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:   "POST",
+		URL:      target.URL,
+		BodyType: "form-data",
+		BodyFormData: []kvItem{
+			{Key: "upload", ValueType: "file", FileName: "hello.txt", FileContent: encoded, Enabled: true},
+		},
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "hello.txt", receivedFileName)
+	assert.Equal(t, fileContent, receivedContent)
+}
+
+func TestToParserAuth_BearerNilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "bearer"})
+	require.NotNil(t, a)
+	assert.Equal(t, "bearer", string(a.Type))
+	assert.Empty(t, a.Bearer)
+}
+
+func TestToParserAuth_BasicNilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "basic"})
+	require.NotNil(t, a)
+	assert.Equal(t, "basic", string(a.Type))
+	assert.Empty(t, a.Basic)
+}
+
+func TestToParserAuth_DigestWithCreds(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "digest", Digest: &credentialsCfg{Username: "u", Password: "p"}})
+	require.NotNil(t, a)
+	assert.Equal(t, "digest", string(a.Type))
+	require.Len(t, a.Digest, 2)
+	assert.Equal(t, "u", a.Digest[0].Value)
+}
+
+func TestToParserAuth_DigestNilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "digest"})
+	require.NotNil(t, a)
+	assert.Equal(t, "digest", string(a.Type))
+	assert.Empty(t, a.Digest)
+}
+
+func TestToParserAuth_APIKeyNilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "api-key"})
+	require.NotNil(t, a)
+	assert.Equal(t, "apikey", string(a.Type))
+	assert.Empty(t, a.APIKey)
+}
+
+func TestToParserAuth_OAuth2NilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "oauth2"})
+	require.NotNil(t, a)
+	assert.Equal(t, "oauth2", string(a.Type))
+	assert.Empty(t, a.OAuth2)
+}
+
+func TestToParserAuth_OAuth2WithToken(t *testing.T) {
+	a := toParserAuth(&authCfg{
+		Type:   "oauth2",
+		OAuth2: &oauth2Cfg{AccessToken: "tok", TokenType: "Bearer", AddTokenTo: "header"},
+	})
+	require.NotNil(t, a)
+	assert.Equal(t, "oauth2", string(a.Type))
+	require.Len(t, a.OAuth2, 3)
+}
+
+func TestToParserAuth_AWSSignatureNilCfg(t *testing.T) {
+	a := toParserAuth(&authCfg{Type: "aws-signature"})
+	require.NotNil(t, a)
+	assert.Equal(t, "awsv4", string(a.Type))
+	assert.Empty(t, a.AWSV4)
+}
+
+func TestToParserAuth_AWSSignatureWithSessionToken(t *testing.T) {
+	a := toParserAuth(&authCfg{
+		Type: "aws-signature",
+		AwsSig: &awsSigCfg{
+			AccessKey:    "ak",
+			SecretKey:    "sk",
+			Region:       "us-east-1",
+			Service:      "s3",
+			SessionToken: "st",
+		},
+	})
+	require.NotNil(t, a)
+	assert.Equal(t, "awsv4", string(a.Type))
+	require.Len(t, a.AWSV4, 5)
+	assert.Equal(t, "sessionToken", a.AWSV4[4].Key)
 }

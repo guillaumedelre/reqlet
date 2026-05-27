@@ -21,11 +21,22 @@ export interface KeyValuePair {
   description: string
 }
 
+export interface FormDataItem {
+  id: string
+  enabled: boolean
+  key: string
+  valueType: "text" | "file"
+  value: string // text value when valueType === "text"
+  fileName?: string // original filename when valueType === "file"
+  fileContent?: string // base64 content when valueType === "file"
+  description: string
+}
+
 export interface RequestBody {
   type: BodyType
   raw: string
   rawContentType: RawContentType
-  formData: KeyValuePair[]
+  formData: FormDataItem[]
   urlencoded: KeyValuePair[]
   graphqlQuery: string
   graphqlVariables: string
@@ -59,13 +70,58 @@ export const DEFAULT_REQUEST_SETTINGS: RequestSettings = {
   proxy: { enabled: false, url: "", username: "", password: "" },
 }
 
-export type AuthType = "inherit" | "none" | "bearer" | "basic" | "api-key"
+export type AuthType =
+  | "inherit"
+  | "none"
+  | "basic"
+  | "bearer"
+  | "jwt"
+  | "digest"
+  | "oauth1"
+  | "oauth2"
+  | "hawk"
+  | "aws-signature"
+  | "ntlm"
+  | "api-key"
+  | "akamai-edgegrid"
+  | "asap"
 
 export interface AuthConfig {
   type: AuthType
   bearer?: { token: string }
   basic?: { username: string; password: string }
   apiKey?: { key: string; value: string; addTo: "header" | "query" }
+  jwt?: { algorithm: string; secret: string; payload: string; addTo: "header" | "query" }
+  digest?: { username: string; password: string }
+  oauth1?: {
+    consumerKey: string
+    consumerSecret: string
+    token: string
+    tokenSecret: string
+    signatureMethod: string
+  }
+  oauth2?: {
+    grantType: string
+    accessToken: string
+    tokenType: string
+    addTokenTo: "header" | "query"
+  }
+  hawk?: { authId: string; authKey: string; algorithm: string }
+  awsSignature?: {
+    accessKey: string
+    secretKey: string
+    region: string
+    service: string
+    sessionToken?: string
+  }
+  ntlm?: { username: string; password: string; domain?: string; workstation?: string }
+  akamaiEdgegrid?: {
+    accessToken: string
+    clientToken: string
+    clientSecret: string
+    baseUrl: string
+  }
+  asap?: { issuer: string; audience: string; keyId: string; privateKey: string }
 }
 
 export interface RequestState {

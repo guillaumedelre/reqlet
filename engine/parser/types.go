@@ -117,7 +117,8 @@ const (
 type FormDataParam struct {
 	Key      string `json:"key"`
 	Value    string `json:"value,omitempty"`
-	Type     string `json:"type"` // "text" or "file"
+	Src      string `json:"src,omitempty"` // filename when Type == "file"
+	Type     string `json:"type"`          // "text" or "file"
 	Disabled bool   `json:"disabled,omitempty"`
 }
 

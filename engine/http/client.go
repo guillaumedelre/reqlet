@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -187,12 +188,30 @@ func buildBody(b *parser.Body, vars *variables.Resolver) (io.Reader, string, err
 			if p.Disabled {
 				continue
 			}
-			fw, err := w.CreateFormField(vars.Resolve(p.Key))
-			if err != nil {
-				return nil, "", fmt.Errorf("form field %q: %w", p.Key, err)
-			}
-			if _, err := fw.Write([]byte(vars.Resolve(p.Value))); err != nil {
-				return nil, "", fmt.Errorf("write field %q: %w", p.Key, err)
+			if p.Type == "file" {
+				filename := p.Src
+				if filename == "" {
+					filename = p.Key
+				}
+				fw, err := w.CreateFormFile(vars.Resolve(p.Key), filename)
+				if err != nil {
+					return nil, "", fmt.Errorf("form file %q: %w", p.Key, err)
+				}
+				data, err := decodeBase64(p.Value)
+				if err != nil {
+					return nil, "", fmt.Errorf("decode file %q: %w", p.Key, err)
+				}
+				if _, err := fw.Write(data); err != nil {
+					return nil, "", fmt.Errorf("write file %q: %w", p.Key, err)
+				}
+			} else {
+				fw, err := w.CreateFormField(vars.Resolve(p.Key))
+				if err != nil {
+					return nil, "", fmt.Errorf("form field %q: %w", p.Key, err)
+				}
+				if _, err := fw.Write([]byte(vars.Resolve(p.Value))); err != nil {
+					return nil, "", fmt.Errorf("write field %q: %w", p.Key, err)
+				}
 			}
 		}
 		if err := w.Close(); err != nil {
@@ -270,6 +289,13 @@ func decryptPEMKey(data, passphrase []byte) ([]byte, error) {
 		remaining = rest
 	}
 	return data, nil
+}
+
+func decodeBase64(s string) ([]byte, error) {
+	if data, err := base64.StdEncoding.DecodeString(s); err == nil {
+		return data, nil
+	}
+	return base64.RawStdEncoding.DecodeString(s)
 }
 
 func contentTypeForRaw(b *parser.Body) string {

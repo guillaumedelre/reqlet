@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useRef, useState } from "react"
 import { Send, Plus, Trash2, Loader2 } from "lucide-react"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
 import { CodeSnippets } from "@/components/code-gen-dialog"
@@ -21,16 +21,20 @@ import { Separator } from "@/components/ui/separator"
 import { MethodBadge } from "@/components/method-badge"
 import { cn } from "@/lib/utils"
 import { HTTP_METHODS, COMMON_REQUEST_HEADERS } from "@/lib/http"
+import { toast } from "sonner"
 import { useTabsStore } from "@/store/tabs"
 import { DEFAULT_REQUEST_SETTINGS } from "@/types"
+import { sendRequest, BackendError } from "@/lib/backend"
 import type {
   HttpMethod,
   KeyValuePair,
+  FormDataItem,
   RequestBody,
   AuthConfig,
   RawContentType,
   RequestSettings,
 } from "@/types"
+import { AuthPanel } from "./auth-panel"
 
 // ---------- Key-Value Table ----------
 
@@ -124,127 +128,146 @@ function KVTable({
   )
 }
 
+// ---------- Form-Data Table ----------
+
+function FormDataRow({
+  item,
+  onChangeItem,
+  onDelete,
+}: {
+  item: FormDataItem
+  onChangeItem: (id: string, updates: Partial<FormDataItem>) => void
+  onDelete: (id: string) => void
+}) {
+  const { requestDelete, dialog: deleteDialog } = useDeleteConfirm()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      const dataUrl = ev.target?.result as string
+      const base64 = dataUrl.split(",")[1]
+      onChangeItem(item.id, { fileName: file.name, fileContent: base64 })
+    }
+    reader.readAsDataURL(file)
+  }
+
+  return (
+    <div className="group flex items-center gap-1 px-2 py-0.5 hover:bg-muted/30 rounded transition-colors">
+      {deleteDialog}
+      <Checkbox
+        checked={item.enabled}
+        onCheckedChange={(v) => onChangeItem(item.id, { enabled: !!v })}
+        className="h-3 w-3 shrink-0"
+      />
+      <input
+        value={item.key}
+        onChange={(e) => onChangeItem(item.id, { key: e.target.value })}
+        placeholder="Key"
+        className="flex-1 h-6 text-xs border-0 bg-transparent outline-none focus:border-b focus:border-primary/40 rounded-none px-1 min-w-0"
+      />
+      <Select
+        value={item.valueType}
+        onValueChange={(v) =>
+          onChangeItem(item.id, {
+            valueType: v as "text" | "file",
+            value: "",
+            fileName: undefined,
+            fileContent: undefined,
+          })
+        }
+      >
+        <SelectTrigger className="h-6 w-14 text-[11px] border-0 bg-transparent focus:ring-0 px-1 shrink-0">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="text" className="text-xs">
+            Text
+          </SelectItem>
+          <SelectItem value="file" className="text-xs">
+            File
+          </SelectItem>
+        </SelectContent>
+      </Select>
+      {item.valueType === "file" ? (
+        <div className="flex-1 flex items-center min-w-0">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="flex-1 h-6 text-xs text-left px-1 text-muted-foreground hover:text-foreground truncate"
+          >
+            {item.fileName ?? "Choose file…"}
+          </button>
+          <input ref={fileInputRef} type="file" className="hidden" onChange={handleFileChange} />
+        </div>
+      ) : (
+        <Input
+          value={item.value}
+          onChange={(e) => onChangeItem(item.id, { value: e.target.value })}
+          placeholder="Value"
+          className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+        />
+      )}
+      <button
+        onClick={() => requestDelete(item.key || "", () => onDelete(item.id))}
+        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-0.5 rounded"
+      >
+        <Trash2 className="h-3 w-3" />
+      </button>
+    </div>
+  )
+}
+
+function FormDataTable({
+  pairs,
+  onChangeItem,
+  onDelete,
+  onAdd,
+}: {
+  pairs: FormDataItem[]
+  onChangeItem: (id: string, updates: Partial<FormDataItem>) => void
+  onDelete: (id: string) => void
+  onAdd: () => void
+}) {
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-1 px-2 py-1 border-b border-border text-[10px] text-muted-foreground font-medium uppercase tracking-wider shrink-0">
+        <span className="w-4 shrink-0" />
+        <span className="flex-1">Key</span>
+        <span className="w-14 shrink-0">Type</span>
+        <span className="flex-1">Value</span>
+        <span className="w-5 shrink-0" />
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="py-1">
+          {pairs.map((item) => (
+            <FormDataRow
+              key={item.id}
+              item={item}
+              onChangeItem={onChangeItem}
+              onDelete={onDelete}
+            />
+          ))}
+          <div className="px-2 pt-1">
+            <button
+              onClick={onAdd}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Plus className="h-3 w-3" />
+              Add row
+            </button>
+          </div>
+        </div>
+      </ScrollArea>
+    </div>
+  )
+}
+
 // ---------- Auth Tab ----------
 
 function AuthTab({ auth, onChange }: { auth: AuthConfig; onChange: (a: AuthConfig) => void }) {
-  return (
-    <div className="p-3 space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground w-16 shrink-0">Type</span>
-        <Select
-          value={auth.type}
-          onValueChange={(v) => onChange({ ...auth, type: v as AuthConfig["type"] })}
-        >
-          <SelectTrigger className="h-7 text-xs w-52">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="inherit" className="text-xs">
-              Inherit from parent
-            </SelectItem>
-            <SelectItem value="none" className="text-xs">
-              No Auth
-            </SelectItem>
-            <SelectItem value="bearer" className="text-xs">
-              Bearer Token
-            </SelectItem>
-            <SelectItem value="basic" className="text-xs">
-              Basic Auth
-            </SelectItem>
-            <SelectItem value="api-key" className="text-xs">
-              API Key
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      {auth.type === "bearer" && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground w-16 shrink-0">Token</span>
-          <Input
-            value={auth.bearer?.token ?? ""}
-            onChange={(e) => onChange({ ...auth, bearer: { token: e.target.value } })}
-            placeholder="{{accessToken}}"
-            className="h-7 text-xs flex-1"
-          />
-        </div>
-      )}
-
-      {auth.type === "basic" && (
-        <>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-16 shrink-0">Username</span>
-            <Input
-              value={auth.basic?.username ?? ""}
-              onChange={(e) =>
-                onChange({
-                  ...auth,
-                  basic: {
-                    ...auth.basic,
-                    username: e.target.value,
-                    password: auth.basic?.password ?? "",
-                  },
-                })
-              }
-              className="h-7 text-xs flex-1"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-16 shrink-0">Password</span>
-            <Input
-              type="password"
-              value={auth.basic?.password ?? ""}
-              onChange={(e) =>
-                onChange({
-                  ...auth,
-                  basic: {
-                    ...auth.basic,
-                    password: e.target.value,
-                    username: auth.basic?.username ?? "",
-                  },
-                })
-              }
-              className="h-7 text-xs flex-1"
-            />
-          </div>
-        </>
-      )}
-
-      {auth.type === "api-key" && (
-        <>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-16 shrink-0">Key</span>
-            <Input
-              value={auth.apiKey?.key ?? ""}
-              placeholder="X-API-Key"
-              className="h-7 text-xs flex-1"
-              onChange={(e) =>
-                onChange({ ...auth, apiKey: { ...auth.apiKey!, key: e.target.value } })
-              }
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground w-16 shrink-0">Value</span>
-            <Input
-              value={auth.apiKey?.value ?? ""}
-              className="h-7 text-xs flex-1"
-              onChange={(e) =>
-                onChange({ ...auth, apiKey: { ...auth.apiKey!, value: e.target.value } })
-              }
-            />
-          </div>
-        </>
-      )}
-
-      {(auth.type === "inherit" || auth.type === "none") && (
-        <p className="text-xs text-muted-foreground">
-          {auth.type === "inherit"
-            ? "Authorization will be inherited from the parent collection or folder."
-            : "No authorization will be sent with this request."}
-        </p>
-      )}
-    </div>
-  )
+  return <AuthPanel auth={auth} onChange={onChange} />
 }
 
 // ---------- Body Tab ----------
@@ -343,30 +366,61 @@ function BodyTab({ body, onChange }: { body: RequestBody; onChange: (b: RequestB
             language={RAW_TYPE_LANG[body.rawContentType] ?? "plaintext"}
           />
         )}
-        {(body.type === "form-data" || body.type === "x-www-form-urlencoded") && (
-          <KVTable
-            pairs={body.type === "form-data" ? body.formData : body.urlencoded}
-            onChange={(id, field, value) => {
-              const key = body.type === "form-data" ? "formData" : "urlencoded"
+        {body.type === "form-data" && (
+          <FormDataTable
+            pairs={body.formData}
+            onChangeItem={(id, updates) =>
               onChange({
                 ...body,
-                [key]: body[key].map((kv) => (kv.id === id ? { ...kv, [field]: value } : kv)),
+                formData: body.formData.map((item) =>
+                  item.id === id ? { ...item, ...updates } : item,
+                ),
               })
-            }}
-            onDelete={(id) => {
-              const key = body.type === "form-data" ? "formData" : "urlencoded"
-              onChange({ ...body, [key]: body[key].filter((kv) => kv.id !== id) })
-            }}
-            onAdd={() => {
-              const key = body.type === "form-data" ? "formData" : "urlencoded"
+            }
+            onDelete={(id) =>
+              onChange({ ...body, formData: body.formData.filter((item) => item.id !== id) })
+            }
+            onAdd={() =>
               onChange({
                 ...body,
-                [key]: [
-                  ...body[key],
+                formData: [
+                  ...body.formData,
+                  {
+                    id: crypto.randomUUID(),
+                    enabled: true,
+                    key: "",
+                    valueType: "text",
+                    value: "",
+                    description: "",
+                  },
+                ],
+              })
+            }
+          />
+        )}
+        {body.type === "x-www-form-urlencoded" && (
+          <KVTable
+            pairs={body.urlencoded}
+            onChange={(id, field, value) =>
+              onChange({
+                ...body,
+                urlencoded: body.urlencoded.map((kv) =>
+                  kv.id === id ? { ...kv, [field]: value } : kv,
+                ),
+              })
+            }
+            onDelete={(id) =>
+              onChange({ ...body, urlencoded: body.urlencoded.filter((kv) => kv.id !== id) })
+            }
+            onAdd={() =>
+              onChange({
+                ...body,
+                urlencoded: [
+                  ...body.urlencoded,
                   { id: crypto.randomUUID(), enabled: true, key: "", value: "", description: "" },
                 ],
               })
-            }}
+            }
           />
         )}
         {body.type === "binary" && (
@@ -789,51 +843,53 @@ export function RequestPane() {
   const handleSend = async () => {
     if (!request) return
     updateTab(activeTabId, { isSending: true, response: null })
-    await new Promise((r) => setTimeout(r, 300 + Math.random() * 500))
-
-    const status = request.method === "DELETE" ? 204 : request.method === "POST" ? 201 : 200
-    const bodyMap: Record<string, unknown> = {
-      GET: {
-        data: [
-          { id: 1, name: "Item One", createdAt: "2025-01-15T10:30:00Z" },
-          { id: 2, name: "Item Two", createdAt: "2025-02-20T14:22:00Z" },
-        ],
-        meta: { total: 2, page: 1 },
-      },
-      POST: {
-        id: Math.floor(Math.random() * 9000 + 1000),
-        name: "Created Resource",
-        createdAt: new Date().toISOString(),
-      },
-      PUT: { id: 42, name: "Updated Resource", updatedAt: new Date().toISOString() },
-      PATCH: { id: 42, patched: true, updatedAt: new Date().toISOString() },
-      DELETE: null,
-      OPTIONS: { allow: "GET, POST, PUT, PATCH, DELETE, OPTIONS" },
-      HEAD: null,
-    }
-    const responseBody = bodyMap[request.method]
-      ? JSON.stringify(bodyMap[request.method], null, 2)
-      : ""
-    const ms = Math.floor(280 + Math.random() * 320)
-
-    updateTab(activeTabId, {
-      isSending: false,
-      response: {
-        status,
-        statusText: status === 200 ? "OK" : status === 201 ? "Created" : "No Content",
-        time: ms,
-        size: responseBody.length,
-        headers: {
-          "content-type": "application/json; charset=utf-8",
-          "x-request-id": crypto.randomUUID().slice(0, 8),
-          "x-response-time": `${ms}ms`,
-          "cache-control": "no-cache",
-          "access-control-allow-origin": "*",
+    try {
+      const resp = await sendRequest({
+        method: request.method,
+        url: request.url,
+        headers: request.headers.map((h) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+        bodyType: request.body.type,
+        bodyRaw: request.body.raw,
+        bodyRawContentType: request.body.rawContentType,
+        bodyFormData: request.body.formData.map((h) => ({
+          key: h.key,
+          value: h.value,
+          enabled: h.enabled,
+          valueType: h.valueType,
+          fileName: h.fileName,
+          fileContent: h.fileContent,
+        })),
+        bodyUrlencoded: request.body.urlencoded.map((h) => ({
+          key: h.key,
+          value: h.value,
+          enabled: h.enabled,
+        })),
+        bodyGraphQLQuery: request.body.graphqlQuery,
+        bodyGraphQLVariables: request.body.graphqlVariables,
+        auth: request.auth,
+        followRedirects: request.settings?.followRedirects ?? true,
+        sslVerification: request.settings?.sslVerify ?? true,
+        timeout: request.settings?.timeout ?? 30000,
+        ignoreProxy: false,
+      })
+      updateTab(activeTabId, {
+        isSending: false,
+        response: {
+          status: resp.status,
+          statusText: resp.statusText,
+          time: resp.time,
+          size: resp.size,
+          headers: resp.headers,
+          body: resp.body,
+          contentType: resp.contentType,
         },
-        body: responseBody,
-        contentType: "application/json",
-      },
-    })
+      })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error"
+      const code = err instanceof BackendError ? err.code : "network_error"
+      updateTab(activeTabId, { isSending: false })
+      toast.error(`${code}: ${message}`)
+    }
   }
 
   if (!request) return null

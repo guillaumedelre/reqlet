@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -811,6 +812,40 @@ func TestLoadClientCert_WrongPassphrase(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "load client certificate")
+}
+
+func TestExecute_FormDataFileType(t *testing.T) {
+	const fileContent = "hello file"
+	b64 := base64.StdEncoding.EncodeToString([]byte(fileContent))
+
+	var receivedFileName, receivedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, header, err := r.FormFile("upload")
+		require.NoError(t, err)
+		receivedFileName = header.Filename
+		f, _ := header.Open()
+		data, _ := io.ReadAll(f)
+		receivedBody = string(data)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeFormData,
+			FormData: []parser.FormDataParam{
+				{Key: "upload", Value: b64, Src: "test.txt", Type: "file"},
+			},
+		},
+	}
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "test.txt", receivedFileName)
+	assert.Equal(t, fileContent, receivedBody)
 }
 
 // errorApplier always returns an error from Apply.
