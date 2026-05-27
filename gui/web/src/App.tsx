@@ -38,7 +38,7 @@ function AppInner() {
       <AppLayout />
       <SearchModal />
       <SettingsModal />
-      <Toaster position="bottom-right" richColors />
+      <Toaster position="bottom-right" />
     </TooltipProvider>
   )
 }

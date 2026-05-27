@@ -46,9 +46,11 @@ interface KVRow {
   onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void
   onDelete: (id: string) => void
   keyListId?: string
+  resolvedMap?: Map<string, string>
+  suggestions?: string[]
 }
 
-function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
+function KVRow({ kv, onChange, onDelete, keyListId, resolvedMap, suggestions }: KVRow) {
   const { requestDelete, dialog: deleteDialog } = useDeleteConfirm()
 
   return (
@@ -66,11 +68,14 @@ function KVRow({ kv, onChange, onDelete, keyListId }: KVRow) {
         list={keyListId}
         className="flex-1 h-6 text-xs border-0 bg-transparent outline-none focus:border-b focus:border-primary/40 rounded-none px-1 min-w-0"
       />
-      <Input
+      <VariableInput
         value={kv.value}
-        onChange={(e) => onChange(kv.id, "value", e.target.value)}
+        onChange={(v) => onChange(kv.id, "value", v)}
+        resolvedMap={resolvedMap}
+        suggestions={suggestions}
         placeholder="Value"
-        className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+        cell
+        className="flex-1 h-6"
       />
       <button
         onClick={() => requestDelete(kv.key || "", () => onDelete(kv.id))}
@@ -88,12 +93,16 @@ function KVTable({
   onDelete,
   onAdd,
   keySuggestions,
+  resolvedMap,
+  suggestions,
 }: {
   pairs: KeyValuePair[]
   onChange: (id: string, field: keyof KeyValuePair, value: string | boolean) => void
   onDelete: (id: string) => void
   onAdd: () => void
   keySuggestions?: string[]
+  resolvedMap?: Map<string, string>
+  suggestions?: string[]
 }) {
   const listId = keySuggestions ? "kv-key-suggestions" : undefined
   return (
@@ -114,7 +123,15 @@ function KVTable({
       <ScrollArea className="flex-1">
         <div className="py-1">
           {pairs.map((kv) => (
-            <KVRow key={kv.id} kv={kv} onChange={onChange} onDelete={onDelete} keyListId={listId} />
+            <KVRow
+              key={kv.id}
+              kv={kv}
+              onChange={onChange}
+              onDelete={onDelete}
+              keyListId={listId}
+              resolvedMap={resolvedMap}
+              suggestions={suggestions}
+            />
           ))}
           <div className="px-2 pt-1">
             <button
@@ -209,7 +226,7 @@ function FormDataRow({
           value={item.value}
           onChange={(e) => onChangeItem(item.id, { value: e.target.value })}
           placeholder="Value"
-          className="flex-1 h-6 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
+          className="flex-1 h-6 text-xs md:text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:border-b focus-visible:border-primary/40 rounded-none px-1"
         />
       )}
       <button
@@ -588,6 +605,7 @@ function SettingsTab({
         <SSection title="General">
           <SRow label="Follow Redirects">
             <Switch
+              size="sm"
               checked={settings.followRedirects}
               onCheckedChange={(v) => set("followRedirects", v)}
             />
@@ -600,7 +618,7 @@ function SettingsTab({
               max={30}
               disabled={!settings.followRedirects}
               onChange={(e) => set("maxRedirects", parseInt(e.target.value) || 0)}
-              className="h-6 w-16 text-xs"
+              className="h-6 w-16 text-xs md:text-xs"
             />
           </SRow>
           <SRow label="Timeout (ms)" hint="0 = no timeout">
@@ -609,20 +627,32 @@ function SettingsTab({
               value={settings.timeout}
               min={0}
               onChange={(e) => set("timeout", parseInt(e.target.value) || 0)}
-              className="h-6 w-20 text-xs"
+              className="h-6 w-20 text-xs md:text-xs"
             />
           </SRow>
           <SRow label="Encode URL">
-            <Switch checked={settings.encodeUrl} onCheckedChange={(v) => set("encodeUrl", v)} />
+            <Switch
+              size="sm"
+              checked={settings.encodeUrl}
+              onCheckedChange={(v) => set("encodeUrl", v)}
+            />
           </SRow>
           <SRow label="Cookie Jar">
-            <Switch checked={settings.cookieJar} onCheckedChange={(v) => set("cookieJar", v)} />
+            <Switch
+              size="sm"
+              checked={settings.cookieJar}
+              onCheckedChange={(v) => set("cookieJar", v)}
+            />
           </SRow>
         </SSection>
 
         <SSection title="SSL / TLS">
           <SRow label="Verify SSL Certificate" hint="Disable only for local/self-signed certs">
-            <Switch checked={settings.sslVerify} onCheckedChange={(v) => set("sslVerify", v)} />
+            <Switch
+              size="sm"
+              checked={settings.sslVerify}
+              onCheckedChange={(v) => set("sslVerify", v)}
+            />
           </SRow>
         </SSection>
 
@@ -653,18 +683,21 @@ function SettingsTab({
         <SSection title="Redirect Behavior">
           <SRow label="Follow Original Method" hint="Preserve GET/POST on 301/302">
             <Switch
+              size="sm"
               checked={settings.followOriginalMethod}
               onCheckedChange={(v) => set("followOriginalMethod", v)}
             />
           </SRow>
           <SRow label="Send Auth on Redirect">
             <Switch
+              size="sm"
               checked={settings.followAuthHeader}
               onCheckedChange={(v) => set("followAuthHeader", v)}
             />
           </SRow>
           <SRow label="Remove Referer on Redirect">
             <Switch
+              size="sm"
               checked={settings.removeReferer}
               onCheckedChange={(v) => set("removeReferer", v)}
             />
@@ -674,6 +707,7 @@ function SettingsTab({
         <SSection title="Proxy">
           <SRow label="Use Proxy">
             <Switch
+              size="sm"
               checked={settings.proxy.enabled}
               onCheckedChange={(v) => set("proxy", { ...settings.proxy, enabled: v })}
             />
@@ -684,21 +718,21 @@ function SettingsTab({
                 value={settings.proxy.url}
                 placeholder="http://proxy.example.com:8080"
                 onChange={(e) => set("proxy", { ...settings.proxy, url: e.target.value })}
-                className="h-7 text-xs"
+                className="h-6 text-xs md:text-xs"
               />
               <div className="grid grid-cols-2 gap-2">
                 <Input
                   value={settings.proxy.username}
                   placeholder="Username"
                   onChange={(e) => set("proxy", { ...settings.proxy, username: e.target.value })}
-                  className="h-7 text-xs"
+                  className="h-6 text-xs md:text-xs"
                 />
                 <Input
                   type="password"
                   value={settings.proxy.password}
                   placeholder="Password"
                   onChange={(e) => set("proxy", { ...settings.proxy, password: e.target.value })}
-                  className="h-7 text-xs"
+                  className="h-6 text-xs md:text-xs"
                 />
               </div>
             </div>
@@ -1037,6 +1071,8 @@ export function RequestPane() {
                 onChange={handleKVChange("params")}
                 onDelete={handleKVDelete("params")}
                 onAdd={handleKVAdd("params")}
+                resolvedMap={resolvedMap}
+                suggestions={allKeys}
               />
             </div>
             <PathVarsSection
@@ -1069,6 +1105,8 @@ export function RequestPane() {
             onDelete={handleKVDelete("headers")}
             onAdd={handleKVAdd("headers")}
             keySuggestions={COMMON_REQUEST_HEADERS}
+            resolvedMap={resolvedMap}
+            suggestions={allKeys}
           />
         </TabsContent>
 

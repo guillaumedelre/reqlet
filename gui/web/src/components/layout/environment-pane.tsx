@@ -27,7 +27,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
         value={variable.key}
         onChange={(e) => updateEnvironmentVariable(envId, variable.id, { key: e.target.value })}
         placeholder="Variable"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <Input
         value={variable.initialValue}
@@ -35,7 +35,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
           updateEnvironmentVariable(envId, variable.id, { initialValue: e.target.value })
         }
         placeholder="Initial value"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <Input
         value={variable.currentValue}
@@ -43,7 +43,7 @@ function EnvRow({ variable, envId }: { variable: EnvVariable; envId: string }) {
           updateEnvironmentVariable(envId, variable.id, { currentValue: e.target.value })
         }
         placeholder="Current value"
-        className="h-6 text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
+        className="h-6 text-xs md:text-xs font-mono flex-1 border-0 bg-transparent focus-visible:ring-1 px-1"
       />
       <button
         onClick={() =>
