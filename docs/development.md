@@ -347,6 +347,14 @@ vi.mock("@monaco-editor/react", () => ({
 
 Resolved variables render in emerald, unresolved in amber (CSS classes `.monaco-var-resolved` / `.monaco-var-unresolved` in `index.css`). The hover tooltip shows the variable name and its resolved value. Script editors do **not** receive these props because `{{var}}` is not interpolated in scripts.
 
+**`pm.*` IntelliSense** — script editors (request Scripts sub-tab, collection/folder Scripts sub-tab) receive `pmCompletions` which injects Postman Sandbox ambient type declarations into Monaco's JavaScript language service:
+
+```tsx
+<CodeEditor value={script} language="javascript" pmCompletions />
+```
+
+The type definitions live in `src/lib/pm-types.ts` (`PM_SANDBOX_TYPES` constant). They cover the full `pm` object (`pm.request`, `pm.response`, `pm.environment`, `pm.test()`, `pm.expect()`, etc.), `ChaiAssertion`, `_` (Lodash), `moment`, and `xml2Json`. Injection uses `monaco.typescript.javascriptDefaults.addExtraLib` once per page load (module-level guard `pmTypesRegistered` prevents duplicates when multiple script editors are mounted).
+
 #### Variable highlighting in text inputs (`src/components/ui/variable-input.tsx`)
 
 The URL bar and all KV table value cells (Params, Headers sub-tabs) use `VariableInput` instead of a plain `<Input>`. It overlays a transparent `<input>` on a mirror `<div>` that renders colored token spans:
