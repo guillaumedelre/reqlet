@@ -91,7 +91,7 @@ ignore:
   - "**/__tests__/**"
   - "docs/**"
   - "gui/web/src/test/**"
-  - "gui/web/src/components/ui/**"
+  - "gui/web/src/components/**"
   - "cli/main.go"
   - "agent/main.go"
   - "hub/main.go"

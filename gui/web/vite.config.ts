@@ -30,8 +30,9 @@ export default defineConfig({
         "src/hooks/**",
         "src/lib/**",
         "src/types.ts",
-        "src/components/layout/environment-pane.tsx",
         "src/components/layout/app-layout.tsx",
+        "src/components/layout/environment-pane.tsx",
+        "src/components/layout/header-bar.tsx",
       ],
       thresholds: {
         lines: 80,
