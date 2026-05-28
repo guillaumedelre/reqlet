@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -138,12 +139,23 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ctx := r.Context()
+	if req.RequestID != "" {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithCancel(ctx)
+		s.cancels.Store(req.RequestID, cancel)
+		defer func() {
+			cancel()
+			s.cancels.Delete(req.RequestID)
+		}()
+	}
+
 	var preResult *sandbox.ScriptResult
 	var preReqErr string
 
 	if s.sandbox != nil && req.PreRequestScript != "" {
 		sctx := buildScriptContext(req, "prerequest", nil)
-		res, err := s.sandbox.Execute(r.Context(), req.PreRequestScript, "prerequest", sctx)
+		res, err := s.sandbox.Execute(ctx, req.PreRequestScript, "prerequest", sctx)
 		if err != nil {
 			preReqErr = err.Error()
 		} else {
@@ -182,7 +194,7 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 	parsedReq := buildParserReq(req)
 	resolver := variables.NewResolver()
 
-	resp, err := client.Execute(r.Context(), parsedReq, resolver, applier)
+	resp, err := client.Execute(ctx, parsedReq, resolver, applier)
 	if err != nil {
 		writeJSON(w, http.StatusUnprocessableEntity, errResp{Error: err.Error(), Code: networkErrorCode(err)})
 		return
@@ -210,7 +222,7 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		if preResult != nil {
 			applyMutsToCtx(sctx, preResult.Mutations)
 		}
-		res, err := s.sandbox.Execute(r.Context(), req.TestScript, "test", sctx)
+		res, err := s.sandbox.Execute(ctx, req.TestScript, "test", sctx)
 		if err != nil {
 			testErr = err.Error()
 		} else {
@@ -528,6 +540,17 @@ func networkErrorCode(err error) string {
 	default:
 		return "network_error"
 	}
+}
+
+func (s *server) cancelSend(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	v, ok := s.cancels.LoadAndDelete(id)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, errResp{Error: "no active request with id " + id, Code: "not_found"})
+		return
+	}
+	v.(context.CancelFunc)()
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
