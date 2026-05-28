@@ -128,6 +128,39 @@ export async function runScript(req: RunScriptRequest): Promise<RunScriptRespons
   return response.json() as Promise<RunScriptResponse>
 }
 
+export interface VariableEntry {
+  id: string
+  key: string
+  initialValue: string
+  currentValue: string
+  enabled: boolean
+}
+
+export interface VariablesResponse {
+  globals: VariableEntry[]
+  environment: VariableEntry[]
+  collection: VariableEntry[]
+}
+
+export async function getVariables(
+  collectionId?: string,
+  environmentId?: string,
+): Promise<VariablesResponse> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const params = new URLSearchParams()
+  if (collectionId) params.set("collectionId", collectionId)
+  if (environmentId) params.set("environmentId", environmentId)
+  const qs = params.toString()
+  const response = await fetch(`/api/variables${qs ? `?${qs}` : ""}`)
+  if (!response.ok) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "request_failed", err.error ?? "Request failed")
+  }
+  return response.json() as Promise<VariablesResponse>
+}
+
 function isWailsContext(): boolean {
   return (
     typeof window !== "undefined" &&

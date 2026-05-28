@@ -54,6 +54,8 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 
 	mux.HandleFunc("POST /api/sandbox/run", s.handleSandboxRun)
 
+	mux.HandleFunc("GET /api/variables", s.getVariables)
+
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spaHandler(webContent))
 	return mux
