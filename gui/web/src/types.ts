@@ -219,6 +219,15 @@ export interface VariableMutations {
   collectionVariables?: Record<string, string>
 }
 
+export interface Timings {
+  dns: number
+  tcp: number
+  tls: number
+  ttfb: number
+  download: number
+  total: number
+}
+
 export interface ResponseData {
   status: number
   statusText: string
@@ -227,6 +236,7 @@ export interface ResponseData {
   headers: Record<string, string>
   body: string
   contentType: string
+  timings?: Timings
   testResults?: TestResult[]
   preRequestError?: string
   testError?: string

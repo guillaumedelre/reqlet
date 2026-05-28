@@ -1,4 +1,4 @@
-import type { AuthConfig, TestResult, VariableMutations } from "@/types"
+import type { AuthConfig, TestResult, Timings, VariableMutations } from "@/types"
 
 export interface SendRequest {
   method: string
@@ -42,6 +42,7 @@ export interface SendResponse {
   headers: Record<string, string>
   body: string
   contentType: string
+  timings?: Timings
   testResults?: TestResult[]
   preRequestError?: string
   testError?: string
