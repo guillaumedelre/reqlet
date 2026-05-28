@@ -203,6 +203,10 @@ export interface AppSettings {
   proxyPassword: string
   noProxy: string
   sslVerification: boolean
+  useSystemProxy: boolean
+  respectEnvProxy: boolean
+  maxResponseSizeMB: number
+  scriptTimeoutMs: number
 }
 
 export async function getSettings(): Promise<AppSettings> {

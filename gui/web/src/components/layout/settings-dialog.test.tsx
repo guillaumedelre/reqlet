@@ -37,6 +37,10 @@ const DEFAULT_BACKEND: backend.AppSettings = {
   proxyPassword: "",
   noProxy: "",
   sslVerification: true,
+  useSystemProxy: false,
+  respectEnvProxy: false,
+  maxResponseSizeMB: 50,
+  scriptTimeoutMs: 5000,
 }
 
 function openDialog() {

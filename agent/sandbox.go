@@ -1,8 +1,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/guillaumedelre/reqlet/engine/sandbox"
 )
@@ -53,7 +55,12 @@ func (s *server) handleSandboxRun(w http.ResponseWriter, r *http.Request) {
 		Info:                sandbox.ExecInfo{EventName: event},
 	}
 
-	result, err := s.sandbox.Execute(r.Context(), req.Script, event, sctx)
+	settings := s.loadSettings(r)
+	scriptTimeout := time.Duration(settings.ScriptTimeoutMs) * time.Millisecond
+	scriptCtx, cancel := context.WithTimeout(r.Context(), scriptTimeout)
+	defer cancel()
+
+	result, err := s.sandbox.Execute(scriptCtx, req.Script, event, sctx)
 	if err != nil {
 		writeJSON(w, http.StatusOK, sandboxRunResp{Error: err.Error()})
 		return

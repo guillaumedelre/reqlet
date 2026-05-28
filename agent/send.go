@@ -152,12 +152,17 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	globalSettings := s.loadSettings(r)
+	scriptTimeout := time.Duration(globalSettings.ScriptTimeoutMs) * time.Millisecond
+
 	var preResult *sandbox.ScriptResult
 	var preReqErr string
 
 	if s.sandbox != nil && req.PreRequestScript != "" {
 		sctx := buildScriptContext(req, "prerequest", nil)
-		res, err := s.sandbox.Execute(ctx, req.PreRequestScript, "prerequest", sctx)
+		scriptCtx, scriptCancel := context.WithTimeout(ctx, scriptTimeout)
+		res, err := s.sandbox.Execute(scriptCtx, req.PreRequestScript, "prerequest", sctx)
+		scriptCancel()
 		if err != nil {
 			preReqErr = err.Error()
 		} else {
@@ -179,6 +184,16 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		opts.Timeout = time.Duration(req.Timeout) * time.Millisecond
 	} else {
 		opts.Timeout = 0
+	}
+	if !req.IgnoreProxy {
+		opts.UseSystemProxy = globalSettings.UseSystemProxy
+		opts.RespectEnvProxy = globalSettings.RespectEnvProxy
+		if !opts.UseSystemProxy && !opts.RespectEnvProxy {
+			opts.ProxyURL = globalSettings.ProxyURL
+		}
+	}
+	if globalSettings.MaxResponseSizeMB > 0 {
+		opts.MaxBodyBytes = int64(globalSettings.MaxResponseSizeMB) * 1024 * 1024
 	}
 
 	client, err := enginehttp.NewClient(opts)
@@ -224,7 +239,9 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		if preResult != nil {
 			applyMutsToCtx(sctx, preResult.Mutations)
 		}
-		res, err := s.sandbox.Execute(ctx, req.TestScript, "test", sctx)
+		scriptCtx, scriptCancel := context.WithTimeout(ctx, scriptTimeout)
+		res, err := s.sandbox.Execute(scriptCtx, req.TestScript, "test", sctx)
+		scriptCancel()
 		if err != nil {
 			testErr = err.Error()
 		} else {

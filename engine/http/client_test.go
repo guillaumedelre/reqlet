@@ -937,3 +937,53 @@ func TestTimingCollector_TLS(t *testing.T) {
 	got := tc.build(100*time.Millisecond, 0)
 	assert.Equal(t, 30*time.Millisecond, got.TLS)
 }
+
+// ── MaxBodyBytes ──────────────────────────────────────────────────────────────
+
+func TestExecute_MaxBodyBytes_Truncates(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("0123456789"))
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{MaxBodyBytes: 5, FollowRedirects: true})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, []byte("01234"), resp.Body)
+}
+
+func TestExecute_MaxBodyBytes_Zero_Unlimited(t *testing.T) {
+	body := make([]byte, 1024)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(body)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{MaxBodyBytes: 0, FollowRedirects: true})
+	require.NoError(t, err)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.Len(t, resp.Body, 1024)
+}
+
+// ── System proxy ──────────────────────────────────────────────────────────────
+
+func TestNewClient_UseSystemProxy(t *testing.T) {
+	c, err := NewClient(Options{UseSystemProxy: true})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+func TestNewClient_RespectEnvProxy(t *testing.T) {
+	c, err := NewClient(Options{RespectEnvProxy: true})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+func TestNewClient_SystemProxyTakesPrecedenceOverURL(t *testing.T) {
+	// UseSystemProxy should not error even when ProxyURL is also set.
+	c, err := NewClient(Options{UseSystemProxy: true, ProxyURL: "http://ignored:3128"})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}

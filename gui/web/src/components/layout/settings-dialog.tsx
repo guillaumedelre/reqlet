@@ -88,14 +88,6 @@ function Field({
   )
 }
 
-function ComingSoonBadge() {
-  return (
-    <span className="ml-1.5 text-[0.6rem] font-medium uppercase tracking-wide text-muted-foreground/60 border border-border rounded px-1 py-px">
-      soon
-    </span>
-  )
-}
-
 function GeneralSection({
   form,
   patch,
@@ -128,16 +120,25 @@ function GeneralSection({
             onChange={(e) => patch(undefined, { timeoutDefault: parseInt(e.target.value) || 0 })}
           />
         </Field>
-        <Field
-          label={
-            <>
-              Max response size (MB)
-              <ComingSoonBadge />
-            </>
-          }
-          disabled
-        >
-          <Input className="h-7 text-xs w-36" placeholder="50" disabled />
+        <Field label="Max response size (MB)">
+          <Input
+            type="number"
+            min={1}
+            className="h-7 text-xs w-36"
+            placeholder="50"
+            value={form.backend.maxResponseSizeMB}
+            onChange={(e) => patch({ maxResponseSizeMB: parseInt(e.target.value) || 50 })}
+          />
+        </Field>
+        <Field label="Script timeout (ms)">
+          <Input
+            type="number"
+            min={100}
+            className="h-7 text-xs w-36"
+            placeholder="5000"
+            value={form.backend.scriptTimeoutMs}
+            onChange={(e) => patch({ scriptTimeoutMs: parseInt(e.target.value) || 5000 })}
+          />
         </Field>
       </div>
 
@@ -168,28 +169,16 @@ function ProxySection({
       <div className="space-y-3">
         <SectionTitle>System proxy</SectionTitle>
         <ToggleRow
-          label={
-            <>
-              Use system proxy
-              <ComingSoonBadge />
-            </>
-          }
+          label="Use system proxy"
           description="Use the OS-level proxy configuration"
-          checked={false}
-          onCheckedChange={() => {}}
-          disabled
+          checked={form.backend.useSystemProxy}
+          onCheckedChange={(v) => patch({ useSystemProxy: v })}
         />
         <ToggleRow
-          label={
-            <>
-              Respect HTTP_PROXY / HTTPS_PROXY / NO_PROXY
-              <ComingSoonBadge />
-            </>
-          }
+          label="Respect HTTP_PROXY / HTTPS_PROXY / NO_PROXY"
           description="Read proxy settings from environment variables"
-          checked={false}
-          onCheckedChange={() => {}}
-          disabled
+          checked={form.backend.respectEnvProxy}
+          onCheckedChange={(v) => patch({ respectEnvProxy: v })}
         />
       </div>
 

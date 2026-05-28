@@ -146,3 +146,71 @@ func TestPutSettings_StorageError(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+// ---------- new fields ----------
+
+func TestGetSettings_Defaults(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var out settingsData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, 50, out.MaxResponseSizeMB)
+	assert.Equal(t, 5000, out.ScriptTimeoutMs)
+	assert.False(t, out.UseSystemProxy)
+	assert.False(t, out.RespectEnvProxy)
+}
+
+func TestPutSettings_NewFields(t *testing.T) {
+	s, _ := testServerWithStorage(t)
+	mux := s.newMux(testFS())
+
+	useSystem := true
+	respectEnv := true
+	maxMB := 100
+	scriptMs := 3000
+	body, _ := json.Marshal(settingsInput{
+		UseSystemProxy:    &useSystem,
+		RespectEnvProxy:   &respectEnv,
+		MaxResponseSizeMB: &maxMB,
+		ScriptTimeoutMs:   &scriptMs,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var out settingsData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.True(t, out.UseSystemProxy)
+	assert.True(t, out.RespectEnvProxy)
+	assert.Equal(t, 100, out.MaxResponseSizeMB)
+	assert.Equal(t, 3000, out.ScriptTimeoutMs)
+}
+
+func TestBuildSettings_NewFields_Roundtrip(t *testing.T) {
+	m := map[string]string{
+		settingKeyUseSystemProxy:    "true",
+		settingKeyRespectEnvProxy:   "true",
+		settingKeyMaxResponseSizeMB: "75",
+		settingKeyScriptTimeoutMs:   "2500",
+	}
+	d := buildSettings(m)
+	assert.True(t, d.UseSystemProxy)
+	assert.True(t, d.RespectEnvProxy)
+	assert.Equal(t, 75, d.MaxResponseSizeMB)
+	assert.Equal(t, 2500, d.ScriptTimeoutMs)
+}
+
+func TestBuildSettings_InvalidInt_FallsBackToDefault(t *testing.T) {
+	m := map[string]string{
+		settingKeyMaxResponseSizeMB: "not-a-number",
+		settingKeyScriptTimeoutMs:   "also-bad",
+	}
+	d := buildSettings(m)
+	assert.Equal(t, 50, d.MaxResponseSizeMB)
+	assert.Equal(t, 5000, d.ScriptTimeoutMs)
+}
