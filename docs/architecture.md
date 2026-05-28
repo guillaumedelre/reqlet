@@ -109,6 +109,7 @@ Standalone Go HTTP server (`reqlet-agent` binary). It:
 | `POST` | `/api/sandbox/run` | Execute a script in isolation; returns `{tests, mutations, error}` |
 | `GET/POST/PUT/DELETE` | `/api/collections/…` | CRUD + import/export for collections |
 | `GET/POST/PUT/DELETE` | `/api/environments/…` | CRUD + import/export for environments |
+| `GET` | `/api/variables` | Variables by scope for a given collection/environment; supports `?collectionId` and `?environmentId` |
 | `GET` | `/` | Serves the embedded React SPA (`index.html`) |
 | `ANY` | `/api/*` (other) | 404 — remaining routes (history, settings) |
 
