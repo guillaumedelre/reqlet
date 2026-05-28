@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react"
+import { render, screen, waitFor, within, fireEvent, createEvent } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
@@ -71,6 +71,25 @@ beforeEach(() => {
   Element.prototype.hasPointerCapture = vi.fn(() => false)
   Element.prototype.releasePointerCapture = vi.fn()
 })
+
+// ---------------------------------------------------------------------------
+// Drag-and-drop helpers
+// ---------------------------------------------------------------------------
+
+function fireDrop(element: HTMLElement, files: File[]) {
+  const event = createEvent.drop(element)
+  Object.defineProperty(event, "dataTransfer", {
+    value: {
+      files: Object.assign(files.slice(), { item: (i: number) => files[i] ?? null }),
+      types: files.length > 0 ? ["Files"] : [],
+    },
+  })
+  fireEvent(element, event)
+}
+
+function getPanelRoot(panelLabel: string): HTMLElement {
+  return screen.getByText(panelLabel).closest("div")!.parentElement as HTMLElement
+}
 
 // ---------------------------------------------------------------------------
 // HistoryPanel helpers
@@ -297,6 +316,148 @@ describe("EnvironmentsPanel — duplicate import guard", () => {
     const input = document.querySelector('input[type="file"][accept=".json"]') as HTMLInputElement
     await user.upload(input, file)
 
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to import environment"),
+      )
+    })
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// CollectionsPanel — drag-and-drop import
+// ---------------------------------------------------------------------------
+
+describe("CollectionsPanel — drag-and-drop import", () => {
+  beforeEach(() => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    vi.mocked(api.collections.import).mockClear()
+    vi.mocked(api.collections.import).mockResolvedValue(undefined as never)
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it("calls api.collections.import when a valid JSON file is dropped", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [] }))
+    renderPanel()
+    const file = new File(['{"info":{"name":"Dropped API"},"item":[]}'], "api.json", {
+      type: "application/json",
+    })
+    fireDrop(getPanelRoot("Collections"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(api.collections.import)).toHaveBeenCalled()
+    })
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("blocks drop and shows error when collection with same name already exists", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [BASE_COLLECTION] }))
+    renderPanel()
+    const file = new File(['{"info":{"name":"My API"},"item":[]}'], "api.json", {
+      type: "application/json",
+    })
+    fireDrop(getPanelRoot("Collections"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("My API"))
+    })
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+  })
+
+  it("shows error for non-JSON file extension on drop", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [] }))
+    renderPanel()
+    const file = new File(["content"], "collection.txt", { type: "text/plain" })
+    fireDrop(getPanelRoot("Collections"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("JSON"))
+    })
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+  })
+
+  it("ignores drop when no files are present (internal item reorder)", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [] }))
+    renderPanel()
+    fireDrop(getPanelRoot("Collections"), [])
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("shows error toast for invalid JSON on drop", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [] }))
+    renderPanel()
+    const file = new File(["not valid json"], "bad.json", { type: "application/json" })
+    fireDrop(getPanelRoot("Collections"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to import collection"),
+      )
+    })
+    expect(vi.mocked(api.collections.import)).not.toHaveBeenCalled()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// EnvironmentsPanel — drag-and-drop import
+// ---------------------------------------------------------------------------
+
+describe("EnvironmentsPanel — drag-and-drop import", () => {
+  beforeEach(() => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "environments" }))
+    vi.mocked(api.environments.import).mockClear()
+    vi.mocked(api.environments.import).mockResolvedValue(undefined as never)
+    vi.mocked(toast.error).mockClear()
+  })
+
+  it("calls api.environments.import when a valid JSON file is dropped", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [] }))
+    renderPanel()
+    const file = new File(['{"name":"Staging","values":[]}'], "staging.json", {
+      type: "application/json",
+    })
+    fireDrop(getPanelRoot("Environments"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(api.environments.import)).toHaveBeenCalled()
+    })
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("blocks drop and shows error when environment with same name already exists", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [ENV_A] }))
+    renderPanel()
+    const file = new File(['{"name":"Production","values":[]}'], "prod.json", {
+      type: "application/json",
+    })
+    fireDrop(getPanelRoot("Environments"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("Production"))
+    })
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
+  })
+
+  it("shows error for non-JSON file extension on drop", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [] }))
+    renderPanel()
+    const file = new File(["content"], "env.txt", { type: "text/plain" })
+    fireDrop(getPanelRoot("Environments"), [file])
+    await waitFor(() => {
+      expect(vi.mocked(toast.error)).toHaveBeenCalledWith(expect.stringContaining("JSON"))
+    })
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
+  })
+
+  it("ignores drop when no files are present (internal item reorder)", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [] }))
+    renderPanel()
+    fireDrop(getPanelRoot("Environments"), [])
+    expect(vi.mocked(api.environments.import)).not.toHaveBeenCalled()
+    expect(vi.mocked(toast.error)).not.toHaveBeenCalled()
+  })
+
+  it("shows error toast for invalid JSON on drop", async () => {
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [] }))
+    renderPanel()
+    const file = new File(["not valid json"], "bad.json", { type: "application/json" })
+    fireDrop(getPanelRoot("Environments"), [file])
     await waitFor(() => {
       expect(vi.mocked(toast.error)).toHaveBeenCalledWith(
         expect.stringContaining("Failed to import environment"),
