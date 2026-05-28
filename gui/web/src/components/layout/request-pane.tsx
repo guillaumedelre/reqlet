@@ -934,8 +934,12 @@ export function RequestPane() {
           value: resolveStr(h.value),
           enabled: h.enabled,
         })),
-        bodyGraphQLQuery: request.body.graphqlQuery ? resolveStr(request.body.graphqlQuery) : undefined,
-        bodyGraphQLVariables: request.body.graphqlVariables ? resolveStr(request.body.graphqlVariables) : undefined,
+        bodyGraphQLQuery: request.body.graphqlQuery
+          ? resolveStr(request.body.graphqlQuery)
+          : undefined,
+        bodyGraphQLVariables: request.body.graphqlVariables
+          ? resolveStr(request.body.graphqlVariables)
+          : undefined,
         auth: request.auth,
         followRedirects: request.settings?.followRedirects ?? true,
         sslVerification: request.settings?.sslVerify ?? true,
