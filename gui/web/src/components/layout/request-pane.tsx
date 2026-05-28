@@ -26,6 +26,7 @@ import { HTTP_METHODS, COMMON_REQUEST_HEADERS } from "@/lib/http"
 import { toast } from "sonner"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
+import { useUiStore } from "@/store/ui"
 import { DEFAULT_REQUEST_SETTINGS } from "@/types"
 import { sendRequest, BackendError } from "@/lib/backend"
 import type {
@@ -36,6 +37,8 @@ import type {
   AuthConfig,
   RawContentType,
   RequestSettings,
+  EnvVariable,
+  VariableMutations,
 } from "@/types"
 import { AuthPanel } from "./auth-panel"
 
@@ -848,6 +851,67 @@ function buildUrlWithParams(url: string, params: KeyValuePair[]): string {
   return `${base}?${enabled.map((p) => `${p.key}=${p.value}`).join("&")}`
 }
 
+// ---------- Variable mutation helpers ----------
+
+function patchVarList(vars: EnvVariable[], mutations: Record<string, string>): EnvVariable[] {
+  const result = [...vars]
+  for (const [key, value] of Object.entries(mutations)) {
+    const idx = result.findIndex((v) => v.key === key)
+    if (idx >= 0) {
+      result[idx] = { ...result[idx], currentValue: value }
+    } else {
+      result.push({
+        id: `id-${crypto.randomUUID().slice(0, 8)}`,
+        enabled: true,
+        key,
+        initialValue: value,
+        currentValue: value,
+      })
+    }
+  }
+  return result
+}
+
+function applyVariableMutations(
+  mutations: VariableMutations,
+  activeEnvironmentId: string | null,
+  collectionId: string | undefined,
+) {
+  useWorkspaceStore.setState((s) => {
+    let { globalVariables, environments, collections } = s
+
+    if (mutations.globals && Object.keys(mutations.globals).length > 0) {
+      globalVariables = patchVarList(globalVariables, mutations.globals)
+    }
+
+    if (
+      mutations.environment &&
+      Object.keys(mutations.environment).length > 0 &&
+      activeEnvironmentId
+    ) {
+      environments = environments.map((e) =>
+        e.id === activeEnvironmentId
+          ? { ...e, variables: patchVarList(e.variables, mutations.environment!) }
+          : e,
+      )
+    }
+
+    if (
+      mutations.collectionVariables &&
+      Object.keys(mutations.collectionVariables).length > 0 &&
+      collectionId
+    ) {
+      collections = collections.map((c) =>
+        c.id === collectionId
+          ? { ...c, variables: patchVarList(c.variables, mutations.collectionVariables!) }
+          : c,
+      )
+    }
+
+    return { globalVariables, environments, collections }
+  })
+}
+
 // ---------- Main component ----------
 
 function makeKV(): KeyValuePair {
@@ -870,7 +934,10 @@ export function RequestPane() {
     return undefined
   }, [activeTab?.collectionId, activeTab?.requestId, collections, findRequest])
 
-  const { resolvedMap, allKeys } = useVariableScope(collectionId)
+  const activeEnvironmentId = useUiStore((s) => s.activeEnvironmentId)
+
+  const { resolvedMap, allKeys, globals, environment, collectionVariables } =
+    useVariableScope(collectionId)
 
   const handleKVChange = useCallback(
     (field: "params" | "headers") =>
@@ -945,7 +1012,17 @@ export function RequestPane() {
         sslVerification: request.settings?.sslVerify ?? true,
         timeout: request.settings?.timeout ?? 30000,
         ignoreProxy: false,
+        preRequestScript: request.preRequestScript || undefined,
+        testScript: request.testScript || undefined,
+        variables: { globals, environment, collectionVariables },
+        requestName: activeTab?.title,
+        requestId: activeTab?.requestId,
       })
+
+      if (resp.mutations) {
+        applyVariableMutations(resp.mutations, activeEnvironmentId, collectionId)
+      }
+
       updateTab(activeTabId, {
         isSending: false,
         response: {
@@ -956,6 +1033,10 @@ export function RequestPane() {
           headers: resp.headers,
           body: resp.body,
           contentType: resp.contentType,
+          testResults: resp.testResults,
+          preRequestError: resp.preRequestError,
+          testError: resp.testError,
+          mutations: resp.mutations,
         },
       })
     } catch (err) {

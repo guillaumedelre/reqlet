@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -13,6 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// errReader is a body reader that immediately returns an error.
+type errReader struct{ err error }
+
+func (e errReader) Read(_ []byte) (int, error) { return 0, e.err }
 
 func testFS() fstest.MapFS {
 	return fstest.MapFS{
@@ -590,4 +596,46 @@ func TestExportEnvironment_NotFound(t *testing.T) {
 	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/environments/ghost/export", nil))
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestImportCollection_ReadBodyError(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	req := httptest.NewRequest(http.MethodPost, "/api/collections/import",
+		errReader{err: errors.New("read error")})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestImportEnvironment_ReadBodyError(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	req := httptest.NewRequest(http.MethodPost, "/api/environments/import",
+		errReader{err: errors.New("read error")})
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestExportCollection_MalformedData(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	require.NoError(t, s.collections.save("bad-col", json.RawMessage("not valid json")))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/collections/bad-col/export", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestExportEnvironment_MalformedData(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	require.NoError(t, s.environments.save("bad-env", json.RawMessage("not valid json")))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/environments/bad-env/export", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
