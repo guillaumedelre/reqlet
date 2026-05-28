@@ -61,6 +61,10 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/settings", s.getSettings)
 	mux.HandleFunc("PUT /api/settings", s.putSettings)
 
+	mux.HandleFunc("GET /api/history", s.listHistory)
+	mux.HandleFunc("DELETE /api/history/{id}", s.deleteHistoryEntry)
+	mux.HandleFunc("DELETE /api/history", s.clearHistory)
+
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spaHandler(webContent))
 	return mux
@@ -140,7 +144,7 @@ func main() {
 	var store *storage.Storage
 	dbPath := filepath.Join(wp, "reqlet.db")
 	if st, err := storage.New("file:" + dbPath + "?cache=shared"); err != nil {
-		log.Printf("warning: settings storage unavailable: %v", err)
+		log.Printf("warning: storage unavailable: %v", err)
 	} else {
 		store = st
 		defer func() { _ = store.Close() }()

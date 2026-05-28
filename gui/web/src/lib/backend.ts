@@ -76,6 +76,41 @@ export async function sendRequest(req: SendRequest): Promise<SendResponse> {
   return response.json() as Promise<SendResponse>
 }
 
+export interface HistoryEntry {
+  id: string
+  timestamp: string
+  method: string
+  url: string
+  status: number
+  durationMs: number
+}
+
+export async function listHistory(limit = 50, offset = 0): Promise<HistoryEntry[]> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const response = await fetch(`/api/history?limit=${limit}&offset=${offset}`)
+  if (!response.ok) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "request_failed", err.error ?? "Request failed")
+  }
+  return response.json() as Promise<HistoryEntry[]>
+}
+
+export async function deleteHistoryEntry(id: string): Promise<void> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  await fetch(`/api/history/${encodeURIComponent(id)}`, { method: "DELETE" })
+}
+
+export async function clearHistory(): Promise<void> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  await fetch("/api/history", { method: "DELETE" })
+}
+
 export async function cancelRequest(id: string): Promise<void> {
   if (isWailsContext()) {
     throw new BackendError("not_implemented", "Wails bindings not yet implemented")
