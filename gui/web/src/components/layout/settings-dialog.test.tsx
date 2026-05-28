@@ -37,6 +37,10 @@ const DEFAULT_BACKEND: backend.AppSettings = {
   proxyPassword: "",
   noProxy: "",
   sslVerification: true,
+  useSystemProxy: false,
+  respectEnvProxy: false,
+  maxResponseSizeMB: 50,
+  scriptTimeoutMs: 5000,
 }
 
 function openDialog() {
@@ -354,5 +358,213 @@ describe("section navigation", () => {
     act(() => fireEvent.click(certNav))
 
     expect(await screen.findByText(/not yet available/i)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Proxy section
+// ---------------------------------------------------------------------------
+
+describe("proxy section", () => {
+  async function openProxySection() {
+    const proxyNav = await screen.findByRole("button", { name: /^proxy$/i })
+    act(() => fireEvent.click(proxyNav))
+  }
+
+  it("populates useSystemProxy toggle from backend value", async () => {
+    vi.mocked(backend.getSettings).mockResolvedValue({
+      ...DEFAULT_BACKEND,
+      useSystemProxy: true,
+    })
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const toggle = await screen.findByRole("switch", { name: /use system proxy/i })
+    expect(toggle).toHaveAttribute("data-state", "checked")
+  })
+
+  it("populates respectEnvProxy toggle from backend value", async () => {
+    vi.mocked(backend.getSettings).mockResolvedValue({
+      ...DEFAULT_BACKEND,
+      respectEnvProxy: true,
+    })
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const toggle = await screen.findByRole("switch", { name: /respect http_proxy/i })
+    expect(toggle).toHaveAttribute("data-state", "checked")
+  })
+
+  it("toggling useSystemProxy patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const toggle = await screen.findByRole("switch", { name: /use system proxy/i })
+    act(() => fireEvent.click(toggle))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ useSystemProxy: true }),
+    )
+  })
+
+  it("toggling respectEnvProxy patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const toggle = await screen.findByRole("switch", { name: /respect http_proxy/i })
+    act(() => fireEvent.click(toggle))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ respectEnvProxy: true }),
+    )
+  })
+
+  it("changing proxyUrl patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const input = await screen.findByPlaceholderText(/proxy\.example\.com/i)
+    act(() => fireEvent.change(input, { target: { value: "http://new-proxy:8080" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ proxyUrl: "http://new-proxy:8080" }),
+    )
+  })
+
+  it("changing proxyUsername and proxyPassword patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const usernameInput = await screen.findByPlaceholderText("username")
+    act(() => fireEvent.change(usernameInput, { target: { value: "proxyuser" } }))
+
+    const passwordInput = await screen.findByPlaceholderText("password")
+    act(() => fireEvent.change(passwordInput, { target: { value: "s3cret" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ proxyUsername: "proxyuser", proxyPassword: "s3cret" }),
+    )
+  })
+
+  it("changing noProxy patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await openProxySection()
+
+    const input = await screen.findByPlaceholderText(/localhost,127\.0\.0\.1/i)
+    act(() => fireEvent.change(input, { target: { value: "localhost,internal.corp" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ noProxy: "localhost,internal.corp" }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dialog close
+// ---------------------------------------------------------------------------
+
+describe("dialog close", () => {
+  it("handleCancel is called when sheet is closed via onOpenChange", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    await screen.findByRole("switch", { name: /ssl certificate verification/i })
+
+    act(() => {
+      fireEvent.keyDown(document.body, { key: "Escape" })
+    })
+
+    await waitFor(() => {
+      expect(useUiStore.getState().settingsOpen).toBe(false)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// General section — new fields
+// ---------------------------------------------------------------------------
+
+describe("general section — new fields", () => {
+  it("populates maxResponseSizeMB from backend value", async () => {
+    vi.mocked(backend.getSettings).mockResolvedValue({
+      ...DEFAULT_BACKEND,
+      maxResponseSizeMB: 75,
+    })
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("50")
+    expect(input).toHaveValue(75)
+  })
+
+  it("populates scriptTimeoutMs from backend value", async () => {
+    vi.mocked(backend.getSettings).mockResolvedValue({
+      ...DEFAULT_BACKEND,
+      scriptTimeoutMs: 3000,
+    })
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("5000")
+    expect(input).toHaveValue(3000)
+  })
+
+  it("changing maxResponseSizeMB patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("50")
+    act(() => fireEvent.change(input, { target: { value: "25" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ maxResponseSizeMB: 25 }),
+    )
+  })
+
+  it("changing scriptTimeoutMs patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("5000")
+    act(() => fireEvent.change(input, { target: { value: "2000" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ scriptTimeoutMs: 2000 }),
+    )
   })
 })

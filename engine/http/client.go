@@ -29,6 +29,14 @@ type Options struct {
 	Insecure        bool // skip TLS certificate verification
 	FollowRedirects bool
 	ProxyURL        string
+	// UseSystemProxy routes traffic through the OS/environment proxy (ProxyFromEnvironment).
+	// Takes precedence over ProxyURL when true.
+	UseSystemProxy bool
+	// RespectEnvProxy honours HTTP_PROXY / HTTPS_PROXY / NO_PROXY environment variables.
+	// Treated identically to UseSystemProxy at the Go stdlib level.
+	RespectEnvProxy bool
+	// MaxBodyBytes caps the response body read. 0 means unlimited.
+	MaxBodyBytes int64
 	// ClientCertFile is the path to a PEM-encoded client certificate.
 	// ClientKeyFile is the path to the corresponding PEM-encoded private key.
 	// ClientPassphrase decrypts the private key if it is passphrase-protected.
@@ -112,7 +120,8 @@ func (tc *timingCollector) build(total, download time.Duration) Timings {
 
 // Client executes Postman HTTP requests.
 type Client struct {
-	inner *nethttp.Client
+	inner        *nethttp.Client
+	maxBodyBytes int64
 }
 
 // NewClient creates a Client configured with the provided options.
@@ -131,7 +140,10 @@ func NewClient(opts Options) (*Client, error) {
 		TLSClientConfig: tlsCfg,
 	}
 
-	if opts.ProxyURL != "" {
+	switch {
+	case opts.UseSystemProxy || opts.RespectEnvProxy:
+		transport.Proxy = nethttp.ProxyFromEnvironment
+	case opts.ProxyURL != "":
 		proxyURL, err := url.Parse(opts.ProxyURL)
 		if err != nil {
 			return nil, fmt.Errorf("invalid proxy URL %q: %w", opts.ProxyURL, err)
@@ -150,7 +162,7 @@ func NewClient(opts Options) (*Client, error) {
 		}
 	}
 
-	return &Client{inner: inner}, nil
+	return &Client{inner: inner, maxBodyBytes: opts.MaxBodyBytes}, nil
 }
 
 // Execute sends a Postman request, resolving variables before dispatch.
@@ -204,7 +216,11 @@ func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variabl
 	defer func() { _ = resp.Body.Close() }()
 
 	dlStart := time.Now()
-	respBody, err := io.ReadAll(resp.Body)
+	bodyReader := io.Reader(resp.Body)
+	if c.maxBodyBytes > 0 {
+		bodyReader = io.LimitReader(resp.Body, c.maxBodyBytes)
+	}
+	respBody, err := io.ReadAll(bodyReader)
 	download := time.Since(dlStart)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)

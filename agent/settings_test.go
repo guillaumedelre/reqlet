@@ -146,3 +146,97 @@ func TestPutSettings_StorageError(t *testing.T) {
 	mux.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+// ---------- new fields ----------
+
+func TestGetSettings_Defaults(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/settings", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var out settingsData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, 50, out.MaxResponseSizeMB)
+	assert.Equal(t, 5000, out.ScriptTimeoutMs)
+	assert.False(t, out.UseSystemProxy)
+	assert.False(t, out.RespectEnvProxy)
+}
+
+func TestPutSettings_NewFields(t *testing.T) {
+	s, _ := testServerWithStorage(t)
+	mux := s.newMux(testFS())
+
+	useSystem := true
+	respectEnv := true
+	maxMB := 100
+	scriptMs := 3000
+	body, _ := json.Marshal(settingsInput{
+		UseSystemProxy:    &useSystem,
+		RespectEnvProxy:   &respectEnv,
+		MaxResponseSizeMB: &maxMB,
+		ScriptTimeoutMs:   &scriptMs,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var out settingsData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.True(t, out.UseSystemProxy)
+	assert.True(t, out.RespectEnvProxy)
+	assert.Equal(t, 100, out.MaxResponseSizeMB)
+	assert.Equal(t, 3000, out.ScriptTimeoutMs)
+}
+
+func TestBuildSettings_NewFields_Roundtrip(t *testing.T) {
+	m := map[string]string{
+		settingKeyUseSystemProxy:    "true",
+		settingKeyRespectEnvProxy:   "true",
+		settingKeyMaxResponseSizeMB: "75",
+		settingKeyScriptTimeoutMs:   "2500",
+	}
+	d := buildSettings(m)
+	assert.True(t, d.UseSystemProxy)
+	assert.True(t, d.RespectEnvProxy)
+	assert.Equal(t, 75, d.MaxResponseSizeMB)
+	assert.Equal(t, 2500, d.ScriptTimeoutMs)
+}
+
+func TestBuildSettings_InvalidInt_FallsBackToDefault(t *testing.T) {
+	m := map[string]string{
+		settingKeyMaxResponseSizeMB: "not-a-number",
+		settingKeyScriptTimeoutMs:   "also-bad",
+	}
+	d := buildSettings(m)
+	assert.Equal(t, 50, d.MaxResponseSizeMB)
+	assert.Equal(t, 5000, d.ScriptTimeoutMs)
+}
+
+// TestPutSettings_ExistingFieldsOnly_NewFieldsUntouched verifies that when a
+// PUT body contains only string fields (ProxyURL) and leaves the pointer fields
+// (UseSystemProxy, RespectEnvProxy, MaxResponseSizeMB, ScriptTimeoutMs) absent,
+// the nil-pointer branches inside setBool/setInt are not taken and previously
+// stored values remain unchanged.
+func TestPutSettings_ExistingFieldsOnly_NewFieldsUntouched(t *testing.T) {
+	s, st := testServerWithStorage(t)
+	// Pre-populate a value that must survive the partial update.
+	require.NoError(t, st.Settings.Set(t.Context(), settingKeyMaxResponseSizeMB, "42"))
+	mux := s.newMux(testFS())
+
+	// Send only proxyUrl — pointer fields are nil, so setBool/setInt skip them.
+	body, _ := json.Marshal(map[string]any{"proxyUrl": "http://p:3128"})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var out settingsData
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&out))
+	assert.Equal(t, "http://p:3128", out.ProxyURL)
+	// MaxResponseSizeMB must still be 42, not overwritten by a nil pointer.
+	assert.Equal(t, 42, out.MaxResponseSizeMB)
+}
