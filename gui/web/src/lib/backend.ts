@@ -18,11 +18,21 @@ export interface SendRequest {
   bodyUrlencoded: Array<{ key: string; value: string; enabled: boolean }>
   bodyGraphQLQuery?: string
   bodyGraphQLVariables?: string
+  bodyBinaryContent?: string // base64-encoded binary file
+  bodyBinaryName?: string
   auth?: AuthConfig
   followRedirects: boolean
+  maxRedirects?: number
+  followOriginalMethod?: boolean
+  followAuthHeader?: boolean
+  removeReferer?: boolean
   sslVerification: boolean
   timeout: number
+  httpVersion?: "auto" | "http1" | "http2"
   ignoreProxy: boolean
+  requestProxyUrl?: string
+  requestProxyUsername?: string
+  requestProxyPassword?: string
   preRequestScript?: string
   testScript?: string
   variables?: {

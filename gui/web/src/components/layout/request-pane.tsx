@@ -463,10 +463,34 @@ function BodyTab({
           <div className="h-full flex flex-col items-center justify-center gap-3">
             <label className="flex flex-col items-center gap-2 cursor-pointer group">
               <div className="border-2 border-dashed border-border rounded-lg px-8 py-6 text-center group-hover:border-primary/40 transition-colors">
-                <p className="text-xs text-muted-foreground">Click to select a file</p>
-                <p className="text-[0.625rem] text-muted-foreground/60 mt-1">Any file type</p>
+                {body.binaryFileName ? (
+                  <>
+                    <p className="text-xs text-foreground font-medium">{body.binaryFileName}</p>
+                    <p className="text-[0.625rem] text-muted-foreground/60 mt-1">
+                      Click to replace
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-xs text-muted-foreground">Click to select a file</p>
+                    <p className="text-[0.625rem] text-muted-foreground/60 mt-1">Any file type</p>
+                  </>
+                )}
               </div>
-              <input type="file" className="hidden" onChange={() => {}} />
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (!file) return
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    const base64 = (reader.result as string).split(",")[1] ?? ""
+                    onChange({ ...body, binaryFileName: file.name, binaryFileContent: base64 })
+                  }
+                  reader.readAsDataURL(file)
+                }}
+              />
             </label>
           </div>
         )}
@@ -1020,11 +1044,28 @@ export function RequestPane() {
         bodyGraphQLVariables: request.body.graphqlVariables
           ? resolveStr(request.body.graphqlVariables)
           : undefined,
+        bodyBinaryContent: request.body.binaryFileContent || undefined,
+        bodyBinaryName: request.body.binaryFileName || undefined,
         auth: request.auth,
         followRedirects: request.settings?.followRedirects ?? followRedirectsDefault,
+        maxRedirects: request.settings?.maxRedirects,
+        followOriginalMethod: request.settings?.followOriginalMethod,
+        followAuthHeader: request.settings?.followAuthHeader,
+        removeReferer: request.settings?.removeReferer,
         sslVerification: request.settings?.sslVerify ?? true,
         timeout: request.settings?.timeout ?? timeoutDefault,
+        httpVersion: request.settings?.httpVersion,
         ignoreProxy: false,
+        requestProxyUrl:
+          request.settings?.proxy.enabled && request.settings.proxy.url
+            ? request.settings.proxy.url
+            : undefined,
+        requestProxyUsername: request.settings?.proxy.enabled
+          ? request.settings.proxy.username
+          : undefined,
+        requestProxyPassword: request.settings?.proxy.enabled
+          ? request.settings.proxy.password
+          : undefined,
         preRequestScript: request.preRequestScript || undefined,
         testScript: request.testScript || undefined,
         variables: { globals, environment, collectionVariables },

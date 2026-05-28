@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,21 +39,33 @@ type sendTimings struct {
 }
 
 type sendReq struct {
-	Method               string        `json:"method"`
-	URL                  string        `json:"url"`
-	Headers              []kvItem      `json:"headers"`
-	BodyType             string        `json:"bodyType"`
-	BodyRaw              string        `json:"bodyRaw"`
-	BodyRawContentType   string        `json:"bodyRawContentType"`
-	BodyFormData         []kvItem      `json:"bodyFormData"`
-	BodyUrlencoded       []kvItem      `json:"bodyUrlencoded"`
-	BodyGraphQLQuery     string        `json:"bodyGraphQLQuery"`
-	BodyGraphQLVariables string        `json:"bodyGraphQLVariables"`
-	Auth                 *authCfg      `json:"auth,omitempty"`
-	FollowRedirects      bool          `json:"followRedirects"`
-	SslVerification      bool          `json:"sslVerification"`
-	Timeout              int           `json:"timeout"` // milliseconds, 0 = no timeout
-	IgnoreProxy          bool          `json:"ignoreProxy"`
+	Method               string   `json:"method"`
+	URL                  string   `json:"url"`
+	Headers              []kvItem `json:"headers"`
+	BodyType             string   `json:"bodyType"`
+	BodyRaw              string   `json:"bodyRaw"`
+	BodyRawContentType   string   `json:"bodyRawContentType"`
+	BodyFormData         []kvItem `json:"bodyFormData"`
+	BodyUrlencoded       []kvItem `json:"bodyUrlencoded"`
+	BodyGraphQLQuery     string   `json:"bodyGraphQLQuery"`
+	BodyGraphQLVariables string   `json:"bodyGraphQLVariables"`
+	// Binary body: base64-encoded file content sent as application/octet-stream.
+	BodyBinaryContent    string   `json:"bodyBinaryContent,omitempty"`
+	BodyBinaryName       string   `json:"bodyBinaryName,omitempty"`
+	Auth                 *authCfg `json:"auth,omitempty"`
+	FollowRedirects      bool     `json:"followRedirects"`
+	MaxRedirects         int      `json:"maxRedirects,omitempty"`
+	FollowOriginalMethod bool     `json:"followOriginalMethod,omitempty"`
+	FollowAuthHeader     bool     `json:"followAuthHeader,omitempty"`
+	RemoveReferer        bool     `json:"removeReferer,omitempty"`
+	SslVerification      bool     `json:"sslVerification"`
+	Timeout              int      `json:"timeout"`               // milliseconds, 0 = no timeout
+	HTTPVersion          string   `json:"httpVersion,omitempty"` // "auto"|"http1"|"http2"
+	IgnoreProxy          bool     `json:"ignoreProxy"`
+	// Per-request proxy overrides global settings when RequestProxyURL is non-empty.
+	RequestProxyURL      string        `json:"requestProxyUrl,omitempty"`
+	RequestProxyUsername string        `json:"requestProxyUsername,omitempty"`
+	RequestProxyPassword string        `json:"requestProxyPassword,omitempty"`
 	PreRequestScript     string        `json:"preRequestScript,omitempty"`
 	TestScript           string        `json:"testScript,omitempty"`
 	Variables            sendVariables `json:"variables,omitempty"`
@@ -179,13 +193,28 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 
 	opts := enginehttp.DefaultOptions()
 	opts.FollowRedirects = req.FollowRedirects
+	opts.MaxRedirects = req.MaxRedirects
+	opts.FollowOriginalMethod = req.FollowOriginalMethod
+	opts.FollowAuthHeader = req.FollowAuthHeader
+	opts.RemoveReferer = req.RemoveReferer
 	opts.Insecure = !req.SslVerification
+	opts.HTTPVersion = req.HTTPVersion
 	if req.Timeout > 0 {
 		opts.Timeout = time.Duration(req.Timeout) * time.Millisecond
 	} else {
 		opts.Timeout = 0
 	}
-	if !req.IgnoreProxy {
+	switch {
+	case req.RequestProxyURL != "":
+		proxyURL := req.RequestProxyURL
+		if req.RequestProxyUsername != "" {
+			if u, err := url.Parse(req.RequestProxyURL); err == nil {
+				u.User = url.UserPassword(req.RequestProxyUsername, req.RequestProxyPassword)
+				proxyURL = u.String()
+			}
+		}
+		opts.ProxyURL = proxyURL
+	case !req.IgnoreProxy:
 		opts.UseSystemProxy = globalSettings.UseSystemProxy
 		opts.RespectEnvProxy = globalSettings.RespectEnvProxy
 		if !opts.UseSystemProxy && !opts.RespectEnvProxy {
@@ -450,6 +479,12 @@ func buildParserReq(req sendReq) *parser.Request {
 			}
 		}
 		pr.Body = &parser.Body{Mode: parser.BodyModeURLEncoded, URLEncoded: items}
+	case "binary":
+		if req.BodyBinaryContent != "" {
+			if data, err := base64.StdEncoding.DecodeString(req.BodyBinaryContent); err == nil {
+				pr.Body = &parser.Body{Mode: parser.BodyModeFile, File: data}
+			}
+		}
 	case "graphql":
 		pr.Body = &parser.Body{
 			Mode: parser.BodyModeGraphQL,

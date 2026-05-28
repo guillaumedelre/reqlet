@@ -427,11 +427,29 @@ func TestBuildBody_GraphQL_Nil(t *testing.T) {
 }
 
 func TestBuildBody_UnknownMode(t *testing.T) {
-	b := &parser.Body{Mode: "file"}
+	b := &parser.Body{Mode: "unknown-mode"}
 	r, ct, err := buildBody(b, variables.NewResolver())
 	require.NoError(t, err)
 	assert.Nil(t, r)
 	assert.Empty(t, ct)
+}
+
+func TestBuildBody_FileMode_EmptyContent(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeFile}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Nil(t, r)
+	assert.Equal(t, "application/octet-stream", ct)
+}
+
+func TestBuildBody_FileMode_WithContent(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeFile, File: []byte("hello binary")}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "application/octet-stream", ct)
+	data, _ := io.ReadAll(r)
+	assert.Equal(t, []byte("hello binary"), data)
 }
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
