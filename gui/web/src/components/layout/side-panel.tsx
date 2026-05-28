@@ -241,6 +241,7 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
         onDragEnd={endDrag}
         onDragOver={(e) => {
           e.preventDefault()
+          if (e.dataTransfer.types.includes("Files")) return
           e.stopPropagation()
           setDragOver(item.id)
         }}
@@ -250,6 +251,7 @@ function FolderNode({ item, depth, collectionId }: FolderNodeProps) {
         }}
         onDrop={(e) => {
           e.preventDefault()
+          if (e.dataTransfer.files.length > 0) return
           e.stopPropagation()
           drop(collectionId, item.id)
         }}
@@ -539,24 +541,45 @@ function CollectionsPanel() {
     setEditingId(col.id)
   }
 
+  const importFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text()
+        const json = JSON.parse(text)
+        const name: string = json?.info?.name ?? json?.name ?? ""
+        if (name && collections.some((c) => c.name === name)) {
+          toast.error(`A collection named "${name}" already exists.`)
+          return
+        }
+        await api.collections.import(file)
+        await queryClient.refetchQueries({ queryKey: ["collections"] })
+      } catch {
+        toast.error("Failed to import collection. Check the file format.")
+      }
+    },
+    [collections, queryClient],
+  )
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ""
-    try {
-      const text = await file.text()
-      const json = JSON.parse(text)
-      const name: string = json?.info?.name ?? json?.name ?? ""
-      if (name && collections.some((c) => c.name === name)) {
-        toast.error(`A collection named "${name}" already exists.`)
+    await importFile(file)
+  }
+
+  const handleFileDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      if (e.dataTransfer.files.length === 0) return
+      const file = e.dataTransfer.files[0]
+      if (!file.name.endsWith(".json")) {
+        toast.error("Only JSON collection files are supported.")
         return
       }
-      await api.collections.import(file)
-      await queryClient.invalidateQueries({ queryKey: ["collections"] })
-    } catch {
-      toast.error("Failed to import collection. Check the file format.")
-    }
-  }
+      await importFile(file)
+    },
+    [importFile],
+  )
 
   const startDrag = useCallback((id: string, collectionId: string) => {
     dragSourceRef.current = { id, collectionId }
@@ -588,7 +611,11 @@ function CollectionsPanel() {
 
   return (
     <DragContext.Provider value={{ draggedId, dragOverId, startDrag, endDrag, setDragOver, drop }}>
-      <div className="flex flex-col h-full">
+      <div
+        className="flex flex-col h-full"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleFileDrop}
+      >
         <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
           <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
             Collections
@@ -674,24 +701,45 @@ function EnvironmentsPanel() {
     setEditingId(env.id)
   }
 
+  const importFile = useCallback(
+    async (file: File) => {
+      try {
+        const text = await file.text()
+        const json = JSON.parse(text)
+        const name: string = json?.name ?? ""
+        if (name && environments.some((env) => env.name === name)) {
+          toast.error(`An environment named "${name}" already exists.`)
+          return
+        }
+        await api.environments.import(file)
+        await queryClient.invalidateQueries({ queryKey: ["environments"] })
+      } catch {
+        toast.error("Failed to import environment. Check the file format.")
+      }
+    },
+    [environments, queryClient],
+  )
+
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
     e.target.value = ""
-    try {
-      const text = await file.text()
-      const json = JSON.parse(text)
-      const name: string = json?.name ?? ""
-      if (name && environments.some((env) => env.name === name)) {
-        toast.error(`An environment named "${name}" already exists.`)
+    await importFile(file)
+  }
+
+  const handleFileDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault()
+      if (e.dataTransfer.files.length === 0) return
+      const file = e.dataTransfer.files[0]
+      if (!file.name.endsWith(".json")) {
+        toast.error("Only JSON environment files are supported.")
         return
       }
-      await api.environments.import(file)
-      await queryClient.invalidateQueries({ queryKey: ["environments"] })
-    } catch {
-      toast.error("Failed to import environment. Check the file format.")
-    }
-  }
+      await importFile(file)
+    },
+    [importFile],
+  )
 
   const handleCommitRename = (id: string, name: string) => {
     const trimmed = name.trim()
@@ -704,7 +752,11 @@ function EnvironmentsPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div
+      className="flex flex-col h-full"
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={handleFileDrop}
+    >
       <div className="flex items-center justify-between px-2 py-2 border-b border-border shrink-0">
         <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
           Environments
