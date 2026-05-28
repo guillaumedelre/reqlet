@@ -1249,3 +1249,118 @@ func TestLoadSettings_ClosedStorage_ReturnsDefaults(t *testing.T) {
 	d := s.loadSettings(httptest.NewRequest(http.MethodGet, "/", nil))
 	assert.Equal(t, 50, d.MaxResponseSizeMB)
 }
+
+// ── IgnoreProxy ───────────────────────────────────────────────────────────────
+
+func TestHandleSend_IgnoreProxy_SkipsProxySettings(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s, st := testServerWithStorage(t)
+	// Store a proxy setting that would break the request if applied.
+	require.NoError(t, st.Settings.Set(t.Context(), settingKeyUseSystemProxy, "true"))
+	mux := s.newMux(testFS())
+
+	body, _ := json.Marshal(sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		FollowRedirects: true,
+		SslVerification: true,
+		IgnoreProxy:     true, // must skip the proxy settings block
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 200, resp.Status)
+}
+
+// ── MaxResponseSizeMB == 0 (unlimited) ───────────────────────────────────────
+
+func TestHandleSend_MaxResponseSizeZero_Unlimited(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("0123456789"))
+	}))
+	defer target.Close()
+
+	s, st := testServerWithStorage(t)
+	// 0 means no limit: the if-branch (MaxResponseSizeMB > 0) must be false.
+	require.NoError(t, st.Settings.Set(t.Context(), settingKeyMaxResponseSizeMB, "0"))
+
+	mux := s.newMux(testFS())
+
+	body, _ := json.Marshal(sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		FollowRedirects: true,
+		SslVerification: true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	// All 10 bytes must be received intact.
+	assert.Equal(t, "0123456789", resp.Body)
+}
+
+// ── NewClient error (bad proxy URL) ──────────────────────────────────────────
+
+func TestHandleSend_NewClientError_BadProxyURL(t *testing.T) {
+	s, st := testServerWithStorage(t)
+	// An unclosed IPv6 bracket causes url.Parse to fail inside NewClient.
+	require.NoError(t, st.Settings.Set(t.Context(), settingKeyProxyURL, "http://[::1"))
+	mux := s.newMux(testFS())
+
+	body, _ := json.Marshal(sendReq{
+		Method:          "GET",
+		URL:             "http://localhost:1",
+		FollowRedirects: true,
+		SslVerification: true,
+		// IgnoreProxy is false (default) so the stored proxyUrl is used.
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var errBody errResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&errBody))
+	assert.Equal(t, "internal_error", errBody.Code)
+}
+
+// ── engineauth.New error (bearer with empty token) ───────────────────────────
+
+func TestHandleSend_AuthError_EmptyBearerToken(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	// Bearer token is required by engineauth.New; an empty token returns an error.
+	body, _ := json.Marshal(sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		FollowRedirects: true,
+		SslVerification: true,
+		Auth:            &authCfg{Type: "bearer", Bearer: &bearerCfg{Token: ""}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var errBody errResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&errBody))
+	assert.Equal(t, "internal_error", errBody.Code)
+}

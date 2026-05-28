@@ -987,3 +987,45 @@ func TestNewClient_SystemProxyTakesPrecedenceOverURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, c)
 }
+
+// ── decodeBase64 ──────────────────────────────────────────────────────────────
+
+// TestDecodeBase64_RawStdEncoding exercises the fallback path in decodeBase64:
+// when StdEncoding fails (no padding), RawStdEncoding is tried instead.
+func TestDecodeBase64_RawStdEncoding(t *testing.T) {
+	// "hello" encoded without padding (raw base64).
+	got, err := decodeBase64("aGVsbG8")
+	require.NoError(t, err)
+	assert.Equal(t, []byte("hello"), got)
+}
+
+// ── buildBody: FormData file with empty Src ───────────────────────────────────
+
+// TestBuildBody_FormDataFile_EmptySrc covers the branch where p.Src is empty
+// and the filename falls back to p.Key (line 271-272 in client.go).
+func TestBuildBody_FormDataFile_EmptySrc(t *testing.T) {
+	const fileContent = "world"
+	b64 := base64.StdEncoding.EncodeToString([]byte(fileContent))
+
+	b := &parser.Body{
+		Mode: parser.BodyModeFormData,
+		FormData: []parser.FormDataParam{
+			{Key: "myfile", Value: b64, Src: "", Type: "file"},
+		},
+	}
+
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.NotNil(t, r)
+	assert.Contains(t, ct, "multipart/form-data")
+
+	// Parse the multipart body to verify the filename equals p.Key.
+	_, params, parseErr := mime.ParseMediaType(ct)
+	require.NoError(t, parseErr)
+	mr := multipart.NewReader(r, params["boundary"])
+	part, err := mr.NextPart()
+	require.NoError(t, err)
+	assert.Equal(t, "myfile", part.FileName())
+	data, _ := io.ReadAll(part)
+	assert.Equal(t, []byte(fileContent), data)
+}
