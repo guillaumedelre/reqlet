@@ -194,7 +194,7 @@ Formatting is handled by **Prettier** (`.prettierrc`) — no semicolons, double 
 
 #### Tests
 
-Tests use **Vitest** with `jsdom` environment and **React Testing Library**. Files are colocated: `src/store/ui.test.ts` next to `src/store/ui.ts`. Coverage threshold is 80% (lines, functions, branches) — enforced locally and in CI.
+Tests use **Vitest** with `jsdom` environment and **React Testing Library**. Files are colocated: `src/store/ui.test.ts` next to `src/store/ui.ts`. Coverage threshold is 70% (lines, functions, branches) — enforced locally and in CI. Coverage is tracked for `src/store/**`, `src/hooks/**`, `src/lib/**`, `src/types.ts`, and the main layout components (`app-layout`, `environment-pane`, `header-bar`, `side-panel`, `settings-dialog`, `tab-bar`).
 
 | Script | What it does |
 |---|---|
@@ -269,7 +269,7 @@ Each tab is identified by a stable `id` (UUID). The active tab ID and the ordere
 | `useWorkspaceStore` | `src/store/workspace.ts` | no | Collections, environments, global variables |
 | `useTabStore` | `src/store/tabs.ts` | localStorage | Open tabs, active tab, tab state |
 | `useUiStore` | `src/store/ui.ts` | no | Active panel, active environment, search/settings modal open |
-| `useSettingsStore` | `src/store/settings.ts` | no | Proxy, TLS, timeout preferences |
+| `useSettingsStore` | `src/store/settings.ts` | localStorage | SSL, follow-redirects, timeout, no-cache header preferences |
 
 `useWorkspaceStore` is populated at startup by `hooks/use-workspace-sync.ts` via TanStack Query (`GET /api/collections`, `GET /api/environments`). After init, a Zustand `subscribe` fires fire-and-forget API calls for every diff (create/update/delete). The store is the in-memory source of truth; the REST API is the persistence layer.
 

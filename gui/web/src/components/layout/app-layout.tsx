@@ -10,6 +10,7 @@ import { CollectionPane } from "./collection-pane"
 import { EnvironmentPane } from "./environment-pane"
 import { GlobalsPane } from "./globals-pane"
 import { StatusBar } from "./status-bar"
+import { SettingsDialog } from "./settings-dialog"
 import { useUiStore } from "@/store/ui"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
@@ -151,6 +152,7 @@ export function AppLayout() {
       </div>
 
       <StatusBar />
+      <SettingsDialog />
     </div>
   )
 }

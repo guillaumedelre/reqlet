@@ -18,7 +18,7 @@ import { CodeEditor } from "@/components/ui/code-editor"
 import { cn } from "@/lib/utils"
 import { getStatusClasses, formatTime, formatSize } from "@/lib/http"
 import { useTabsStore } from "@/store/tabs"
-import type { ResponseSubTab } from "@/types"
+import type { ResponseSubTab, TestResult, Timings } from "@/types"
 
 function guessLanguage(contentType: string): string {
   if (contentType.includes("json")) return "json"
@@ -225,16 +225,96 @@ function ResponseHeaders({ headers }: { headers: Record<string, string> }) {
   )
 }
 
-function Timeline({ time }: { time: number }) {
-  const phases = [
-    { label: "DNS Lookup", ms: Math.floor(time * 0.03) },
-    { label: "TCP Connect", ms: Math.floor(time * 0.08) },
-    { label: "TLS Handshake", ms: Math.floor(time * 0.1) },
-    { label: "Request Sent", ms: Math.floor(time * 0.02) },
-    { label: "Waiting (TTFB)", ms: Math.floor(time * 0.6) },
-    { label: "Content Download", ms: Math.floor(time * 0.17) },
-  ]
-  const total = phases.reduce((s, p) => s + p.ms, 0)
+function TestResults({ results, error }: { results?: TestResult[]; error?: string }) {
+  if (error) {
+    return (
+      <div className="p-3">
+        <div className="text-xs text-destructive font-mono bg-destructive/10 rounded p-2">
+          {error}
+        </div>
+      </div>
+    )
+  }
+  if (!results?.length) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-xs text-muted-foreground">No tests ran</p>
+      </div>
+    )
+  }
+  const passed = results.filter((r) => r.passed).length
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-3 space-y-2">
+        <div className="flex gap-3 text-xs pb-2 border-b border-border">
+          <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+            {passed} passed
+          </span>
+          <span className="text-destructive font-medium">{results.length - passed} failed</span>
+        </div>
+        {results.map((r, i) => (
+          <div key={i} className="flex items-start gap-2">
+            <span
+              className={cn(
+                "mt-0.5 text-xs shrink-0",
+                r.passed ? "text-emerald-600 dark:text-emerald-400" : "text-destructive",
+              )}
+            >
+              {r.passed ? "✓" : "✗"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-foreground">{r.name}</p>
+              {r.error && (
+                <p className="text-[0.6875rem] text-destructive font-mono mt-0.5 break-all">
+                  {r.error}
+                </p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
+  )
+}
+
+function Visualizer({ html }: { html?: string }) {
+  if (!html) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <p className="text-xs text-muted-foreground">
+          No visualizer output — use pm.visualizer.set() in a test script
+        </p>
+      </div>
+    )
+  }
+  return (
+    <iframe
+      srcDoc={html}
+      sandbox="allow-scripts"
+      className="w-full h-full border-0 bg-white"
+      title="Visualizer"
+    />
+  )
+}
+
+function Timeline({ time, timings }: { time: number; timings?: Timings }) {
+  const phases = timings
+    ? [
+        { label: "DNS Lookup", ms: timings.dns },
+        { label: "TCP Connect", ms: timings.tcp },
+        { label: "TLS Handshake", ms: timings.tls },
+        { label: "Waiting (TTFB)", ms: timings.ttfb },
+        { label: "Content Download", ms: timings.download },
+      ]
+    : [
+        { label: "DNS Lookup", ms: Math.floor(time * 0.03) },
+        { label: "TCP Connect", ms: Math.floor(time * 0.08) },
+        { label: "TLS Handshake", ms: Math.floor(time * 0.1) },
+        { label: "Request Sent", ms: Math.floor(time * 0.02) },
+        { label: "Waiting (TTFB)", ms: Math.floor(time * 0.6) },
+        { label: "Content Download", ms: Math.floor(time * 0.17) },
+      ]
+  const total = timings ? timings.total : phases.reduce((s, p) => s + p.ms, 0)
 
   const colors = [
     "bg-violet-400",
@@ -355,7 +435,9 @@ export function ResponsePane() {
               { value: "body", label: "Body", badge: null as number | null },
               { value: "headers", label: "Headers", badge: Object.keys(response.headers).length },
               { value: "cookies", label: "Cookies", badge: null },
+              { value: "tests", label: "Tests", badge: response.testResults?.length ?? null },
               { value: "timeline", label: "Timeline", badge: null },
+              { value: "visualize", label: "Visualize", badge: null },
             ].map(({ value, label, badge }) => (
               <TabsTrigger
                 key={value}
@@ -464,8 +546,16 @@ export function ResponsePane() {
           })()}
         </TabsContent>
 
+        <TabsContent value="tests" className="flex-1 overflow-hidden mt-0">
+          <TestResults results={response.testResults} error={response.testError} />
+        </TabsContent>
+
         <TabsContent value="timeline" className="flex-1 overflow-hidden mt-0">
-          <Timeline time={response.time} />
+          <Timeline time={response.time} timings={response.timings} />
+        </TabsContent>
+
+        <TabsContent value="visualize" className="flex-1 overflow-hidden mt-0">
+          <Visualizer html={response.visualizerHtml} />
         </TabsContent>
       </Tabs>
     </div>

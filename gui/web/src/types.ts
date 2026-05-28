@@ -9,7 +9,7 @@ export type RawContentType =
   | "application/javascript"
 
 export type RequestSubTab = "params" | "auth" | "headers" | "body" | "scripts" | "settings" | "code"
-export type ResponseSubTab = "body" | "headers" | "cookies" | "timeline"
+export type ResponseSubTab = "body" | "headers" | "cookies" | "tests" | "timeline" | "visualize"
 export type CollectionSubTab = "overview" | "authorization" | "variables" | "scripts" | "runs"
 export type FolderSubTab = "overview" | "authorization" | "scripts"
 

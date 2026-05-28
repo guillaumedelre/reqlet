@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react"
-import { useQueryClient } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
 import {
   ChevronRight,
@@ -34,7 +34,9 @@ import { useTabsStore } from "@/store/tabs"
 import { useUiStore } from "@/store/ui"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
 import { api } from "@/lib/api"
-import type { Collection, CollectionItem, FolderItem, RequestItem } from "@/types"
+import { listHistory, deleteHistoryEntry, clearHistory } from "@/lib/backend"
+import type { HistoryEntry } from "@/lib/backend"
+import type { Collection, CollectionItem, FolderItem, HttpMethod, RequestItem } from "@/types"
 import { isRequest } from "@/types"
 
 // ---------- Drag-and-drop context ----------
@@ -841,19 +843,153 @@ function EnvironmentsPanel() {
   )
 }
 
+const PAGE_SIZE = 50
+
+function statusColor(status: number) {
+  if (status >= 500) return "text-destructive"
+  if (status >= 400) return "text-orange-500 dark:text-orange-400"
+  if (status >= 300) return "text-yellow-500 dark:text-yellow-400"
+  if (status >= 200) return "text-emerald-600 dark:text-emerald-400"
+  return "text-muted-foreground"
+}
+
+function formatDuration(ms: number) {
+  return ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${ms}ms`
+}
+
+function formatTimestamp(iso: string) {
+  const d = new Date(iso)
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+}
+
 function HistoryPanel() {
+  const queryClient = useQueryClient()
+  const [offset, setOffset] = useState(0)
+  const [entries, setEntries] = useState<HistoryEntry[]>([])
+  const [hasMore, setHasMore] = useState(false)
+  const { dialog, requestDelete } = useDeleteConfirm()
+
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ["history", offset],
+    queryFn: () => listHistory(PAGE_SIZE, offset),
+    staleTime: 0,
+  })
+
+  useEffect(() => {
+    if (data === undefined) return
+    setEntries((prev) => (offset === 0 ? data : [...prev, ...data]))
+    setHasMore(data.length === PAGE_SIZE)
+  }, [data, offset])
+
+  const reload = useCallback(() => {
+    setOffset(0)
+    setEntries([])
+    queryClient.invalidateQueries({ queryKey: ["history"] })
+  }, [queryClient])
+
+  const handleDelete = useCallback(
+    (entry: HistoryEntry) => {
+      requestDelete(`${entry.method} ${entry.url}`, async () => {
+        await deleteHistoryEntry(entry.id)
+        reload()
+      })
+    },
+    [requestDelete, reload],
+  )
+
+  const handleClearAll = useCallback(() => {
+    requestDelete("all history entries", async () => {
+      await clearHistory()
+      reload()
+    })
+  }, [requestDelete, reload])
+
   return (
     <div className="flex flex-col h-full">
-      <div className="px-2 py-2 border-b border-border shrink-0">
+      {dialog}
+
+      {/* Header */}
+      <div className="px-3 py-2 border-b border-border shrink-0 flex items-center justify-between">
         <span className="text-[0.6875rem] font-semibold text-muted-foreground uppercase tracking-wider">
           History
         </span>
+        {entries.length > 0 && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                onClick={handleClearAll}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="left" className="text-xs">
+              Clear all
+            </TooltipContent>
+          </Tooltip>
+        )}
       </div>
-      <div className="flex-1 flex items-center justify-center">
-        <p className="text-xs text-muted-foreground text-center px-4">
-          Requests sent during this session will appear here
-        </p>
-      </div>
+
+      {/* List */}
+      {isLoading && offset === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-xs text-muted-foreground">Loading…</span>
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-xs text-muted-foreground text-center px-4">No history yet</p>
+        </div>
+      ) : (
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="py-1">
+            {entries.map((entry) => (
+              <div
+                key={entry.id}
+                className="group flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-default"
+              >
+                <MethodBadge
+                  method={entry.method as HttpMethod}
+                  className="shrink-0 text-[0.6rem] px-1 py-px"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs truncate text-foreground leading-snug">{entry.url}</p>
+                  <p className="text-[0.6rem] text-muted-foreground leading-snug">
+                    <span className={statusColor(entry.status)}>{entry.status}</span>
+                    {" · "}
+                    {formatDuration(entry.durationMs)}
+                    {" · "}
+                    {formatTimestamp(entry.timestamp)}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleDelete(entry)}
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              </div>
+            ))}
+
+            {hasMore && (
+              <div className="px-3 py-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full h-7 text-xs text-muted-foreground"
+                  onClick={() => setOffset((o) => o + PAGE_SIZE)}
+                  disabled={isFetching}
+                >
+                  {isFetching ? "Loading…" : "Load more"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      )}
     </div>
   )
 }

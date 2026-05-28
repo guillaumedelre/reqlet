@@ -62,8 +62,6 @@ export function IconRail() {
           onClick={() => togglePanel(panel)}
         />
       ))}
-
-      <div className="flex-1" />
     </div>
   )
 }

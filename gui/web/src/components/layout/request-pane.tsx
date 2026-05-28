@@ -27,6 +27,7 @@ import { toast } from "sonner"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
 import { useUiStore } from "@/store/ui"
+import { useSettingsStore } from "@/store/settings"
 import { DEFAULT_REQUEST_SETTINGS } from "@/types"
 import { sendRequest, BackendError } from "@/lib/backend"
 import type {
@@ -935,6 +936,9 @@ export function RequestPane() {
   }, [activeTab?.collectionId, activeTab?.requestId, collections, findRequest])
 
   const activeEnvironmentId = useUiStore((s) => s.activeEnvironmentId)
+  const followRedirectsDefault = useSettingsStore((s) => s.followRedirectsDefault)
+  const timeoutDefault = useSettingsStore((s) => s.timeoutDefault)
+  const noCacheHeader = useSettingsStore((s) => s.noCacheHeader)
 
   const { resolvedMap, allKeys, globals, environment, collectionVariables } =
     useVariableScope(collectionId)
@@ -980,11 +984,20 @@ export function RequestPane() {
       const resp = await sendRequest({
         method: request.method,
         url: resolveStr(request.url),
-        headers: request.headers.map((h) => ({
-          key: h.key,
-          value: resolveStr(h.value),
-          enabled: h.enabled,
-        })),
+        headers: (() => {
+          const mapped = request.headers.map((h) => ({
+            key: h.key,
+            value: resolveStr(h.value),
+            enabled: h.enabled,
+          }))
+          const hasNoCache = mapped.some(
+            (h) => h.enabled && h.key.toLowerCase() === "cache-control",
+          )
+          if (noCacheHeader && !hasNoCache) {
+            mapped.push({ key: "Cache-Control", value: "no-cache", enabled: true })
+          }
+          return mapped
+        })(),
         bodyType: request.body.type,
         bodyRaw: resolveStr(request.body.raw),
         bodyRawContentType: request.body.rawContentType,
@@ -1008,9 +1021,9 @@ export function RequestPane() {
           ? resolveStr(request.body.graphqlVariables)
           : undefined,
         auth: request.auth,
-        followRedirects: request.settings?.followRedirects ?? true,
+        followRedirects: request.settings?.followRedirects ?? followRedirectsDefault,
         sslVerification: request.settings?.sslVerify ?? true,
-        timeout: request.settings?.timeout ?? 30000,
+        timeout: request.settings?.timeout ?? timeoutDefault,
         ignoreProxy: false,
         preRequestScript: request.preRequestScript || undefined,
         testScript: request.testScript || undefined,
