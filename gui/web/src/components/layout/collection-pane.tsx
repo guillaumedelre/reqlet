@@ -187,7 +187,7 @@ function ScriptsTab({
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "pre-request" ? "Pre-request Script" : "Tests"}
+            {t === "pre-request" ? "Pre-request" : "Post-response"}
           </button>
         ))}
       </div>

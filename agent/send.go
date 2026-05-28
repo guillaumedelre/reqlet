@@ -145,7 +145,7 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, sendResp{
 		Status:      resp.StatusCode,
-		StatusText:  resp.Status,
+		StatusText:  http.StatusText(resp.StatusCode),
 		Time:        resp.Duration.Milliseconds(),
 		Size:        len(resp.Body),
 		Headers:     headers,

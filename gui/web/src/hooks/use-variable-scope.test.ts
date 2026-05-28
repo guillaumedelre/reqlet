@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { renderHook } from "@testing-library/react"
-import { resolveRecursive, useVariableScope } from "./use-variable-scope"
+import { applyVariables, resolveRecursive, useVariableScope } from "./use-variable-scope"
 import { useWorkspaceStore } from "@/store/workspace"
 import { useUiStore } from "@/store/ui"
 
@@ -11,6 +11,84 @@ function makeVar(key: string, currentValue: string, enabled = true) {
 function raw(entries: Record<string, string>): Map<string, string> {
   return new Map(Object.entries(entries))
 }
+
+// ---------------------------------------------------------------------------
+// applyVariables — pure unit tests
+// ---------------------------------------------------------------------------
+
+describe("applyVariables", () => {
+  it("returns the string unchanged when the map is empty", () => {
+    expect(applyVariables("https://api.example.com/path", new Map())).toBe(
+      "https://api.example.com/path",
+    )
+  })
+
+  it("substitutes a single token", () => {
+    const map = new Map([["host", "api.example.com"]])
+    expect(applyVariables("https://{{host}}/v1", map)).toBe("https://api.example.com/v1")
+  })
+
+  it("substitutes multiple tokens in one string", () => {
+    const map = new Map([
+      ["proto", "https://"],
+      ["host", "api.example.com"],
+    ])
+    expect(applyVariables("{{proto}}{{host}}/path", map)).toBe("https://api.example.com/path")
+  })
+
+  it("leaves unknown tokens as-is", () => {
+    const map = new Map([["host", "api.example.com"]])
+    expect(applyVariables("https://{{host}}/{{unknown}}", map)).toBe(
+      "https://api.example.com/{{unknown}}",
+    )
+  })
+
+  it("returns the string unchanged when it contains no tokens", () => {
+    const map = new Map([["host", "api.example.com"]])
+    expect(applyVariables("plain string", map)).toBe("plain string")
+  })
+
+  it("substitutes the same token appearing multiple times", () => {
+    const map = new Map([["id", "42"]])
+    expect(applyVariables("/items/{{id}}/children/{{id}}", map)).toBe("/items/42/children/42")
+  })
+
+  it("substitutes a token whose value is empty string", () => {
+    const map = new Map([["prefix", ""]])
+    expect(applyVariables("{{prefix}}suffix", map)).toBe("suffix")
+  })
+
+  // Covers the exact failure reported: {{url_authentication}} sent to Go as URL-encoded
+  it("resolves {{url_authentication}} in a URL path (regression)", () => {
+    const map = new Map([["url_authentication", "https://auth.example.com"]])
+    expect(applyVariables("{{url_authentication}}/authentication/_status", map)).toBe(
+      "https://auth.example.com/authentication/_status",
+    )
+  })
+
+  // Fields sent to the Go backend must all go through applyVariables
+  it("resolves tokens in header values", () => {
+    const map = new Map([["token", "abc123"]])
+    expect(applyVariables("Bearer {{token}}", map)).toBe("Bearer abc123")
+  })
+
+  it("resolves tokens in a JSON body", () => {
+    const map = new Map([["userId", "99"]])
+    expect(applyVariables('{"id": "{{userId}}"}', map)).toBe('{"id": "99"}')
+  })
+
+  it("resolves tokens in URL-encoded body values", () => {
+    const map = new Map([["password", "s3cr3t"]])
+    expect(applyVariables("{{password}}", map)).toBe("s3cr3t")
+  })
+
+  it("resolves tokens in GraphQL query strings", () => {
+    const map = new Map([["userId", "7"]])
+    expect(applyVariables("query { user(id: {{userId}}) { name } }", map)).toBe(
+      "query { user(id: 7) { name } }",
+    )
+  })
+})
 
 // ---------------------------------------------------------------------------
 // resolveRecursive — pure unit tests
