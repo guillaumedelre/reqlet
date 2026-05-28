@@ -94,7 +94,7 @@ Standalone Go HTTP server (`reqlet-agent` binary). It:
 
 - Embeds `agent/web/` via `go:embed all:web` and serves the React SPA at `/`
   (`agent/web/` is populated from `gui/web/dist/` during the Docker build)
-- Exposes a REST API (`/api/...`) equivalent to the Wails bindings in `gui/` (Phase 2.14 — in progress)
+- Exposes a REST API (`/api/...`) equivalent to the Wails bindings in `gui/` (Phase 2.14)
 - Will delegate request execution to `engine/http` and script execution to `engine/sandbox`
 - Stores data in a SQLite file at `/data/reqlet.db` (Docker) or `~/.reqlet/reqlet.db` (standalone)
 - Listens on `:8080` internally; exposed on host port `3001` via Docker Compose (`"3001:8080"`)

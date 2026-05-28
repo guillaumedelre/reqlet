@@ -5,6 +5,7 @@ export interface AppSettings {
   sslVerifyDefault: boolean
   followRedirectsDefault: boolean
   timeoutDefault: number
+  noCacheHeader: boolean
   proxy: { enabled: boolean; url: string; username: string; password: string }
   editorFontSize: number
   editorWordWrap: boolean
@@ -14,6 +15,7 @@ const DEFAULTS: AppSettings = {
   sslVerifyDefault: true,
   followRedirectsDefault: true,
   timeoutDefault: 30000,
+  noCacheHeader: false,
   proxy: { enabled: false, url: "", username: "", password: "" },
   editorFontSize: 12,
   editorWordWrap: true,

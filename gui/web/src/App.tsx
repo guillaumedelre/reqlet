@@ -3,7 +3,6 @@ import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
 import { AppLayout } from "@/components/layout/app-layout"
 import { SearchModal } from "@/components/search-modal"
-import { SettingsModal } from "@/components/settings-modal"
 import { useTheme } from "@/hooks/use-theme"
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync"
@@ -37,7 +36,6 @@ function AppInner() {
       <KeyboardShortcuts />
       <AppLayout />
       <SearchModal />
-      <SettingsModal />
       <Toaster position="bottom-right" />
     </TooltipProvider>
   )
