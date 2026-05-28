@@ -12,6 +12,7 @@ import (
 	"io"
 	"mime/multipart"
 	nethttp "net/http"
+	"net/http/httptrace"
 	"net/url"
 	"os"
 	"strings"
@@ -45,6 +46,17 @@ func DefaultOptions() Options {
 	}
 }
 
+// Timings holds the measured duration of each phase of an HTTP request.
+// A zero value means the phase did not occur (e.g. DNS for a reused connection).
+type Timings struct {
+	DNS      time.Duration // DNS lookup
+	TCP      time.Duration // TCP connection establishment
+	TLS      time.Duration // TLS handshake
+	TTFB     time.Duration // time from request written to first response byte
+	Download time.Duration // time to read the full response body
+	Total    time.Duration // end-to-end wall clock time
+}
+
 // Response holds the result of executing an HTTP request.
 type Response struct {
 	StatusCode int
@@ -53,6 +65,49 @@ type Response struct {
 	Headers    nethttp.Header
 	Body       []byte
 	Duration   time.Duration
+	Timings    Timings
+}
+
+// timingCollector records httptrace event timestamps for a single request.
+type timingCollector struct {
+	dnsStart     time.Time
+	dnsDone      time.Time
+	tcpStart     time.Time
+	tcpDone      time.Time
+	tlsStart     time.Time
+	tlsDone      time.Time
+	wroteRequest time.Time
+	firstByte    time.Time
+}
+
+func (tc *timingCollector) clientTrace() *httptrace.ClientTrace {
+	return &httptrace.ClientTrace{
+		DNSStart:             func(_ httptrace.DNSStartInfo) { tc.dnsStart = time.Now() },
+		DNSDone:              func(_ httptrace.DNSDoneInfo) { tc.dnsDone = time.Now() },
+		ConnectStart:         func(_, _ string) { tc.tcpStart = time.Now() },
+		ConnectDone:          func(_, _ string, _ error) { tc.tcpDone = time.Now() },
+		TLSHandshakeStart:    func() { tc.tlsStart = time.Now() },
+		TLSHandshakeDone:     func(_ tls.ConnectionState, _ error) { tc.tlsDone = time.Now() },
+		WroteRequest:         func(_ httptrace.WroteRequestInfo) { tc.wroteRequest = time.Now() },
+		GotFirstResponseByte: func() { tc.firstByte = time.Now() },
+	}
+}
+
+func (tc *timingCollector) build(total, download time.Duration) Timings {
+	phaseDur := func(start, end time.Time) time.Duration {
+		if start.IsZero() || end.IsZero() {
+			return 0
+		}
+		return end.Sub(start)
+	}
+	return Timings{
+		DNS:      phaseDur(tc.dnsStart, tc.dnsDone),
+		TCP:      phaseDur(tc.tcpStart, tc.tcpDone),
+		TLS:      phaseDur(tc.tlsStart, tc.tlsDone),
+		TTFB:     phaseDur(tc.wroteRequest, tc.firstByte),
+		Download: download,
+		Total:    total,
+	}
 }
 
 // Client executes Postman HTTP requests.
@@ -108,7 +163,10 @@ func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variabl
 		return nil, fmt.Errorf("build body: %w", err)
 	}
 
-	httpReq, err := nethttp.NewRequestWithContext(ctx, req.Method, rawURL, body)
+	tc := &timingCollector{}
+	tracedCtx := httptrace.WithClientTrace(ctx, tc.clientTrace())
+
+	httpReq, err := nethttp.NewRequestWithContext(tracedCtx, req.Method, rawURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
@@ -132,20 +190,22 @@ func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variabl
 			clone.Transport = tw.WrapTransport(c.inner.Transport)
 			inner = &clone
 		}
-		if err := applier.Apply(ctx, httpReq, vars); err != nil {
+		if err := applier.Apply(tracedCtx, httpReq, vars); err != nil {
 			return nil, fmt.Errorf("apply auth: %w", err)
 		}
 	}
 
 	start := time.Now()
 	resp, err := inner.Do(httpReq)
-	duration := time.Since(start)
+	total := time.Since(start)
 	if err != nil {
 		return nil, fmt.Errorf("execute request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	dlStart := time.Now()
 	respBody, err := io.ReadAll(resp.Body)
+	download := time.Since(dlStart)
 	if err != nil {
 		return nil, fmt.Errorf("read response body: %w", err)
 	}
@@ -156,7 +216,8 @@ func (c *Client) Execute(ctx context.Context, req *parser.Request, vars *variabl
 		Proto:      resp.Proto,
 		Headers:    resp.Header,
 		Body:       respBody,
-		Duration:   duration,
+		Duration:   total,
+		Timings:    tc.build(total, download),
 	}, nil
 }
 

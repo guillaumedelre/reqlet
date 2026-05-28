@@ -21,6 +21,26 @@ func base64Encode(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
 
+func TestHandleSend_TimingsInResponse(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer target.Close()
+
+	body := sendReq{Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.GreaterOrEqual(t, resp.Timings.Total, int64(0))
+	assert.GreaterOrEqual(t, resp.Timings.Total, resp.Timings.Download)
+}
+
 func TestHandleSend_WrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/send", nil)
 	w := httptest.NewRecorder()

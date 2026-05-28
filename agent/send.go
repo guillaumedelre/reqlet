@@ -25,6 +25,15 @@ type sendMutations struct {
 	CollectionVariables map[string]string `json:"collectionVariables,omitempty"`
 }
 
+type sendTimings struct {
+	DNS      int64 `json:"dns"`
+	TCP      int64 `json:"tcp"`
+	TLS      int64 `json:"tls"`
+	TTFB     int64 `json:"ttfb"`
+	Download int64 `json:"download"`
+	Total    int64 `json:"total"`
+}
+
 type sendReq struct {
 	Method               string        `json:"method"`
 	URL                  string        `json:"url"`
@@ -105,6 +114,7 @@ type sendResp struct {
 	Headers         map[string]string    `json:"headers"`
 	Body            string               `json:"body"`
 	ContentType     string               `json:"contentType"`
+	Timings         sendTimings          `json:"timings"`
 	TestResults     []sandbox.TestResult `json:"testResults,omitempty"`
 	PreRequestError string               `json:"preRequestError,omitempty"`
 	TestError       string               `json:"testError,omitempty"`
@@ -209,13 +219,21 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result := sendResp{
-		Status:          resp.StatusCode,
-		StatusText:      http.StatusText(resp.StatusCode),
-		Time:            resp.Duration.Milliseconds(),
-		Size:            len(resp.Body),
-		Headers:         headers,
-		Body:            string(resp.Body),
-		ContentType:     resp.Headers.Get("Content-Type"),
+		Status:      resp.StatusCode,
+		StatusText:  http.StatusText(resp.StatusCode),
+		Time:        resp.Duration.Milliseconds(),
+		Size:        len(resp.Body),
+		Headers:     headers,
+		Body:        string(resp.Body),
+		ContentType: resp.Headers.Get("Content-Type"),
+		Timings: sendTimings{
+			DNS:      resp.Timings.DNS.Milliseconds(),
+			TCP:      resp.Timings.TCP.Milliseconds(),
+			TLS:      resp.Timings.TLS.Milliseconds(),
+			TTFB:     resp.Timings.TTFB.Milliseconds(),
+			Download: resp.Timings.Download.Milliseconds(),
+			Total:    resp.Timings.Total.Milliseconds(),
+		},
 		PreRequestError: preReqErr,
 		TestError:       testErr,
 	}

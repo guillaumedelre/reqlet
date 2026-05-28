@@ -854,3 +854,86 @@ type errorApplier struct{}
 func (errorApplier) Apply(_ context.Context, _ *http.Request, _ *variables.Resolver) error {
 	return errors.New("forced auth error")
 }
+
+// ---------- timing tests ----------
+
+func TestExecute_TimingsPresent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":"hello"}`))
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.Positive(t, resp.Timings.Total, "Total must be positive")
+	assert.GreaterOrEqual(t, resp.Timings.Total, resp.Timings.Download, "Total >= Download")
+	assert.Equal(t, resp.Duration, resp.Timings.Total, "Duration matches Total")
+}
+
+func TestExecute_TimingsDownload(t *testing.T) {
+	const payload = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, resp.Timings.Download, time.Duration(0))
+	assert.Equal(t, payload, string(resp.Body))
+}
+
+func TestTimingCollector_ZeroWhenNotFired(t *testing.T) {
+	tc := &timingCollector{}
+	got := tc.build(10*time.Millisecond, 2*time.Millisecond)
+	assert.Equal(t, time.Duration(0), got.DNS)
+	assert.Equal(t, time.Duration(0), got.TCP)
+	assert.Equal(t, time.Duration(0), got.TLS)
+	assert.Equal(t, time.Duration(0), got.TTFB)
+	assert.Equal(t, 2*time.Millisecond, got.Download)
+	assert.Equal(t, 10*time.Millisecond, got.Total)
+}
+
+func TestTimingCollector_TTFB(t *testing.T) {
+	now := time.Now()
+	tc := &timingCollector{
+		wroteRequest: now,
+		firstByte:    now.Add(50 * time.Millisecond),
+	}
+	got := tc.build(100*time.Millisecond, 10*time.Millisecond)
+	assert.Equal(t, 50*time.Millisecond, got.TTFB)
+}
+
+func TestTimingCollector_DNS(t *testing.T) {
+	now := time.Now()
+	tc := &timingCollector{
+		dnsStart: now,
+		dnsDone:  now.Add(20 * time.Millisecond),
+	}
+	got := tc.build(100*time.Millisecond, 0)
+	assert.Equal(t, 20*time.Millisecond, got.DNS)
+}
+
+func TestTimingCollector_TCP(t *testing.T) {
+	now := time.Now()
+	tc := &timingCollector{
+		tcpStart: now,
+		tcpDone:  now.Add(15 * time.Millisecond),
+	}
+	got := tc.build(100*time.Millisecond, 0)
+	assert.Equal(t, 15*time.Millisecond, got.TCP)
+}
+
+func TestTimingCollector_TLS(t *testing.T) {
+	now := time.Now()
+	tc := &timingCollector{
+		tlsStart: now,
+		tlsDone:  now.Add(30 * time.Millisecond),
+	}
+	got := tc.build(100*time.Millisecond, 0)
+	assert.Equal(t, 30*time.Millisecond, got.TLS)
+}
