@@ -241,6 +241,7 @@ export interface ResponseData {
   preRequestError?: string
   testError?: string
   mutations?: VariableMutations
+  visualizerHtml?: string
 }
 
 export type TabType = "request" | "collection" | "folder" | "environment" | "globals"

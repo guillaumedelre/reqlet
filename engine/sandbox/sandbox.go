@@ -61,8 +61,9 @@ type Mutations struct {
 
 // ScriptResult is the full output of one script execution.
 type ScriptResult struct {
-	Tests     []TestResult `json:"tests"`
-	Mutations Mutations    `json:"mutations"`
+	Tests          []TestResult `json:"tests"`
+	Mutations      Mutations    `json:"mutations"`
+	VisualizerHTML string       `json:"visualizerHtml,omitempty"`
 }
 
 // Runner executes JavaScript scripts in the Node.js sandbox.

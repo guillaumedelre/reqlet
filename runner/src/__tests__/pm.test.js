@@ -285,3 +285,43 @@ describe("buildPm — collectResults mutations", () => {
     expect(mutations.environment["e"]).toBe("2");
   });
 });
+
+describe("buildPm — pm.visualizer", () => {
+  it("collectResults returns null visualizer when not set", () => {
+    const { collectResults } = buildPm({ ...baseCtx });
+    const { visualizer } = collectResults();
+    expect(visualizer).toBeNull();
+  });
+
+  it("set() stores template and data", () => {
+    const { pm, collectResults } = buildPm({ ...baseCtx });
+    pm.visualizer.set("<h1>{{title}}</h1>", { title: "Test" });
+    const { visualizer } = collectResults();
+    expect(visualizer).not.toBeNull();
+    expect(visualizer.template).toBe("<h1>{{title}}</h1>");
+    expect(visualizer.data).toEqual({ title: "Test" });
+  });
+
+  it("set() with no data defaults to empty object", () => {
+    const { pm, collectResults } = buildPm({ ...baseCtx });
+    pm.visualizer.set("<p>hi</p>");
+    const { visualizer } = collectResults();
+    expect(visualizer.data).toEqual({});
+  });
+
+  it("set() with null data defaults to empty object", () => {
+    const { pm, collectResults } = buildPm({ ...baseCtx });
+    pm.visualizer.set("<p>hi</p>", null);
+    const { visualizer } = collectResults();
+    expect(visualizer.data).toEqual({});
+  });
+
+  it("last set() call wins", () => {
+    const { pm, collectResults } = buildPm({ ...baseCtx });
+    pm.visualizer.set("<p>first</p>", { n: 1 });
+    pm.visualizer.set("<p>second</p>", { n: 2 });
+    const { visualizer } = collectResults();
+    expect(visualizer.template).toBe("<p>second</p>");
+    expect(visualizer.data).toEqual({ n: 2 });
+  });
+});

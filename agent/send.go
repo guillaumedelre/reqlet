@@ -121,6 +121,7 @@ type sendResp struct {
 	PreRequestError string               `json:"preRequestError,omitempty"`
 	TestError       string               `json:"testError,omitempty"`
 	Mutations       *sendMutations       `json:"mutations,omitempty"`
+	VisualizerHTML  string               `json:"visualizerHtml,omitempty"`
 }
 
 type errResp struct {
@@ -252,6 +253,7 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	if testResult != nil {
 		result.TestResults = testResult.Tests
+		result.VisualizerHTML = testResult.VisualizerHTML
 	}
 	result.Mutations = mergeMutations(preResult, testResult)
 
