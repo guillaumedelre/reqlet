@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { sendRequest, cancelRequest, runScript, getVariables, BackendError } from "./backend"
+import {
+  sendRequest,
+  cancelRequest,
+  runScript,
+  getVariables,
+  getSettings,
+  putSettings,
+  BackendError,
+} from "./backend"
 import type { SendRequest } from "./backend"
 
 const mockFetch = vi.fn()
@@ -134,5 +142,52 @@ describe("getVariables", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "request_failed" }))
     await expect(getVariables()).rejects.toBeInstanceOf(BackendError)
+  })
+})
+
+describe("getSettings", () => {
+  const defaults = {
+    proxyUrl: "",
+    proxyUsername: "",
+    proxyPassword: "",
+    noProxy: "",
+    sslVerification: true,
+  }
+
+  it("GETs /api/settings", async () => {
+    mockFetch.mockReturnValue(okResponse(defaults))
+    const result = await getSettings()
+    expect(mockFetch).toHaveBeenCalledWith("/api/settings")
+    expect(result.sslVerification).toBe(true)
+  })
+
+  it("throws BackendError on non-ok response", async () => {
+    mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
+    await expect(getSettings()).rejects.toBeInstanceOf(BackendError)
+  })
+})
+
+describe("putSettings", () => {
+  const updated = {
+    proxyUrl: "http://proxy:3128",
+    proxyUsername: "",
+    proxyPassword: "",
+    noProxy: "",
+    sslVerification: true,
+  }
+
+  it("PUTs to /api/settings with partial body", async () => {
+    mockFetch.mockReturnValue(okResponse(updated))
+    const result = await putSettings({ proxyUrl: "http://proxy:3128" })
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/api/settings",
+      expect.objectContaining({ method: "PUT" }),
+    )
+    expect(result.proxyUrl).toBe("http://proxy:3128")
+  })
+
+  it("throws BackendError on non-ok response", async () => {
+    mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
+    await expect(putSettings({ sslVerification: false })).rejects.toBeInstanceOf(BackendError)
   })
 })

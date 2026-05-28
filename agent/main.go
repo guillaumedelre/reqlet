@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/guillaumedelre/reqlet/engine/sandbox"
+	"github.com/guillaumedelre/reqlet/engine/storage"
 )
 
 //go:embed all:web
@@ -23,6 +24,7 @@ type server struct {
 	collections  *jsonStore
 	environments *jsonStore
 	sandbox      sandbox.Runner
+	storage      *storage.Storage
 	cancels      sync.Map // key: requestID string, value: context.CancelFunc
 }
 
@@ -55,6 +57,9 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 	mux.HandleFunc("POST /api/sandbox/run", s.handleSandboxRun)
 
 	mux.HandleFunc("GET /api/variables", s.getVariables)
+
+	mux.HandleFunc("GET /api/settings", s.getSettings)
+	mux.HandleFunc("PUT /api/settings", s.putSettings)
 
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spaHandler(webContent))
@@ -132,7 +137,16 @@ func main() {
 		log.Printf("sandbox runner not found at %s, scripts disabled", runnerPath) //nolint:gosec // env var value, controlled by operator
 	}
 
-	s := &server{collections: colStore, environments: envStore, sandbox: sbRunner}
+	var store *storage.Storage
+	dbPath := filepath.Join(wp, "reqlet.db")
+	if st, err := storage.New("file:" + dbPath + "?cache=shared"); err != nil {
+		log.Printf("warning: settings storage unavailable: %v", err)
+	} else {
+		store = st
+		defer func() { _ = store.Close() }()
+	}
+
+	s := &server{collections: colStore, environments: envStore, sandbox: sbRunner, storage: store}
 
 	srv := &http.Server{
 		Addr:         addr,
