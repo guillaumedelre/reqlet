@@ -7,6 +7,12 @@ export interface VariableScope {
   allKeys: string[]
 }
 
+// Substitutes all {{var}} tokens in a string using a pre-resolved variable map.
+// Tokens whose key is absent from the map are left as-is.
+export function applyVariables(s: string, resolvedMap: Map<string, string>): string {
+  return s.replace(/\{\{([^{}]*)\}\}/g, (match, key: string) => resolvedMap.get(key) ?? match)
+}
+
 // Resolves {{var}} references recursively within a raw key→value map.
 // Cycles (a → b → a) and undefined references are left as-is: {{var}} is preserved.
 // The function is pure and exported for direct testing.
