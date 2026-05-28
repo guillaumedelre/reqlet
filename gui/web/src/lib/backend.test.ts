@@ -3,6 +3,9 @@ import {
   sendRequest,
   cancelRequest,
   runScript,
+  listHistory,
+  deleteHistoryEntry,
+  clearHistory,
   getVariables,
   getSettings,
   putSettings,
@@ -108,6 +111,46 @@ describe("runScript", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "sandbox_failed" }))
     await expect(runScript({ script: "" })).rejects.toBeInstanceOf(BackendError)
+  })
+})
+
+describe("listHistory", () => {
+  it("GETs /api/history with default params", async () => {
+    mockFetch.mockReturnValue(okResponse([]))
+    const result = await listHistory()
+    expect(mockFetch).toHaveBeenCalledWith("/api/history?limit=50&offset=0")
+    expect(result).toEqual([])
+  })
+
+  it("passes custom limit and offset", async () => {
+    mockFetch.mockReturnValue(okResponse([]))
+    await listHistory(10, 20)
+    expect(mockFetch).toHaveBeenCalledWith("/api/history?limit=10&offset=20")
+  })
+
+  it("throws BackendError on non-ok response", async () => {
+    mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
+    await expect(listHistory()).rejects.toBeInstanceOf(BackendError)
+  })
+})
+
+describe("deleteHistoryEntry", () => {
+  it("sends DELETE to /api/history/:id", async () => {
+    mockFetch.mockReturnValue(
+      Promise.resolve({ ok: true, status: 204, json: vi.fn() } as unknown as Response),
+    )
+    await deleteHistoryEntry("entry-1")
+    expect(mockFetch).toHaveBeenCalledWith("/api/history/entry-1", { method: "DELETE" })
+  })
+})
+
+describe("clearHistory", () => {
+  it("sends DELETE to /api/history", async () => {
+    mockFetch.mockReturnValue(
+      Promise.resolve({ ok: true, status: 204, json: vi.fn() } as unknown as Response),
+    )
+    await clearHistory()
+    expect(mockFetch).toHaveBeenCalledWith("/api/history", { method: "DELETE" })
   })
 })
 

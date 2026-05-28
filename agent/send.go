@@ -11,6 +11,7 @@ import (
 	enginehttp "github.com/guillaumedelre/reqlet/engine/http"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/sandbox"
+	"github.com/guillaumedelre/reqlet/engine/storage"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
 
@@ -253,6 +254,18 @@ func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 		result.TestResults = testResult.Tests
 	}
 	result.Mutations = mergeMutations(preResult, testResult)
+
+	if s.storage != nil {
+		reqJSON, _ := json.Marshal(req)
+		respJSON, _ := json.Marshal(result)
+		_ = s.storage.History.Insert(ctx, storage.HistoryEntry{
+			ID:         newID(),
+			Timestamp:  time.Now(),
+			Request:    reqJSON,
+			Response:   respJSON,
+			DurationMs: result.Time,
+		})
+	}
 
 	writeJSON(w, http.StatusOK, result)
 }
