@@ -921,6 +921,30 @@ func TestHandleSend_TestError(t *testing.T) {
 	assert.Equal(t, 200, resp.Status)
 }
 
+func TestHandleSend_TestScript_VisualizerHTML(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newMockRunner(&sandbox.ScriptResult{
+		VisualizerHTML: "<h1>Hello</h1>",
+	})}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		TestScript: `pm.visualizer.set("<h1>Hello</h1>", {})`,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, "<h1>Hello</h1>", resp.VisualizerHTML)
+}
+
 func TestHandleSend_NoSandbox_ScriptsIgnored(t *testing.T) {
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

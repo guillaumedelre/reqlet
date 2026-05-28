@@ -69,6 +69,23 @@ describe("sendRequest", () => {
     expect(result.status).toBe(200)
   })
 
+  it("includes visualizerHtml when present in response", async () => {
+    mockFetch.mockReturnValue(
+      okResponse({
+        status: 200,
+        statusText: "OK",
+        time: 10,
+        size: 0,
+        headers: {},
+        body: "",
+        contentType: "",
+        visualizerHtml: "<h1>Hello</h1>",
+      }),
+    )
+    const result = await sendRequest(minimalReq)
+    expect(result.visualizerHtml).toBe("<h1>Hello</h1>")
+  })
+
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "bad", code: "bad_request" }))
     await expect(sendRequest(minimalReq)).rejects.toBeInstanceOf(BackendError)

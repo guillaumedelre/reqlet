@@ -96,6 +96,36 @@ describe("execute", () => {
   });
 });
 
+describe("pm.visualizer", () => {
+  it("returns null visualizerHtml when not set", async () => {
+    const result = await execute("", "test", emptyCtx);
+    expect(result.visualizerHtml).toBeNull();
+  });
+
+  it("renders Handlebars template with data", async () => {
+    const script = `pm.visualizer.set("<h1>{{title}}</h1>", { title: "Hello" })`;
+    const result = await execute(script, "test", emptyCtx);
+    expect(result.visualizerHtml).toBe("<h1>Hello</h1>");
+  });
+
+  it("returns null visualizerHtml on script error", async () => {
+    const result = await execute("throw new Error('oops')", "test", emptyCtx);
+    expect(result.visualizerHtml).toBeNull();
+  });
+
+  it("renders with empty data when no data arg given", async () => {
+    const script = `pm.visualizer.set("<p>static</p>")`;
+    const result = await execute(script, "test", emptyCtx);
+    expect(result.visualizerHtml).toBe("<p>static</p>");
+  });
+
+  it("returns error HTML on invalid Handlebars template", async () => {
+    const script = `pm.visualizer.set("{{#invalid}}")`;
+    const result = await execute(script, "test", emptyCtx);
+    expect(result.visualizerHtml).toMatch(/Visualizer error/);
+  });
+});
+
 describe("pm.sendRequest", () => {
   let savedFetch;
 

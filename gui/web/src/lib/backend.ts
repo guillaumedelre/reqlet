@@ -47,6 +47,7 @@ export interface SendResponse {
   preRequestError?: string
   testError?: string
   mutations?: VariableMutations
+  visualizerHtml?: string
 }
 
 export class BackendError extends Error {

@@ -2,6 +2,7 @@ import vm from "node:vm";
 import _ from "lodash";
 import moment from "moment";
 import Ajv from "ajv";
+import Handlebars from "handlebars";
 import { buildPm } from "./pm.js";
 
 /**
@@ -68,8 +69,17 @@ export async function execute(script, event, ctx) {
     // Uncaught errors in the script are reported as a failed test.
     const { tests, mutations } = collectResults();
     tests.push({ name: "(script error)", passed: false, error: err.message ?? String(err) });
-    return { tests, mutations };
+    return { tests, mutations, visualizerHtml: null };
   }
 
-  return collectResults();
+  const { tests, mutations, visualizer } = collectResults();
+  let visualizerHtml = null;
+  if (visualizer) {
+    try {
+      visualizerHtml = Handlebars.compile(visualizer.template)(visualizer.data);
+    } catch (err) {
+      visualizerHtml = `<p>Visualizer error: ${err.message}</p>`;
+    }
+  }
+  return { tests, mutations, visualizerHtml };
 }

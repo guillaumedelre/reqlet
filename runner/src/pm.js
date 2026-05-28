@@ -16,6 +16,8 @@ export function buildPm(ctx) {
   };
 
   const tests = [];
+  let _visualizerTemplate = null;
+  let _visualizerData = {};
 
   // ── Variable scopes ──────────────────────────────────────────────────────
 
@@ -125,11 +127,25 @@ export function buildPm(ctx) {
 
     // sendRequest — synchronous-style via async bridge set by executor
     sendRequest: null, // injected by executor
+
+    // Visualizer — stores template and data for Handlebars rendering
+    visualizer: {
+      set: (template, data) => {
+        _visualizerTemplate = template;
+        _visualizerData = data ?? {};
+      },
+    },
   };
 
   return {
     pm,
-    collectResults: () => ({ tests, mutations }),
+    collectResults: () => ({
+      tests,
+      mutations,
+      visualizer: _visualizerTemplate !== null
+        ? { template: _visualizerTemplate, data: _visualizerData }
+        : null,
+    }),
   };
 }
 
