@@ -161,6 +161,42 @@ export async function getVariables(
   return response.json() as Promise<VariablesResponse>
 }
 
+export interface AppSettings {
+  proxyUrl: string
+  proxyUsername: string
+  proxyPassword: string
+  noProxy: string
+  sslVerification: boolean
+}
+
+export async function getSettings(): Promise<AppSettings> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const response = await fetch("/api/settings")
+  if (!response.ok) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "request_failed", err.error ?? "Request failed")
+  }
+  return response.json() as Promise<AppSettings>
+}
+
+export async function putSettings(settings: Partial<AppSettings>): Promise<AppSettings> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const response = await fetch("/api/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  })
+  if (!response.ok) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "request_failed", err.error ?? "Request failed")
+  }
+  return response.json() as Promise<AppSettings>
+}
+
 function isWailsContext(): boolean {
   return (
     typeof window !== "undefined" &&

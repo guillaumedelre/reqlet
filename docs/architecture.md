@@ -110,8 +110,10 @@ Standalone Go HTTP server (`reqlet-agent` binary). It:
 | `GET/POST/PUT/DELETE` | `/api/collections/…` | CRUD + import/export for collections |
 | `GET/POST/PUT/DELETE` | `/api/environments/…` | CRUD + import/export for environments |
 | `GET` | `/api/variables` | Variables by scope for a given collection/environment; supports `?collectionId` and `?environmentId` |
+| `GET` | `/api/settings` | Read application settings (proxy, SSL verification) |
+| `PUT` | `/api/settings` | Partial-update application settings; returns updated settings |
 | `GET` | `/` | Serves the embedded React SPA (`index.html`) |
-| `ANY` | `/api/*` (other) | 404 — remaining routes (history, settings) |
+| `ANY` | `/api/*` (other) | 404 — remaining route (history) |
 
 The frontend auto-detects its runtime context via `gui/web/src/lib/backend.ts`: when
 running inside the Wails WebView it calls `window.go.*`, when served by
