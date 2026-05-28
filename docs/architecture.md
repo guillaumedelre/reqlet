@@ -106,10 +106,11 @@ Standalone Go HTTP server (`reqlet-agent` binary). It:
 | `GET` | `/api/health` | Liveness probe — returns `{"status":"ok"}` (HTTP 200) |
 | `POST` | `/api/send` | Execute an HTTP request via `engine/http`; returns `ResponseData` (status, headers, body, timing) |
 | `DELETE` | `/api/send/{id}` | Cancel an in-progress request by its ID; 204 on success, 404 if not found |
+| `POST` | `/api/sandbox/run` | Execute a script in isolation; returns `{tests, mutations, error}` |
 | `GET/POST/PUT/DELETE` | `/api/collections/…` | CRUD + import/export for collections |
 | `GET/POST/PUT/DELETE` | `/api/environments/…` | CRUD + import/export for environments |
 | `GET` | `/` | Serves the embedded React SPA (`index.html`) |
-| `ANY` | `/api/*` (other) | 404 — remaining routes (history, settings, sandbox) |
+| `ANY` | `/api/*` (other) | 404 — remaining routes (history, settings) |
 
 The frontend auto-detects its runtime context via `gui/web/src/lib/backend.ts`: when
 running inside the Wails WebView it calls `window.go.*`, when served by
