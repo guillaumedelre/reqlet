@@ -40,6 +40,8 @@ export interface RequestBody {
   urlencoded: KeyValuePair[]
   graphqlQuery: string
   graphqlVariables: string
+  binaryFileName?: string
+  binaryFileContent?: string // base64-encoded
 }
 
 export interface RequestSettings {

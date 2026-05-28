@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/net/http2"
+
 	"github.com/guillaumedelre/reqlet/engine/auth"
 	"github.com/guillaumedelre/reqlet/engine/parser"
 	"github.com/guillaumedelre/reqlet/engine/variables"
@@ -28,7 +30,20 @@ type Options struct {
 	Timeout         time.Duration
 	Insecure        bool // skip TLS certificate verification
 	FollowRedirects bool
-	ProxyURL        string
+	// MaxRedirects caps the number of redirects followed when FollowRedirects is true.
+	// 0 uses Go's default (10).
+	MaxRedirects int
+	// FollowOriginalMethod preserves the original HTTP method on 301/302 redirects instead of
+	// converting to GET (which is Go's default behaviour).
+	FollowOriginalMethod bool
+	// FollowAuthHeader keeps the Authorization header on cross-host redirects.
+	// Go strips it by default when the host changes.
+	FollowAuthHeader bool
+	// RemoveReferer drops the Referer header when following redirects.
+	RemoveReferer bool
+	// HTTPVersion forces the HTTP protocol version: "auto" (default), "http1", "http2".
+	HTTPVersion string
+	ProxyURL    string
 	// UseSystemProxy routes traffic through the OS/environment proxy (ProxyFromEnvironment).
 	// Takes precedence over ProxyURL when true.
 	UseSystemProxy bool
@@ -140,6 +155,16 @@ func NewClient(opts Options) (*Client, error) {
 		TLSClientConfig: tlsCfg,
 	}
 
+	switch opts.HTTPVersion {
+	case "http1":
+		// Disable HTTP/2 upgrade so the transport always uses HTTP/1.x.
+		transport.TLSNextProto = make(map[string]func(authority string, c *tls.Conn) nethttp.RoundTripper)
+	case "http2":
+		if err := http2.ConfigureTransport(transport); err != nil {
+			return nil, fmt.Errorf("configure http2 transport: %w", err)
+		}
+	}
+
 	switch {
 	case opts.UseSystemProxy || opts.RespectEnvProxy:
 		transport.Proxy = nethttp.ProxyFromEnvironment
@@ -156,9 +181,32 @@ func NewClient(opts Options) (*Client, error) {
 		Timeout:   opts.Timeout,
 	}
 
-	if !opts.FollowRedirects {
+	switch {
+	case !opts.FollowRedirects:
 		inner.CheckRedirect = func(_ *nethttp.Request, _ []*nethttp.Request) error {
 			return nethttp.ErrUseLastResponse
+		}
+	case opts.MaxRedirects > 0 || opts.FollowOriginalMethod || opts.FollowAuthHeader || opts.RemoveReferer:
+		maxR := opts.MaxRedirects
+		followOriginalMethod := opts.FollowOriginalMethod
+		followAuthHeader := opts.FollowAuthHeader
+		removeReferer := opts.RemoveReferer
+		inner.CheckRedirect = func(req *nethttp.Request, via []*nethttp.Request) error {
+			if maxR > 0 && len(via) >= maxR {
+				return nethttp.ErrUseLastResponse
+			}
+			if followOriginalMethod && len(via) > 0 {
+				req.Method = via[0].Method
+			}
+			if followAuthHeader && len(via) > 0 {
+				if auth := via[len(via)-1].Header.Get("Authorization"); auth != "" {
+					req.Header.Set("Authorization", auth) //nolint:gosec // explicit user opt-in
+				}
+			}
+			if removeReferer {
+				req.Header.Del("Referer")
+			}
+			return nil
 		}
 	}
 
@@ -295,6 +343,12 @@ func buildBody(b *parser.Body, vars *variables.Resolver) (io.Reader, string, err
 			return nil, "", fmt.Errorf("close multipart writer: %w", err)
 		}
 		return &buf, w.FormDataContentType(), nil
+
+	case parser.BodyModeFile:
+		if len(b.File) == 0 {
+			return nil, "application/octet-stream", nil
+		}
+		return bytes.NewReader(b.File), "application/octet-stream", nil
 
 	case parser.BodyModeGraphQL:
 		if b.GraphQL == nil {

@@ -96,6 +96,7 @@ type Header struct {
 type Body struct {
 	Mode       BodyMode          `json:"mode"`
 	Raw        string            `json:"raw,omitempty"`
+	File       []byte            `json:"-"` // binary content for BodyModeFile; not part of Postman JSON
 	FormData   []FormDataParam   `json:"formdata,omitempty"`
 	URLEncoded []URLEncodedParam `json:"urlencoded,omitempty"`
 	GraphQL    *GraphQLBody      `json:"graphql,omitempty"`

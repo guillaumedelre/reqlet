@@ -427,11 +427,29 @@ func TestBuildBody_GraphQL_Nil(t *testing.T) {
 }
 
 func TestBuildBody_UnknownMode(t *testing.T) {
-	b := &parser.Body{Mode: "file"}
+	b := &parser.Body{Mode: "unknown-mode"}
 	r, ct, err := buildBody(b, variables.NewResolver())
 	require.NoError(t, err)
 	assert.Nil(t, r)
 	assert.Empty(t, ct)
+}
+
+func TestBuildBody_FileMode_EmptyContent(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeFile}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	assert.Nil(t, r)
+	assert.Equal(t, "application/octet-stream", ct)
+}
+
+func TestBuildBody_FileMode_WithContent(t *testing.T) {
+	b := &parser.Body{Mode: parser.BodyModeFile, File: []byte("hello binary")}
+	r, ct, err := buildBody(b, variables.NewResolver())
+	require.NoError(t, err)
+	require.NotNil(t, r)
+	assert.Equal(t, "application/octet-stream", ct)
+	data, _ := io.ReadAll(r)
+	assert.Equal(t, []byte("hello binary"), data)
 }
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
@@ -986,6 +1004,184 @@ func TestNewClient_SystemProxyTakesPrecedenceOverURL(t *testing.T) {
 	c, err := NewClient(Options{UseSystemProxy: true, ProxyURL: "http://ignored:3128"})
 	require.NoError(t, err)
 	require.NotNil(t, c)
+}
+
+// ── HTTP version ──────────────────────────────────────────────────────────────
+
+func TestNewClient_HTTP1_DisablesHTTP2(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{HTTPVersion: "http1", Timeout: 5 * time.Second})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	transport := c.inner.Transport.(*http.Transport)
+	assert.NotNil(t, transport.TLSNextProto, "TLSNextProto must be set (non-nil) to disable HTTP/2 upgrade")
+
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestNewClient_HTTP2_OK(t *testing.T) {
+	c, err := NewClient(Options{HTTPVersion: "http2", Timeout: 5 * time.Second})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+}
+
+func TestNewClient_HTTP_Auto_OK(t *testing.T) {
+	c, err := NewClient(Options{HTTPVersion: "auto"})
+	require.NoError(t, err)
+	require.NotNil(t, c)
+
+	c2, err := NewClient(Options{HTTPVersion: ""})
+	require.NoError(t, err)
+	require.NotNil(t, c2)
+}
+
+// ── Redirect options ──────────────────────────────────────────────────────────
+
+func TestExecute_MaxRedirects_StopsAtLimit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/r1":
+			http.Redirect(w, r, "/r2", http.StatusFound)
+		case "/r2":
+			http.Redirect(w, r, "/r3", http.StatusFound)
+		case "/r3":
+			http.Redirect(w, r, "/final", http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, MaxRedirects: 2, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/r1"), newVars(), nil)
+	require.NoError(t, err)
+	// After following /r1→/r2 (1 hop) and /r2→/r3 (2 hops), len(via)==2 >= MaxRedirects==2,
+	// so CheckRedirect returns ErrUseLastResponse and the /r2 302 response is returned.
+	assert.Equal(t, http.StatusFound, resp.StatusCode)
+}
+
+func TestExecute_FollowOriginalMethod_POST_Preserved(t *testing.T) {
+	var receivedMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/final", http.StatusMovedPermanently)
+			return
+		}
+		receivedMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, FollowOriginalMethod: true, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	req := parseRequest("POST", srv.URL+"/redirect")
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "POST", receivedMethod, "final endpoint must receive POST, not GET")
+}
+
+func TestExecute_FollowOriginalMethod_DefaultConvertsToGET(t *testing.T) {
+	var receivedMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/final", http.StatusMovedPermanently)
+			return
+		}
+		receivedMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, FollowOriginalMethod: false, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	req := parseRequest("POST", srv.URL+"/redirect")
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "GET", receivedMethod, "Go default behavior converts POST 301 to GET")
+}
+
+func TestExecute_FollowAuthHeader_ForwardedOnCrossHostRedirect(t *testing.T) {
+	var receivedAuth string
+	srvB := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srvB.Close()
+
+	srvA := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, srvB.URL+"/final", http.StatusFound)
+	}))
+	defer srvA.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, FollowAuthHeader: true, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	req := &parser.Request{
+		Method: "GET",
+		URL:    parser.URL{Raw: srvA.URL + "/start"},
+		Header: []parser.Header{
+			{Key: "Authorization", Value: "Bearer test-token"},
+		},
+	}
+	resp, err := c.Execute(context.Background(), req, newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "Bearer test-token", receivedAuth, "Authorization header must be forwarded to redirect target")
+}
+
+func TestExecute_RemoveReferer_DropsHeader(t *testing.T) {
+	var receivedReferer string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/step1" {
+			http.Redirect(w, r, "/step2", http.StatusFound)
+			return
+		}
+		receivedReferer = r.Header.Get("Referer")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, RemoveReferer: true, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/step1"), newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, receivedReferer, "Referer header must be removed when RemoveReferer is true")
+}
+
+func TestExecute_RemoveReferer_False_KeepsReferer(t *testing.T) {
+	var receivedReferer string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/step1" {
+			http.Redirect(w, r, "/step2", http.StatusFound)
+			return
+		}
+		receivedReferer = r.Header.Get("Referer")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c, err := NewClient(Options{FollowRedirects: true, RemoveReferer: false, Timeout: 5 * time.Second})
+	require.NoError(t, err)
+
+	resp, err := c.Execute(context.Background(), parseRequest("GET", srv.URL+"/step1"), newVars(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.NotEmpty(t, receivedReferer, "Referer header must be kept when RemoveReferer is false")
 }
 
 // ── decodeBase64 ──────────────────────────────────────────────────────────────

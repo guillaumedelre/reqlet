@@ -251,3 +251,79 @@ describe("putSettings", () => {
     await expect(putSettings({ sslVerification: false })).rejects.toBeInstanceOf(BackendError)
   })
 })
+
+describe("sendRequest — new optional fields", () => {
+  const emptyResp = {
+    status: 200,
+    statusText: "OK",
+    time: 0,
+    size: 0,
+    headers: {},
+    body: "",
+    contentType: "",
+  }
+
+  function parsedBody(callIndex = 0): Record<string, unknown> {
+    return JSON.parse(mockFetch.mock.calls[callIndex][1].body as string) as Record<string, unknown>
+  }
+
+  beforeEach(() => {
+    mockFetch.mockReturnValue(okResponse(emptyResp))
+  })
+
+  it("serializes bodyBinaryContent and bodyBinaryName when provided", async () => {
+    await sendRequest({ ...minimalReq, bodyBinaryContent: "aGVsbG8=", bodyBinaryName: "file.bin" })
+    const body = parsedBody()
+    expect(body.bodyBinaryContent).toBe("aGVsbG8=")
+    expect(body.bodyBinaryName).toBe("file.bin")
+  })
+
+  it("serializes httpVersion when provided", async () => {
+    await sendRequest({ ...minimalReq, httpVersion: "http1" })
+    const body = parsedBody()
+    expect(body.httpVersion).toBe("http1")
+  })
+
+  it("serializes redirect flags when provided", async () => {
+    await sendRequest({
+      ...minimalReq,
+      maxRedirects: 5,
+      followOriginalMethod: true,
+      followAuthHeader: false,
+      removeReferer: true,
+    })
+    const body = parsedBody()
+    expect(body.maxRedirects).toBe(5)
+    expect(body.followOriginalMethod).toBe(true)
+    expect(body.followAuthHeader).toBe(false)
+    expect(body.removeReferer).toBe(true)
+  })
+
+  it("serializes per-request proxy fields when provided", async () => {
+    await sendRequest({
+      ...minimalReq,
+      requestProxyUrl: "http://proxy:8080",
+      requestProxyUsername: "user",
+      requestProxyPassword: "pass",
+    })
+    const body = parsedBody()
+    expect(body.requestProxyUrl).toBe("http://proxy:8080")
+    expect(body.requestProxyUsername).toBe("user")
+    expect(body.requestProxyPassword).toBe("pass")
+  })
+
+  it("omits undefined optional fields from the payload", async () => {
+    await sendRequest(minimalReq)
+    const body = parsedBody()
+    expect(body.bodyBinaryContent).toBeUndefined()
+    expect(body.bodyBinaryName).toBeUndefined()
+    expect(body.httpVersion).toBeUndefined()
+    expect(body.maxRedirects).toBeUndefined()
+    expect(body.followOriginalMethod).toBeUndefined()
+    expect(body.followAuthHeader).toBeUndefined()
+    expect(body.removeReferer).toBeUndefined()
+    expect(body.requestProxyUrl).toBeUndefined()
+    expect(body.requestProxyUsername).toBeUndefined()
+    expect(body.requestProxyPassword).toBeUndefined()
+  })
+})
