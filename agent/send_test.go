@@ -1339,6 +1339,268 @@ func TestHandleSend_NewClientError_BadProxyURL(t *testing.T) {
 	assert.Equal(t, "internal_error", errBody.Code)
 }
 
+// ── Binary body ──────────────────────────────────────────────────────────────
+
+func TestBuildParserReq_BinaryBody_ValidBase64(t *testing.T) {
+	req := sendReq{
+		Method:            "POST",
+		URL:               "https://example.com",
+		BodyType:          "binary",
+		BodyBinaryContent: base64.StdEncoding.EncodeToString([]byte("hello")),
+	}
+	pr := buildParserReq(req)
+	require.NotNil(t, pr.Body)
+	assert.Equal(t, "file", string(pr.Body.Mode))
+	assert.Equal(t, []byte("hello"), pr.Body.File)
+}
+
+func TestBuildParserReq_BinaryBody_EmptyContent(t *testing.T) {
+	req := sendReq{
+		Method:            "POST",
+		URL:               "https://example.com",
+		BodyType:          "binary",
+		BodyBinaryContent: "",
+	}
+	pr := buildParserReq(req)
+	assert.Nil(t, pr.Body)
+}
+
+func TestBuildParserReq_BinaryBody_InvalidBase64(t *testing.T) {
+	req := sendReq{
+		Method:            "POST",
+		URL:               "https://example.com",
+		BodyType:          "binary",
+		BodyBinaryContent: "not-valid-base64!!!",
+	}
+	pr := buildParserReq(req)
+	assert.Nil(t, pr.Body)
+}
+
+func TestHandleSend_BinaryBody_SentAsOctetStream(t *testing.T) {
+	var receivedCT, receivedBody string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		receivedBody = buf.String()
+		receivedCT = r.Header.Get("Content-Type")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:            "POST",
+		URL:               target.URL,
+		BodyType:          "binary",
+		BodyBinaryContent: base64.StdEncoding.EncodeToString([]byte("hello file")),
+		FollowRedirects:   true,
+		SslVerification:   true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "hello file", receivedBody)
+	assert.Equal(t, "application/octet-stream", receivedCT)
+}
+
+// ── Per-request proxy ─────────────────────────────────────────────────────────
+
+func TestHandleSend_PerRequestProxy_OverridesGlobal(t *testing.T) {
+	// A broken global proxy would make NewClient fail with a 500.
+	// When RequestProxyURL is set, it overrides the global — NewClient must not fail.
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s, st := testServerWithStorage(t)
+	require.NoError(t, st.Settings.Set(t.Context(), settingKeyProxyURL, "http://[::1")) // invalid — would cause 500
+	mux := s.newMux(testFS())
+
+	// Without per-request override: the global bad proxy causes a 500.
+	body, _ := json.Marshal(sendReq{
+		Method: "GET", URL: "http://localhost:1",
+		FollowRedirects: true, SslVerification: true,
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code, "broken global proxy must produce 500")
+
+	// With per-request override: a valid proxy URL replaces the broken global.
+	// NewClient succeeds (even if the proxy itself is unreachable → network error, not 500).
+	body2, _ := json.Marshal(sendReq{
+		Method: "GET", URL: "http://localhost:1",
+		FollowRedirects: true,
+		SslVerification: true,
+		RequestProxyURL: "http://proxy.example.com:8080", // valid URL, not reachable
+	})
+	req2 := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body2))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+	mux.ServeHTTP(w2, req2)
+	assert.NotEqual(t, http.StatusInternalServerError, w2.Code, "per-request proxy must bypass the broken global proxy")
+}
+
+func TestHandleSend_PerRequestProxy_WithCredentials(t *testing.T) {
+	// Verify that proxy credentials are accepted without error at NewClient construction.
+	// The target may be unreachable through the proxy (network error), but not a 500 internal_error.
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:               "GET",
+		URL:                  target.URL,
+		FollowRedirects:      true,
+		SslVerification:      true,
+		RequestProxyURL:      "http://myproxy:3128",
+		RequestProxyUsername: "alice",
+		RequestProxyPassword: "secret",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	// NewClient construction must succeed — result is either 200 (direct) or network error (422), never 500.
+	assert.NotEqual(t, http.StatusInternalServerError, w.Code)
+	var errBody errResp
+	_ = json.NewDecoder(w.Body).Decode(&errBody)
+	assert.NotEqual(t, "internal_error", errBody.Code)
+}
+
+// ── HTTPVersion ───────────────────────────────────────────────────────────────
+
+func TestHandleSend_HTTPVersion_HTTP1_Accepted(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL,
+		HTTPVersion:     "http1",
+		FollowRedirects: true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 200, resp.Status)
+}
+
+// ── MaxRedirects ──────────────────────────────────────────────────────────────
+
+func TestHandleSend_MaxRedirects_LimitsFollow(t *testing.T) {
+	// Chain: /r1 → /r2 → 200. With MaxRedirects=1, after following /r1→/r2 (1 hop),
+	// CheckRedirect stops and returns the /r1 302 response.
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/r1":
+			http.Redirect(w, r, "/r2", http.StatusFound)
+		case "/r2":
+			http.Redirect(w, r, "/final", http.StatusFound)
+		default:
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL + "/r1",
+		FollowRedirects: true,
+		MaxRedirects:    1,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, http.StatusFound, resp.Status)
+}
+
+// ── FollowOriginalMethod ──────────────────────────────────────────────────────
+
+func TestHandleSend_FollowOriginalMethod_PreservesPost(t *testing.T) {
+	var receivedMethod string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/redirect" {
+			http.Redirect(w, r, "/final", http.StatusMovedPermanently)
+			return
+		}
+		receivedMethod = r.Method
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:               "POST",
+		URL:                  target.URL + "/redirect",
+		FollowRedirects:      true,
+		FollowOriginalMethod: true,
+		SslVerification:      true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 200, resp.Status)
+	assert.Equal(t, "POST", receivedMethod)
+}
+
+// ── RemoveReferer ─────────────────────────────────────────────────────────────
+
+func TestHandleSend_RemoveReferer_DropsHeader(t *testing.T) {
+	var receivedReferer string
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/step1" {
+			http.Redirect(w, r, "/step2", http.StatusFound)
+			return
+		}
+		receivedReferer = r.Header.Get("Referer")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	body := sendReq{
+		Method:          "GET",
+		URL:             target.URL + "/step1",
+		FollowRedirects: true,
+		RemoveReferer:   true,
+		SslVerification: true,
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	(&server{}).handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 200, resp.Status)
+	assert.Empty(t, receivedReferer)
+}
+
 // ── engineauth.New error (bearer with empty token) ───────────────────────────
 
 func TestHandleSend_AuthError_EmptyBearerToken(t *testing.T) {
