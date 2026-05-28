@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/guillaumedelre/reqlet/engine/sandbox"
@@ -22,6 +23,7 @@ type server struct {
 	collections  *jsonStore
 	environments *jsonStore
 	sandbox      sandbox.Runner
+	cancels      sync.Map // key: requestID string, value: context.CancelFunc
 }
 
 func (s *server) newMux(webContent fs.FS) http.Handler {
@@ -32,6 +34,7 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/api/send", s.handleSend)
+	mux.HandleFunc("DELETE /api/send/{id}", s.cancelSend)
 
 	mux.HandleFunc("GET /api/collections", s.listCollections)
 	mux.HandleFunc("POST /api/collections", s.createCollection)

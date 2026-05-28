@@ -76,6 +76,17 @@ export async function sendRequest(req: SendRequest): Promise<SendResponse> {
   return response.json() as Promise<SendResponse>
 }
 
+export async function cancelRequest(id: string): Promise<void> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const response = await fetch(`/api/send/${encodeURIComponent(id)}`, { method: "DELETE" })
+  if (!response.ok && response.status !== 404) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "cancel_failed", err.error ?? "Cancel failed")
+  }
+}
+
 function isWailsContext(): boolean {
   return (
     typeof window !== "undefined" &&

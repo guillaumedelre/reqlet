@@ -1015,3 +1015,85 @@ func TestHandleSend_BothScripts_MutationsMerged(t *testing.T) {
 	assert.Equal(t, "from-test", resp.Mutations.Environment["shared"]) // test overrides pre
 	assert.Equal(t, "val2", resp.Mutations.Environment["test"])
 }
+
+// ---------- cancelSend ----------
+
+func TestCancelSend_NotFound(t *testing.T) {
+	mux := testServer(t).newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodDelete, "/api/send/unknown-id", nil))
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	var body errResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&body))
+	assert.Equal(t, "not_found", body.Code)
+}
+
+func TestCancelSend_InFlight(t *testing.T) {
+	// Target that blocks until the client disconnects (context cancelled).
+	started := make(chan struct{})
+	target := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer target.Close()
+
+	s := testServer(t)
+	mux := s.newMux(testFS())
+
+	reqID := "inflight-1"
+	body, _ := json.Marshal(sendReq{
+		Method: "GET", URL: target.URL,
+		FollowRedirects: true, SslVerification: true,
+		RequestID: reqID,
+	})
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	postReq.Header.Set("Content-Type", "application/json")
+	postW := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		mux.ServeHTTP(postW, postReq)
+	}()
+
+	<-started // target received the request; cancel is already registered
+
+	cancelReq := httptest.NewRequest(http.MethodDelete, "/api/send/"+reqID, nil)
+	cancelW := httptest.NewRecorder()
+	mux.ServeHTTP(cancelW, cancelReq)
+	assert.Equal(t, http.StatusNoContent, cancelW.Code)
+
+	<-done
+	assert.Equal(t, http.StatusUnprocessableEntity, postW.Code)
+}
+
+func TestCancelSend_CleanupAfterCompletion(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := testServer(t)
+	mux := s.newMux(testFS())
+
+	reqID := "completed-1"
+	body, _ := json.Marshal(sendReq{
+		Method: "GET", URL: target.URL,
+		FollowRedirects: true, SslVerification: true,
+		RequestID: reqID,
+	})
+
+	postReq := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(body))
+	postReq.Header.Set("Content-Type", "application/json")
+	postW := httptest.NewRecorder()
+	mux.ServeHTTP(postW, postReq)
+	require.Equal(t, http.StatusOK, postW.Code)
+
+	// After completion the cancel entry must be gone.
+	cancelReq := httptest.NewRequest(http.MethodDelete, "/api/send/"+reqID, nil)
+	cancelW := httptest.NewRecorder()
+	mux.ServeHTTP(cancelW, cancelReq)
+	assert.Equal(t, http.StatusNotFound, cancelW.Code)
+}
