@@ -87,6 +87,47 @@ export async function cancelRequest(id: string): Promise<void> {
   }
 }
 
+export interface RunScriptRequest {
+  script: string
+  event?: "prerequest" | "test"
+  variables?: {
+    globals?: Record<string, string>
+    environment?: Record<string, string>
+    collectionVariables?: Record<string, string>
+  }
+  request?: { url: string; method: string; headers: Record<string, string>; body: string }
+  response?: {
+    status: string
+    code: number
+    responseTime: number
+    responseSize: number
+    headers: Record<string, string>
+    body: string
+  }
+}
+
+export interface RunScriptResponse {
+  tests: TestResult[]
+  mutations?: VariableMutations
+  error?: string
+}
+
+export async function runScript(req: RunScriptRequest): Promise<RunScriptResponse> {
+  if (isWailsContext()) {
+    throw new BackendError("not_implemented", "Wails bindings not yet implemented")
+  }
+  const response = await fetch("/api/sandbox/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  })
+  if (!response.ok) {
+    const err = (await response.json()) as { error: string; code: string }
+    throw new BackendError(err.code ?? "sandbox_failed", err.error ?? "Script execution failed")
+  }
+  return response.json() as Promise<RunScriptResponse>
+}
+
 function isWailsContext(): boolean {
   return (
     typeof window !== "undefined" &&

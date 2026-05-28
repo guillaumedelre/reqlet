@@ -52,6 +52,8 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 	mux.HandleFunc("PUT /api/environments/{id}", s.updateEnvironment)
 	mux.HandleFunc("DELETE /api/environments/{id}", s.deleteEnvironment)
 
+	mux.HandleFunc("POST /api/sandbox/run", s.handleSandboxRun)
+
 	mux.Handle("/api/", http.NotFoundHandler())
 	mux.Handle("/", spaHandler(webContent))
 	return mux
