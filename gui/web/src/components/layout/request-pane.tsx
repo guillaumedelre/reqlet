@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react"
 import { Send, Plus, Trash2, Loader2 } from "lucide-react"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
-import { useVariableScope } from "@/hooks/use-variable-scope"
+import { useVariableScope, applyVariables } from "@/hooks/use-variable-scope"
 import { CodeSnippets } from "@/components/code-gen-dialog"
 import { CodeEditor } from "@/components/ui/code-editor"
 import { Button } from "@/components/ui/button"
@@ -536,7 +536,7 @@ function ScriptsTab({
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
-            {t === "pre-request" ? "Pre-request Script" : "Tests"}
+            {t === "pre-request" ? "Pre-request" : "Post-response"}
             {t === "test" && testScript && (
               <Badge variant="secondary" className="ml-1.5 h-4 text-[9px] px-1">
                 JS
@@ -904,20 +904,26 @@ export function RequestPane() {
     [activeTabId, updateTabRequest],
   )
 
+  const resolveStr = (s: string) => applyVariables(s, resolvedMap)
+
   const handleSend = async () => {
     if (!request) return
     updateTab(activeTabId, { isSending: true, response: null })
     try {
       const resp = await sendRequest({
         method: request.method,
-        url: request.url,
-        headers: request.headers.map((h) => ({ key: h.key, value: h.value, enabled: h.enabled })),
+        url: resolveStr(request.url),
+        headers: request.headers.map((h) => ({
+          key: h.key,
+          value: resolveStr(h.value),
+          enabled: h.enabled,
+        })),
         bodyType: request.body.type,
-        bodyRaw: request.body.raw,
+        bodyRaw: resolveStr(request.body.raw),
         bodyRawContentType: request.body.rawContentType,
         bodyFormData: request.body.formData.map((h) => ({
           key: h.key,
-          value: h.value,
+          value: resolveStr(h.value),
           enabled: h.enabled,
           valueType: h.valueType,
           fileName: h.fileName,
@@ -925,11 +931,11 @@ export function RequestPane() {
         })),
         bodyUrlencoded: request.body.urlencoded.map((h) => ({
           key: h.key,
-          value: h.value,
+          value: resolveStr(h.value),
           enabled: h.enabled,
         })),
-        bodyGraphQLQuery: request.body.graphqlQuery,
-        bodyGraphQLVariables: request.body.graphqlVariables,
+        bodyGraphQLQuery: request.body.graphqlQuery ? resolveStr(request.body.graphqlQuery) : undefined,
+        bodyGraphQLVariables: request.body.graphqlVariables ? resolveStr(request.body.graphqlVariables) : undefined,
         auth: request.auth,
         followRedirects: request.settings?.followRedirects ?? true,
         sslVerification: request.settings?.sslVerify ?? true,

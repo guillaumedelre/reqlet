@@ -415,12 +415,12 @@ The **Code** sub-tab renders the current request as a ready-to-paste snippet in 
 
 Each snippet is rendered in a read-only `CodeEditor` (Monaco) so syntax highlighting works out of the box. A copy button in the top-right corner writes the current snippet to the clipboard.
 
-#### Pre-request Script and Tests tabs
+#### Pre-request and Post-response tabs
 
 Each request exposes two JavaScript editor tabs (matching the Postman model):
 
-- **Pre-request Script** — runs before the request is sent. Language: JavaScript.
-- **Tests** — runs after the response is received. Language: JavaScript.
+- **Pre-request** — runs before the request is sent. Language: JavaScript.
+- **Post-response** — runs after the response is received. Language: JavaScript.
 
 Both use `CodeEditor` in JavaScript mode. Their content is stored in `preRequestScript` and
 `testScript` on the tab (Zustand store, persisted). Execution requires the runner

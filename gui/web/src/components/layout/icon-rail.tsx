@@ -1,8 +1,7 @@
-import { FolderOpen, Globe2, Clock3, Plus } from "lucide-react"
+import { FolderOpen, Globe2, Clock3 } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { cn } from "@/lib/utils"
 import { useUiStore, type SidePanel } from "@/store/ui"
-import { useTabsStore } from "@/store/tabs"
 
 interface RailItemProps {
   icon: React.ReactNode
@@ -37,7 +36,6 @@ function RailItem({ icon, label, active, onClick }: RailItemProps) {
 
 export function IconRail() {
   const { activePanel, togglePanel } = useUiStore()
-  const { openNewTab } = useTabsStore()
 
   const panels: { panel: SidePanel; icon: React.ReactNode; label: string }[] = [
     {
@@ -66,21 +64,6 @@ export function IconRail() {
       ))}
 
       <div className="flex-1" />
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            onClick={openNewTab}
-            className="w-9 h-9 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-150"
-            aria-label="New Request"
-          >
-            <Plus className="h-[17px] w-[17px]" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="text-xs">
-          New Request
-        </TooltipContent>
-      </Tooltip>
     </div>
   )
 }
