@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/guillaumedelre/reqlet/engine/sandbox"
 )
 
 //go:embed all:web
@@ -19,6 +21,7 @@ var webFS embed.FS
 type server struct {
 	collections  *jsonStore
 	environments *jsonStore
+	sandbox      sandbox.Runner
 }
 
 func (s *server) newMux(webContent fs.FS) http.Handler {
@@ -28,7 +31,7 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("/api/send", handleSend)
+	mux.HandleFunc("/api/send", s.handleSend)
 
 	mux.HandleFunc("GET /api/collections", s.listCollections)
 	mux.HandleFunc("POST /api/collections", s.createCollection)
@@ -105,7 +108,24 @@ func main() {
 		log.Fatal(err)
 	}
 
-	s := &server{collections: colStore, environments: envStore}
+	var sbRunner sandbox.Runner
+	runnerPath := os.Getenv("REQLET_RUNNER_PATH")
+	if runnerPath == "" {
+		runnerPath = "runner/src/index.js"
+	}
+	if _, statErr := os.Stat(runnerPath); statErr == nil { //nolint:gosec // path from trusted env var REQLET_RUNNER_PATH
+		r, initErr := sandbox.NewRunner(runnerPath)
+		if initErr != nil {
+			log.Printf("warning: sandbox init failed: %v", initErr)
+		} else {
+			sbRunner = r
+			log.Printf("sandbox runner initialized from %s", runnerPath) //nolint:gosec // env var value, controlled by operator
+		}
+	} else {
+		log.Printf("sandbox runner not found at %s, scripts disabled", runnerPath) //nolint:gosec // env var value, controlled by operator
+	}
+
+	s := &server{collections: colStore, environments: envStore, sandbox: sbRunner}
 
 	srv := &http.Server{
 		Addr:         addr,

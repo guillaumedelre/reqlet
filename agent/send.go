@@ -9,25 +9,43 @@ import (
 	engineauth "github.com/guillaumedelre/reqlet/engine/auth"
 	enginehttp "github.com/guillaumedelre/reqlet/engine/http"
 	"github.com/guillaumedelre/reqlet/engine/parser"
+	"github.com/guillaumedelre/reqlet/engine/sandbox"
 	"github.com/guillaumedelre/reqlet/engine/variables"
 )
 
+type sendVariables struct {
+	Globals             map[string]string `json:"globals,omitempty"`
+	Environment         map[string]string `json:"environment,omitempty"`
+	CollectionVariables map[string]string `json:"collectionVariables,omitempty"`
+}
+
+type sendMutations struct {
+	Globals             map[string]string `json:"globals,omitempty"`
+	Environment         map[string]string `json:"environment,omitempty"`
+	CollectionVariables map[string]string `json:"collectionVariables,omitempty"`
+}
+
 type sendReq struct {
-	Method               string   `json:"method"`
-	URL                  string   `json:"url"`
-	Headers              []kvItem `json:"headers"`
-	BodyType             string   `json:"bodyType"`
-	BodyRaw              string   `json:"bodyRaw"`
-	BodyRawContentType   string   `json:"bodyRawContentType"`
-	BodyFormData         []kvItem `json:"bodyFormData"`
-	BodyUrlencoded       []kvItem `json:"bodyUrlencoded"`
-	BodyGraphQLQuery     string   `json:"bodyGraphQLQuery"`
-	BodyGraphQLVariables string   `json:"bodyGraphQLVariables"`
-	Auth                 *authCfg `json:"auth,omitempty"`
-	FollowRedirects      bool     `json:"followRedirects"`
-	SslVerification      bool     `json:"sslVerification"`
-	Timeout              int      `json:"timeout"` // milliseconds, 0 = no timeout
-	IgnoreProxy          bool     `json:"ignoreProxy"`
+	Method               string        `json:"method"`
+	URL                  string        `json:"url"`
+	Headers              []kvItem      `json:"headers"`
+	BodyType             string        `json:"bodyType"`
+	BodyRaw              string        `json:"bodyRaw"`
+	BodyRawContentType   string        `json:"bodyRawContentType"`
+	BodyFormData         []kvItem      `json:"bodyFormData"`
+	BodyUrlencoded       []kvItem      `json:"bodyUrlencoded"`
+	BodyGraphQLQuery     string        `json:"bodyGraphQLQuery"`
+	BodyGraphQLVariables string        `json:"bodyGraphQLVariables"`
+	Auth                 *authCfg      `json:"auth,omitempty"`
+	FollowRedirects      bool          `json:"followRedirects"`
+	SslVerification      bool          `json:"sslVerification"`
+	Timeout              int           `json:"timeout"` // milliseconds, 0 = no timeout
+	IgnoreProxy          bool          `json:"ignoreProxy"`
+	PreRequestScript     string        `json:"preRequestScript,omitempty"`
+	TestScript           string        `json:"testScript,omitempty"`
+	Variables            sendVariables `json:"variables,omitempty"`
+	RequestName          string        `json:"requestName,omitempty"`
+	RequestID            string        `json:"requestId,omitempty"`
 }
 
 type kvItem struct {
@@ -80,13 +98,17 @@ type awsSigCfg struct {
 }
 
 type sendResp struct {
-	Status      int               `json:"status"`
-	StatusText  string            `json:"statusText"`
-	Time        int64             `json:"time"` // milliseconds
-	Size        int               `json:"size"`
-	Headers     map[string]string `json:"headers"`
-	Body        string            `json:"body"`
-	ContentType string            `json:"contentType"`
+	Status          int                  `json:"status"`
+	StatusText      string               `json:"statusText"`
+	Time            int64                `json:"time"` // milliseconds
+	Size            int                  `json:"size"`
+	Headers         map[string]string    `json:"headers"`
+	Body            string               `json:"body"`
+	ContentType     string               `json:"contentType"`
+	TestResults     []sandbox.TestResult `json:"testResults,omitempty"`
+	PreRequestError string               `json:"preRequestError,omitempty"`
+	TestError       string               `json:"testError,omitempty"`
+	Mutations       *sendMutations       `json:"mutations,omitempty"`
 }
 
 type errResp struct {
@@ -94,7 +116,7 @@ type errResp struct {
 	Code  string `json:"code"`
 }
 
-func handleSend(w http.ResponseWriter, r *http.Request) {
+func (s *server) handleSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeJSON(w, http.StatusMethodNotAllowed, errResp{Error: "method not allowed", Code: "bad_request"})
 		return
@@ -104,6 +126,26 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errResp{Error: "invalid request body: " + err.Error(), Code: "bad_request"})
 		return
+	}
+
+	var preResult *sandbox.ScriptResult
+	var preReqErr string
+
+	if s.sandbox != nil && req.PreRequestScript != "" {
+		sctx := buildScriptContext(req, "prerequest", nil)
+		res, err := s.sandbox.Execute(r.Context(), req.PreRequestScript, "prerequest", sctx)
+		if err != nil {
+			preReqErr = err.Error()
+		} else {
+			preResult = res
+			if res.Mutations.SkipRequest {
+				writeJSON(w, http.StatusOK, sendResp{
+					PreRequestError: preReqErr,
+					Mutations:       mutsToSend(res.Mutations),
+				})
+				return
+			}
+		}
 	}
 
 	opts := enginehttp.DefaultOptions()
@@ -143,15 +185,159 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, sendResp{
-		Status:      resp.StatusCode,
-		StatusText:  http.StatusText(resp.StatusCode),
-		Time:        resp.Duration.Milliseconds(),
-		Size:        len(resp.Body),
-		Headers:     headers,
-		Body:        string(resp.Body),
-		ContentType: resp.Headers.Get("Content-Type"),
-	})
+	var testResult *sandbox.ScriptResult
+	var testErr string
+
+	if s.sandbox != nil && req.TestScript != "" {
+		sctx := buildScriptContext(req, "test", &sandbox.ResponseInfo{
+			Status:       http.StatusText(resp.StatusCode),
+			Code:         resp.StatusCode,
+			ResponseTime: resp.Duration.Milliseconds(),
+			ResponseSize: len(resp.Body),
+			Headers:      headers,
+			Body:         string(resp.Body),
+		})
+		if preResult != nil {
+			applyMutsToCtx(sctx, preResult.Mutations)
+		}
+		res, err := s.sandbox.Execute(r.Context(), req.TestScript, "test", sctx)
+		if err != nil {
+			testErr = err.Error()
+		} else {
+			testResult = res
+		}
+	}
+
+	result := sendResp{
+		Status:          resp.StatusCode,
+		StatusText:      http.StatusText(resp.StatusCode),
+		Time:            resp.Duration.Milliseconds(),
+		Size:            len(resp.Body),
+		Headers:         headers,
+		Body:            string(resp.Body),
+		ContentType:     resp.Headers.Get("Content-Type"),
+		PreRequestError: preReqErr,
+		TestError:       testErr,
+	}
+	if testResult != nil {
+		result.TestResults = testResult.Tests
+	}
+	result.Mutations = mergeMutations(preResult, testResult)
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+func copyMap(m map[string]string) map[string]string {
+	c := make(map[string]string, len(m))
+	for k, v := range m {
+		c[k] = v
+	}
+	return c
+}
+
+func buildScriptContext(req sendReq, event string, response *sandbox.ResponseInfo) *sandbox.ScriptContext {
+	return &sandbox.ScriptContext{
+		Globals:             copyMap(req.Variables.Globals),
+		Environment:         copyMap(req.Variables.Environment),
+		CollectionVariables: copyMap(req.Variables.CollectionVariables),
+		IterationData:       map[string]string{},
+		Request: &sandbox.RequestInfo{
+			URL:     req.URL,
+			Method:  req.Method,
+			Headers: kvItemsToHeaderMap(req.Headers),
+			Body:    req.BodyRaw,
+		},
+		Response: response,
+		Info: sandbox.ExecInfo{
+			EventName:   event,
+			RequestName: req.RequestName,
+			RequestID:   req.RequestID,
+		},
+	}
+}
+
+func applyMutsToCtx(sctx *sandbox.ScriptContext, m sandbox.Mutations) {
+	for k, v := range m.Globals {
+		sctx.Globals[k] = v
+	}
+	for k, v := range m.Environment {
+		sctx.Environment[k] = v
+	}
+	for k, v := range m.CollectionVariables {
+		sctx.CollectionVariables[k] = v
+	}
+}
+
+func mutsToSend(m sandbox.Mutations) *sendMutations {
+	if len(m.Globals)+len(m.Environment)+len(m.CollectionVariables) == 0 {
+		return nil
+	}
+	s := &sendMutations{}
+	if len(m.Globals) > 0 {
+		s.Globals = m.Globals
+	}
+	if len(m.Environment) > 0 {
+		s.Environment = m.Environment
+	}
+	if len(m.CollectionVariables) > 0 {
+		s.CollectionVariables = m.CollectionVariables
+	}
+	return s
+}
+
+func mergeMutations(pre, test *sandbox.ScriptResult) *sendMutations {
+	globals := map[string]string{}
+	env := map[string]string{}
+	colVars := map[string]string{}
+
+	if pre != nil {
+		for k, v := range pre.Mutations.Globals {
+			globals[k] = v
+		}
+		for k, v := range pre.Mutations.Environment {
+			env[k] = v
+		}
+		for k, v := range pre.Mutations.CollectionVariables {
+			colVars[k] = v
+		}
+	}
+	if test != nil {
+		// test mutations override pre-request mutations
+		for k, v := range test.Mutations.Globals {
+			globals[k] = v
+		}
+		for k, v := range test.Mutations.Environment {
+			env[k] = v
+		}
+		for k, v := range test.Mutations.CollectionVariables {
+			colVars[k] = v
+		}
+	}
+
+	if len(globals)+len(env)+len(colVars) == 0 {
+		return nil
+	}
+	s := &sendMutations{}
+	if len(globals) > 0 {
+		s.Globals = globals
+	}
+	if len(env) > 0 {
+		s.Environment = env
+	}
+	if len(colVars) > 0 {
+		s.CollectionVariables = colVars
+	}
+	return s
+}
+
+func kvItemsToHeaderMap(items []kvItem) map[string]string {
+	m := make(map[string]string, len(items))
+	for _, h := range items {
+		if h.Enabled && h.Key != "" {
+			m[h.Key] = h.Value
+		}
+	}
+	return m
 }
 
 func buildParserReq(req sendReq) *parser.Request {

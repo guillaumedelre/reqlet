@@ -5,6 +5,9 @@ import { useUiStore } from "@/store/ui"
 export interface VariableScope {
   resolvedMap: Map<string, string>
   allKeys: string[]
+  globals: Record<string, string>
+  environment: Record<string, string>
+  collectionVariables: Record<string, string>
 }
 
 // Substitutes all {{var}} tokens in a string using a pre-resolved variable map.
@@ -52,17 +55,19 @@ export function useVariableScope(collectionId?: string): VariableScope {
   const activeEnvironmentId = useUiStore((s) => s.activeEnvironmentId)
 
   return useMemo(() => {
-    const rawMap = new Map<string, string>()
+    const globalsMap = new Map<string, string>()
+    const colVarsMap = new Map<string, string>()
+    const envMap = new Map<string, string>()
 
     for (const v of globalVariables) {
-      if (v.enabled && v.key) rawMap.set(v.key, v.currentValue || v.initialValue)
+      if (v.enabled && v.key) globalsMap.set(v.key, v.currentValue || v.initialValue)
     }
 
     if (collectionId) {
       const col = collections.find((c) => c.id === collectionId)
       if (col) {
         for (const v of col.variables) {
-          if (v.enabled && v.key) rawMap.set(v.key, v.currentValue || v.initialValue)
+          if (v.enabled && v.key) colVarsMap.set(v.key, v.currentValue || v.initialValue)
         }
       }
     }
@@ -71,13 +76,22 @@ export function useVariableScope(collectionId?: string): VariableScope {
       const env = environments.find((e) => e.id === activeEnvironmentId)
       if (env) {
         for (const v of env.variables) {
-          if (v.enabled && v.key) rawMap.set(v.key, v.currentValue || v.initialValue)
+          if (v.enabled && v.key) envMap.set(v.key, v.currentValue || v.initialValue)
         }
       }
     }
 
+    // Merge with priority: global < collection < environment
+    const rawMap = new Map<string, string>([...globalsMap, ...colVarsMap, ...envMap])
     const resolvedMap = resolveRecursive(rawMap)
     const allKeys = Array.from(rawMap.keys())
-    return { resolvedMap, allKeys }
+
+    return {
+      resolvedMap,
+      allKeys,
+      globals: Object.fromEntries(globalsMap),
+      environment: Object.fromEntries(envMap),
+      collectionVariables: Object.fromEntries(colVarsMap),
+    }
   }, [globalVariables, collections, collectionId, environments, activeEnvironmentId])
 }

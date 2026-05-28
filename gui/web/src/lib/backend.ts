@@ -1,4 +1,4 @@
-import type { AuthConfig } from "@/types"
+import type { AuthConfig, TestResult, VariableMutations } from "@/types"
 
 export interface SendRequest {
   method: string
@@ -23,6 +23,15 @@ export interface SendRequest {
   sslVerification: boolean
   timeout: number
   ignoreProxy: boolean
+  preRequestScript?: string
+  testScript?: string
+  variables?: {
+    globals?: Record<string, string>
+    environment?: Record<string, string>
+    collectionVariables?: Record<string, string>
+  }
+  requestName?: string
+  requestId?: string
 }
 
 export interface SendResponse {
@@ -33,6 +42,10 @@ export interface SendResponse {
   headers: Record<string, string>
   body: string
   contentType: string
+  testResults?: TestResult[]
+  preRequestError?: string
+  testError?: string
+  mutations?: VariableMutations
 }
 
 export class BackendError extends Error {

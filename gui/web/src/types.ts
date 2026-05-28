@@ -207,6 +207,18 @@ export interface Environment {
   variables: EnvVariable[]
 }
 
+export interface TestResult {
+  name: string
+  passed: boolean
+  error?: string
+}
+
+export interface VariableMutations {
+  globals?: Record<string, string>
+  environment?: Record<string, string>
+  collectionVariables?: Record<string, string>
+}
+
 export interface ResponseData {
   status: number
   statusText: string
@@ -215,6 +227,10 @@ export interface ResponseData {
   headers: Record<string, string>
   body: string
   contentType: string
+  testResults?: TestResult[]
+  preRequestError?: string
+  testError?: string
+  mutations?: VariableMutations
 }
 
 export type TabType = "request" | "collection" | "folder" | "environment" | "globals"

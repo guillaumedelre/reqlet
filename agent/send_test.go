@@ -2,12 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/guillaumedelre/reqlet/engine/sandbox"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,7 +24,7 @@ func base64Encode(s string) string {
 func TestHandleSend_WrongMethod(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/send", nil)
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 	assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
 }
 
@@ -28,7 +32,7 @@ func TestHandleSend_BadJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewBufferString("not json"))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp errResp
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
@@ -53,7 +57,7 @@ func TestHandleSend_Success(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	var resp sendResp
@@ -85,7 +89,7 @@ func TestHandleSend_WithHeaders(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "test-value", receivedHeader)
@@ -101,7 +105,7 @@ func TestHandleSend_NetworkError(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 	var resp errResp
@@ -148,7 +152,7 @@ func TestHandleSend_RawBody(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, `{"key":"val"}`, receivedBody)
@@ -178,7 +182,7 @@ func TestHandleSend_FormDataBody(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "reqlet", receivedField)
@@ -207,7 +211,7 @@ func TestHandleSend_UrlencodedBody(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "hello", receivedField)
@@ -230,7 +234,7 @@ func TestHandleSend_Timeout(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
@@ -352,7 +356,7 @@ func TestHandleSend_GraphQLBody(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, receivedBody, "user")
@@ -376,7 +380,7 @@ func TestHandleSend_BearerAuth(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "Bearer my-token", receivedAuth)
@@ -400,7 +404,7 @@ func TestHandleSend_BasicAuth(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "alice", receivedUser)
@@ -517,7 +521,7 @@ func TestHandleSend_FormDataFileBody(t *testing.T) {
 	bodyBytes, _ := json.Marshal(body)
 	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
 	w := httptest.NewRecorder()
-	handleSend(w, req)
+	(&server{}).handleSend(w, req)
 
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "hello.txt", receivedFileName)
@@ -599,4 +603,395 @@ func TestToParserAuth_AWSSignatureWithSessionToken(t *testing.T) {
 	assert.Equal(t, "awsv4", string(a.Type))
 	require.Len(t, a.AWSV4, 5)
 	assert.Equal(t, "sessionToken", a.AWSV4[4].Key)
+}
+
+// ---------- helper function unit tests ----------
+
+func TestCopyMap_Nil(t *testing.T) {
+	r := copyMap(nil)
+	assert.NotNil(t, r)
+	assert.Empty(t, r)
+}
+
+func TestCopyMap_Independence(t *testing.T) {
+	m := map[string]string{"a": "1", "b": "2"}
+	c := copyMap(m)
+	assert.Equal(t, m, c)
+	c["c"] = "3"
+	assert.NotContains(t, m, "c")
+}
+
+func TestKVItemsToHeaderMap(t *testing.T) {
+	items := []kvItem{
+		{Key: "Accept", Value: "application/json", Enabled: true},
+		{Key: "X-Skip", Value: "ignored", Enabled: false},
+		{Key: "", Value: "empty-key", Enabled: true},
+	}
+	m := kvItemsToHeaderMap(items)
+	assert.Len(t, m, 1)
+	assert.Equal(t, "application/json", m["Accept"])
+}
+
+func TestMutsToSend_Empty(t *testing.T) {
+	assert.Nil(t, mutsToSend(sandbox.Mutations{}))
+}
+
+func TestMutsToSend_NonEmpty(t *testing.T) {
+	r := mutsToSend(sandbox.Mutations{
+		Environment:         map[string]string{"k": "v"},
+		CollectionVariables: map[string]string{"c": "w"},
+	})
+	require.NotNil(t, r)
+	assert.Equal(t, "v", r.Environment["k"])
+	assert.Equal(t, "w", r.CollectionVariables["c"])
+	assert.Nil(t, r.Globals)
+}
+
+func TestMergeMutations_BothNil(t *testing.T) {
+	assert.Nil(t, mergeMutations(nil, nil))
+}
+
+func TestMergeMutations_OnlyPre(t *testing.T) {
+	pre := &sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{Globals: map[string]string{"k": "pre"}},
+	}
+	r := mergeMutations(pre, nil)
+	require.NotNil(t, r)
+	assert.Equal(t, "pre", r.Globals["k"])
+}
+
+func TestMergeMutations_TestOverridesPre(t *testing.T) {
+	pre := &sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{Environment: map[string]string{"key": "from-pre", "only-pre": "x"}},
+	}
+	test := &sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{Environment: map[string]string{"key": "from-test", "only-test": "y"}},
+	}
+	r := mergeMutations(pre, test)
+	require.NotNil(t, r)
+	assert.Equal(t, "from-test", r.Environment["key"])
+	assert.Equal(t, "x", r.Environment["only-pre"])
+	assert.Equal(t, "y", r.Environment["only-test"])
+}
+
+func TestMergeMutations_EmptyResult(t *testing.T) {
+	pre := &sandbox.ScriptResult{}
+	test := &sandbox.ScriptResult{}
+	assert.Nil(t, mergeMutations(pre, test))
+}
+
+func TestApplyMutsToCtx(t *testing.T) {
+	sctx := &sandbox.ScriptContext{
+		Globals:             map[string]string{"existing": "old"},
+		Environment:         map[string]string{},
+		CollectionVariables: map[string]string{},
+	}
+	applyMutsToCtx(sctx, sandbox.Mutations{
+		Globals:             map[string]string{"existing": "new", "added": "val"},
+		Environment:         map[string]string{"envKey": "envVal"},
+		CollectionVariables: map[string]string{"colKey": "colVal"},
+	})
+	assert.Equal(t, "new", sctx.Globals["existing"])
+	assert.Equal(t, "val", sctx.Globals["added"])
+	assert.Equal(t, "envVal", sctx.Environment["envKey"])
+	assert.Equal(t, "colVal", sctx.CollectionVariables["colKey"])
+}
+
+func TestBuildScriptContext_Fields(t *testing.T) {
+	req := sendReq{
+		Method:      "POST",
+		URL:         "https://example.com/api",
+		BodyRaw:     `{"k":"v"}`,
+		RequestName: "My Request",
+		RequestID:   "req-abc",
+		Headers:     []kvItem{{Key: "Content-Type", Value: "application/json", Enabled: true}},
+		Variables: sendVariables{
+			Globals:             map[string]string{"g": "1"},
+			Environment:         map[string]string{"e": "2"},
+			CollectionVariables: map[string]string{"c": "3"},
+		},
+	}
+	ctx := buildScriptContext(req, "prerequest", nil)
+
+	assert.Equal(t, "prerequest", ctx.Info.EventName)
+	assert.Equal(t, "My Request", ctx.Info.RequestName)
+	assert.Equal(t, "req-abc", ctx.Info.RequestID)
+	assert.Equal(t, "POST", ctx.Request.Method)
+	assert.Equal(t, "https://example.com/api", ctx.Request.URL)
+	assert.Equal(t, `{"k":"v"}`, ctx.Request.Body)
+	assert.Equal(t, "application/json", ctx.Request.Headers["Content-Type"])
+	assert.Equal(t, "1", ctx.Globals["g"])
+	assert.Equal(t, "2", ctx.Environment["e"])
+	assert.Equal(t, "3", ctx.CollectionVariables["c"])
+	assert.Nil(t, ctx.Response)
+}
+
+func TestBuildScriptContext_CopiesVariables(t *testing.T) {
+	req := sendReq{
+		Variables: sendVariables{Globals: map[string]string{"k": "original"}},
+	}
+	ctx := buildScriptContext(req, "test", nil)
+	req.Variables.Globals["k"] = "mutated"
+	assert.Equal(t, "original", ctx.Globals["k"])
+}
+
+func TestBuildScriptContext_NilVariables(t *testing.T) {
+	req := sendReq{}
+	ctx := buildScriptContext(req, "test", nil)
+	assert.NotNil(t, ctx.Globals)
+	assert.NotNil(t, ctx.Environment)
+	assert.NotNil(t, ctx.CollectionVariables)
+}
+
+// ---------- mock sandbox runner ----------
+
+type mockRunner struct {
+	results []mockExecResult
+	calls   int
+}
+
+type mockExecResult struct {
+	result *sandbox.ScriptResult
+	err    error
+}
+
+func (m *mockRunner) Execute(_ context.Context, _, _ string, _ *sandbox.ScriptContext) (*sandbox.ScriptResult, error) {
+	if m.calls >= len(m.results) {
+		return &sandbox.ScriptResult{}, nil
+	}
+	r := m.results[m.calls]
+	m.calls++
+	return r.result, r.err
+}
+
+func (m *mockRunner) Close() error { return nil }
+
+func newMockRunner(results ...*sandbox.ScriptResult) *mockRunner {
+	mr := &mockRunner{}
+	for _, r := range results {
+		mr.results = append(mr.results, mockExecResult{result: r})
+	}
+	return mr
+}
+
+func newErrRunner(err error) *mockRunner {
+	return &mockRunner{results: []mockExecResult{{err: err}}}
+}
+
+// ---------- handleSend with sandbox ----------
+
+func TestHandleSend_PreRequestScript_SetsVariables(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newMockRunner(&sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{Environment: map[string]string{"token": "abc"}},
+	})}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		PreRequestScript: "pm.environment.set('token','abc')",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.NotNil(t, resp.Mutations)
+	assert.Equal(t, "abc", resp.Mutations.Environment["token"])
+}
+
+func TestHandleSend_PreRequestScript_SkipRequest(t *testing.T) {
+	s := &server{sandbox: newMockRunner(&sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{SkipRequest: true},
+	})}
+	body := sendReq{
+		Method: "GET", URL: "http://localhost:1", FollowRedirects: true, SslVerification: true,
+		PreRequestScript: "pm.execution.skipRequest()",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 0, resp.Status) // no HTTP was made
+}
+
+func TestHandleSend_PreRequestError_HTTPStillExecuted(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newErrRunner(errors.New("script syntax error"))}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		PreRequestScript: "invalid js {{",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, "script syntax error", resp.PreRequestError)
+	assert.Equal(t, 200, resp.Status) // HTTP was still executed despite script error
+}
+
+func TestHandleSend_TestScript_ReturnsResults(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"ok":true}`)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newMockRunner(&sandbox.ScriptResult{
+		Tests: []sandbox.TestResult{
+			{Name: "Status is 200", Passed: true},
+			{Name: "Body has ok", Passed: false, Error: "expected true"},
+		},
+	})}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		TestScript: "pm.test('Status is 200', () => pm.response.to.have.status(200))",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.Len(t, resp.TestResults, 2)
+	assert.True(t, resp.TestResults[0].Passed)
+	assert.Equal(t, "Status is 200", resp.TestResults[0].Name)
+	assert.False(t, resp.TestResults[1].Passed)
+}
+
+func TestHandleSend_TestError(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newErrRunner(errors.New("runtime panic in test"))}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		TestScript: "throw new Error('crash')",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, "runtime panic in test", resp.TestError)
+	assert.Equal(t, 200, resp.Status)
+}
+
+func TestHandleSend_NoSandbox_ScriptsIgnored(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{} // sandbox is nil
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		PreRequestScript: "pm.environment.set('x','1')",
+		TestScript:       "pm.test('ok', () => true)",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	assert.Equal(t, 200, resp.Status)
+	assert.Empty(t, resp.TestResults)
+	assert.Empty(t, resp.PreRequestError)
+	assert.Nil(t, resp.Mutations)
+}
+
+func TestMutsToSend_OnlyGlobals(t *testing.T) {
+	r := mutsToSend(sandbox.Mutations{
+		Globals: map[string]string{"token": "abc"},
+	})
+	require.NotNil(t, r)
+	assert.Equal(t, "abc", r.Globals["token"])
+	assert.Nil(t, r.Environment)
+	assert.Nil(t, r.CollectionVariables)
+}
+
+func TestMergeMutations_PreColVars(t *testing.T) {
+	pre := &sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{CollectionVariables: map[string]string{"base": "url", "version": "v2"}},
+	}
+	r := mergeMutations(pre, nil)
+	require.NotNil(t, r)
+	assert.Equal(t, "url", r.CollectionVariables["base"])
+	assert.Equal(t, "v2", r.CollectionVariables["version"])
+	assert.Nil(t, r.Globals)
+	assert.Nil(t, r.Environment)
+}
+
+func TestMergeMutations_TestGlobalsAndColVars(t *testing.T) {
+	test := &sandbox.ScriptResult{
+		Mutations: sandbox.Mutations{
+			Globals:             map[string]string{"g": "gval"},
+			CollectionVariables: map[string]string{"c": "cval"},
+		},
+	}
+	r := mergeMutations(nil, test)
+	require.NotNil(t, r)
+	assert.Equal(t, "gval", r.Globals["g"])
+	assert.Equal(t, "cval", r.CollectionVariables["c"])
+	assert.Nil(t, r.Environment)
+}
+
+func TestHandleSend_BothScripts_MutationsMerged(t *testing.T) {
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer target.Close()
+
+	s := &server{sandbox: newMockRunner(
+		&sandbox.ScriptResult{
+			Mutations: sandbox.Mutations{Environment: map[string]string{"pre": "val", "shared": "from-pre"}},
+		},
+		&sandbox.ScriptResult{
+			Mutations: sandbox.Mutations{Environment: map[string]string{"shared": "from-test", "test": "val2"}},
+		},
+	)}
+	body := sendReq{
+		Method: "GET", URL: target.URL, FollowRedirects: true, SslVerification: true,
+		PreRequestScript: "pm.environment.set('pre','val')",
+		TestScript:       "pm.test('ok', () => true)",
+	}
+	bodyBytes, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/api/send", bytes.NewReader(bodyBytes))
+	w := httptest.NewRecorder()
+	s.handleSend(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var resp sendResp
+	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
+	require.NotNil(t, resp.Mutations)
+	assert.Equal(t, "val", resp.Mutations.Environment["pre"])
+	assert.Equal(t, "from-test", resp.Mutations.Environment["shared"]) // test overrides pre
+	assert.Equal(t, "val2", resp.Mutations.Environment["test"])
 }

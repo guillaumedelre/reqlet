@@ -628,3 +628,101 @@ func TestConvertBodyToParser_AllModes(t *testing.T) {
 		assert.Nil(t, convertBodyToParser(feBody{Type: "multipart"}))
 	})
 }
+
+// ---------- authParamStr ----------
+
+func TestAuthParamStr_NonStringValue(t *testing.T) {
+	params := []parser.AuthParam{{Key: "count", Value: 42, Type: "number"}}
+	assert.Equal(t, "42", authParamStr(params, "count"))
+}
+
+func TestAuthParamStr_KeyNotFound(t *testing.T) {
+	params := []parser.AuthParam{{Key: "other", Value: "v", Type: "string"}}
+	assert.Equal(t, "", authParamStr(params, "missing"))
+}
+
+// ---------- convertItemToFrontend ----------
+
+func TestConvertItemToFrontend_QueryParams(t *testing.T) {
+	item := parser.Item{
+		Name: "Search",
+		Request: &parser.Request{
+			Method: "GET",
+			URL: parser.URL{
+				Raw: "https://api.example.com/search",
+				Query: []parser.QueryParam{
+					{Key: "q", Value: "hello", Disabled: false},
+					{Key: "page", Value: "2", Disabled: true},
+				},
+			},
+		},
+	}
+	raw := convertItemToFrontend(item)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	params := out["params"].([]interface{})
+	require.Len(t, params, 2)
+	first := params[0].(map[string]interface{})
+	assert.Equal(t, "q", first["key"])
+	assert.Equal(t, true, first["enabled"])
+}
+
+func TestConvertItemToFrontend_NilRequest(t *testing.T) {
+	item := parser.Item{Name: "Empty", Request: nil}
+	raw := convertItemToFrontend(item)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(raw, &out))
+	assert.Equal(t, "GET", out["method"])
+	auth := out["auth"].(map[string]interface{})
+	assert.Equal(t, "inherit", auth["type"])
+}
+
+// ---------- convertItemToParser ----------
+
+func TestConvertItemToParser_ProbeError(t *testing.T) {
+	_, err := convertItemToParser(json.RawMessage(`{invalid json`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "probe item")
+}
+
+func TestConvertItemToParser_WithParams(t *testing.T) {
+	raw := json.RawMessage(`{
+		"id":"r1","name":"Search","method":"GET","url":"https://api.example.com/search",
+		"params":[{"key":"q","value":"test","enabled":true},{"key":"page","value":"1","enabled":false}],
+		"headers":[],"body":{"type":"none"},"auth":{"type":"inherit"}
+	}`)
+	item, err := convertItemToParser(raw)
+	require.NoError(t, err)
+	require.Len(t, item.Request.URL.Query, 2)
+	assert.Equal(t, "q", item.Request.URL.Query[0].Key)
+	assert.False(t, item.Request.URL.Query[0].Disabled)
+	assert.True(t, item.Request.URL.Query[1].Disabled)
+}
+
+func TestConvertItemToParser_InvalidChild(t *testing.T) {
+	raw := json.RawMessage(`{"name":"folder","items":["not an object"]}`)
+	_, err := convertItemToParser(raw)
+	require.Error(t, err)
+}
+
+// ---------- CollectionToParser ----------
+
+func TestCollectionToParser_InvalidJSON(t *testing.T) {
+	_, err := CollectionToParser(json.RawMessage(`not json`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal collection")
+}
+
+func TestCollectionToParser_InvalidItem(t *testing.T) {
+	raw := json.RawMessage(`{"id":"c1","name":"C","items":["not an object"],"variables":[],"auth":{"type":"none"}}`)
+	_, err := CollectionToParser(raw)
+	require.Error(t, err)
+}
+
+// ---------- EnvironmentToParser ----------
+
+func TestEnvironmentToParser_InvalidJSON(t *testing.T) {
+	_, err := EnvironmentToParser(json.RawMessage(`not json`))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal environment")
+}
