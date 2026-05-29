@@ -255,7 +255,7 @@ function buildRows(events: import("@/types").RunEvent[]): RequestRowData[] {
         iterResults: new Map(),
       })
     }
-    rowMap.get(key)!.iterResults.set(evt.iteration ?? 1, {
+    rowMap.get(key)!.iterResults.set(evt.iteration ?? 0, {
       passed: evt.passed,
       status: evt.status,
       durationMs: evt.durationMs,
