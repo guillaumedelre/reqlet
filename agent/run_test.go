@@ -150,6 +150,20 @@ func TestHandleRunCollection_InvalidCollection(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
+func TestHandleRunCollection_StoreInternalError(t *testing.T) {
+	s := testServer(t)
+	colID := saveCollection(t, s, makeTestCollection("col-x", "X", nil))
+	// Replace store dir with a file so get() fails with a non-404 OS error.
+	require.NoError(t, os.RemoveAll(s.collections.dir))
+	require.NoError(t, os.WriteFile(s.collections.dir, []byte("not a dir"), 0o600))
+	mux := s.newMux(testFS())
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/"+colID+"/run", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 // ---- GET /api/runs/{runId} ----
 
 func TestHandleGetRun_NotFound(t *testing.T) {
@@ -399,6 +413,75 @@ func TestBuildRunSummary_SkippedNotCounted(t *testing.T) {
 	assert.Equal(t, 0, got.Failed)
 }
 
+// testResultSandbox is a sandbox stub that returns one passing test result per Execute call.
+type testResultSandbox struct{}
+
+func (testResultSandbox) Execute(_ context.Context, _, _ string, _ *sandbox.ScriptContext) (*sandbox.ScriptResult, error) {
+	return &sandbox.ScriptResult{
+		Tests: []sandbox.TestResult{{Name: "status ok", Passed: true}},
+	}, nil
+}
+
+func (testResultSandbox) Close() error { return nil }
+
+// TestHandleRunCollection_WithTestResults exercises the OnRequest callback branch that
+// populates evt.Tests when result.Tests is non-empty.
+func TestHandleRunCollection_WithTestResults(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := testServer(t)
+	s.sandbox = testResultSandbox{}
+
+	col := map[string]any{
+		"id": "col-ts", "name": "TS",
+		"items": []map[string]any{{
+			"id": "req-ts", "name": "r1",
+			"method": "GET", "url": srv.URL,
+			"params": []any{}, "headers": []any{},
+			"auth":       map[string]any{"type": "none"},
+			"testScript": "pm.test('ok', () => pm.response.to.be.ok)",
+		}},
+		"variables":        []any{},
+		"preRequestScript": "",
+		"testScript":       "",
+		"auth":             map[string]any{"type": "none"},
+	}
+	data, err := json.Marshal(col)
+	require.NoError(t, err)
+	colID := saveCollection(t, s, data)
+	mux := s.newMux(testFS())
+
+	wPost := httptest.NewRecorder()
+	mux.ServeHTTP(wPost, httptest.NewRequest(http.MethodPost, "/api/collections/"+colID+"/run", nil))
+	require.Equal(t, http.StatusAccepted, wPost.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(wPost.Body).Decode(&resp))
+	runID := resp["runId"]
+
+	require.Eventually(t, func() bool {
+		rw := httptest.NewRecorder()
+		mux.ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/api/runs/"+runID, nil))
+		return rw.Code == http.StatusOK
+	}, 5*time.Second, 20*time.Millisecond)
+
+	wStream := httptest.NewRecorder()
+	mux.ServeHTTP(wStream, httptest.NewRequest(http.MethodGet, "/api/runs/"+runID+"/stream", nil))
+	events := readSSEEvents(t, wStream.Body.String())
+
+	var found bool
+	for _, evt := range events {
+		if evt.Type == "request" && len(evt.Tests) > 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected a request event with non-empty test results")
+}
+
 // ---- noopSandbox ----
 
 func TestNoopSandbox_ExecuteAndClose(t *testing.T) {
@@ -480,6 +563,99 @@ func TestHandleRunCollection_StoreError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/col-store-err/run", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// ---- handleRunCollection — variables in run request ----
+
+func TestHandleRunCollection_WithVariables(t *testing.T) {
+	s := testServer(t)
+	colJSON := makeTestCollection("col-vars", "VarsTest", nil)
+	colID := saveCollection(t, s, colJSON)
+	mux := s.newMux(testFS())
+
+	body := `{"variables":{"globals":{"G":"1"},"environment":{"E":"2"},"collectionVariables":{"C":"3"}}}`
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/"+colID+"/run",
+		strings.NewReader(body)))
+
+	require.Equal(t, http.StatusAccepted, w.Code)
+}
+
+// ---- handleRunCollection — real HTTP response (result.Response != nil) ----
+
+func TestHandleRunCollection_RequestWithRealResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	s := testServer(t)
+	items := []map[string]any{{
+		"id":      "req-real",
+		"name":    "ping",
+		"method":  "GET",
+		"url":     srv.URL + "/ping",
+		"params":  []any{},
+		"headers": []any{},
+		"auth":    map[string]any{"type": "none"},
+	}}
+	col := map[string]any{
+		"id": "col-real", "name": "Real",
+		"items": items, "variables": []any{},
+		"preRequestScript": "", "testScript": "",
+		"auth": map[string]any{"type": "none"},
+	}
+	data, err := json.Marshal(col)
+	require.NoError(t, err)
+	colID := saveCollection(t, s, data)
+	mux := s.newMux(testFS())
+
+	// POST to start the run.
+	wPost := httptest.NewRecorder()
+	mux.ServeHTTP(wPost, httptest.NewRequest(http.MethodPost, "/api/collections/"+colID+"/run", nil))
+	require.Equal(t, http.StatusAccepted, wPost.Code)
+
+	var resp map[string]string
+	require.NoError(t, json.NewDecoder(wPost.Body).Decode(&resp))
+	runID := resp["runId"]
+
+	// Wait for run to complete.
+	require.Eventually(t, func() bool {
+		rw := httptest.NewRecorder()
+		mux.ServeHTTP(rw, httptest.NewRequest(http.MethodGet, "/api/runs/"+runID, nil))
+		return rw.Code == http.StatusOK
+	}, 5*time.Second, 20*time.Millisecond)
+
+	// Stream events and verify at least one request event has a status code.
+	wStream := httptest.NewRecorder()
+	mux.ServeHTTP(wStream, httptest.NewRequest(http.MethodGet, "/api/runs/"+runID+"/stream", nil))
+	events := readSSEEvents(t, wStream.Body.String())
+
+	var found bool
+	for _, evt := range events {
+		if evt.Type == "request" && evt.Status != 0 {
+			found = true
+			break
+		}
+	}
+	assert.True(t, found, "expected a request event with a non-zero status code")
+}
+
+// ---- handleRunCollection — invalid proxy URL (covers ProxyURL branch + NewClient error) ----
+
+func TestHandleRunCollection_InvalidProxyURL(t *testing.T) {
+	s, st := testServerWithStorage(t)
+	// Store a proxy URL with an invalid percent-encoding — url.Parse will reject it.
+	require.NoError(t, st.Settings.Set(context.Background(), "proxy.url", "http://%gg.localhost"))
+
+	colJSON := makeTestCollection("col-proxy", "ProxyTest", nil)
+	colID := saveCollection(t, s, colJSON)
+	mux := s.newMux(testFS())
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/"+colID+"/run", nil))
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }

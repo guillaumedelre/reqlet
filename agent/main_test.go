@@ -639,3 +639,55 @@ func TestExportEnvironment_MalformedData(t *testing.T) {
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
+
+func TestImportCollection_StoreError(t *testing.T) {
+	s := testServer(t)
+	// Block all saves by replacing the store dir with a file.
+	require.NoError(t, os.RemoveAll(s.collections.dir))
+	require.NoError(t, os.WriteFile(s.collections.dir, []byte("not a dir"), 0o600))
+
+	mux := s.newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/collections/import",
+		strings.NewReader(validPostmanCollection)))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestImportEnvironment_StoreError(t *testing.T) {
+	s := testServer(t)
+	require.NoError(t, os.RemoveAll(s.environments.dir))
+	require.NoError(t, os.WriteFile(s.environments.dir, []byte("not a dir"), 0o600))
+
+	mux := s.newMux(testFS())
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/api/environments/import",
+		strings.NewReader(validPostmanEnvironment)))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestExportCollection_StoreInternalError(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	// Replace the store dir with a regular file so get() fails with a non-404 error.
+	require.NoError(t, os.RemoveAll(s.collections.dir))
+	require.NoError(t, os.WriteFile(s.collections.dir, []byte("not a dir"), 0o600))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/collections/any/export", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestExportEnvironment_StoreInternalError(t *testing.T) {
+	s := testServer(t)
+	mux := s.newMux(testFS())
+	require.NoError(t, os.RemoveAll(s.environments.dir))
+	require.NoError(t, os.WriteFile(s.environments.dir, []byte("not a dir"), 0o600))
+
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/api/environments/any/export", nil))
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}

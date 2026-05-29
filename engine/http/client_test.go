@@ -18,6 +18,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httptrace"
 	"os"
 	"path/filepath"
 	"testing"
@@ -1224,4 +1225,45 @@ func TestBuildBody_FormDataFile_EmptySrc(t *testing.T) {
 	assert.Equal(t, "myfile", part.FileName())
 	data, _ := io.ReadAll(part)
 	assert.Equal(t, []byte(fileContent), data)
+}
+
+// ── clientTrace: direct callback invocation ───────────────────────────────────
+
+// TestTimingCollector_clientTrace_AllCallbacks invokes every closure returned by
+// clientTrace() directly, covering the TLS callbacks that HTTP-only tests miss.
+func TestTimingCollector_clientTrace_AllCallbacks(t *testing.T) {
+	tc := &timingCollector{}
+	trace := tc.clientTrace()
+
+	trace.DNSStart(httptrace.DNSStartInfo{})
+	trace.DNSDone(httptrace.DNSDoneInfo{})
+	trace.ConnectStart("tcp", "example.com:443")
+	trace.ConnectDone("tcp", "example.com:443", nil)
+	trace.TLSHandshakeStart()
+	trace.TLSHandshakeDone(tls.ConnectionState{}, nil)
+	trace.WroteRequest(httptrace.WroteRequestInfo{})
+	trace.GotFirstResponseByte()
+
+	assert.False(t, tc.dnsStart.IsZero())
+	assert.False(t, tc.dnsDone.IsZero())
+	assert.False(t, tc.tcpStart.IsZero())
+	assert.False(t, tc.tcpDone.IsZero())
+	assert.False(t, tc.tlsStart.IsZero())
+	assert.False(t, tc.tlsDone.IsZero())
+	assert.False(t, tc.wroteRequest.IsZero())
+	assert.False(t, tc.firstByte.IsZero())
+}
+
+// ── buildBody: invalid base64 in FormData file ────────────────────────────────
+
+func TestBuildBody_FormDataFile_InvalidBase64(t *testing.T) {
+	b := &parser.Body{
+		Mode: parser.BodyModeFormData,
+		FormData: []parser.FormDataParam{
+			{Key: "upload", Value: "!!!not-valid-base64!!!", Type: "file"},
+		},
+	}
+	_, _, err := buildBody(b, variables.NewResolver())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "decode file")
 }

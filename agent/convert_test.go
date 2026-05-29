@@ -705,6 +705,23 @@ func TestConvertItemToParser_InvalidChild(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestConvertItemToParser_UnmarshalRequestError(t *testing.T) {
+	// method is present (non-empty) so the request branch is taken, but
+	// "params" is a number instead of an array — triggers the unmarshal error.
+	raw := json.RawMessage(`{"method":"GET","params":42}`)
+	_, err := convertItemToParser(raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal request")
+}
+
+func TestConvertItemToParser_UnmarshalFolderError(t *testing.T) {
+	// No "method" field → folder branch. "items" is a number instead of array.
+	raw := json.RawMessage(`{"name":"folder","items":42}`)
+	_, err := convertItemToParser(raw)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unmarshal folder")
+}
+
 // ---------- CollectionToParser ----------
 
 func TestCollectionToParser_InvalidJSON(t *testing.T) {

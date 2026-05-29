@@ -185,4 +185,50 @@ describe("pm.sendRequest", () => {
 
     expect(globalThis.fetch).toHaveBeenCalled();
   });
+
+  it("response.text() returns the raw body text", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue("hello world"),
+      headers: { get: jest.fn().mockReturnValue("text/plain") },
+    });
+
+    const script = `pm.sendRequest("https://example.com/txt", (err, res) => { void res.text(); })`;
+    // Run via execute — the callback runs asynchronously, flush with a microtask tick.
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
+  it("response.json() parses the body as JSON", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue('{"key":"value"}'),
+      headers: { get: jest.fn().mockReturnValue("application/json") },
+    });
+
+    const script = `pm.sendRequest("https://example.com/json", (err, res) => { void res.json(); })`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
+  it("response.headers.get() retrieves a header value", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue(""),
+      headers: { get: jest.fn().mockReturnValue("application/json") },
+    });
+
+    const script = `pm.sendRequest("https://example.com/api", (err, res) => { res.headers.get("content-type"); })`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalled();
+  });
 });

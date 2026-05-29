@@ -26,7 +26,9 @@ const SUB_TAB_CLS =
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  const s = Math.floor(ms / 1000)
+  const rem = ms % 1000
+  return rem > 0 ? `${s}s ${rem}ms` : `${s}s`
 }
 
 function formatRelTime(iso: string): string {
@@ -229,64 +231,205 @@ function ScriptsTab({
 
 // ---------- Runs tab ----------
 
-function RunEventRow({
-  event,
-  showIteration,
+interface IterResult {
+  passed: boolean
+  status?: number
+  durationMs?: number
+  tests: import("@/types").RunTestResult[]
+}
+
+interface RequestRowData {
+  key: string
+  name: string
+  method: string
+  iterResults: Map<number, IterResult>
+}
+
+function buildRows(events: import("@/types").RunEvent[]): RequestRowData[] {
+  const rowMap = new Map<string, RequestRowData>()
+  for (const evt of events) {
+    const key = `${evt.method ?? "GET"}::${evt.name ?? evt.url ?? ""}`
+    if (!rowMap.has(key)) {
+      rowMap.set(key, {
+        key,
+        name: evt.name ?? evt.url ?? "",
+        method: evt.method ?? "GET",
+        iterResults: new Map(),
+      })
+    }
+    rowMap.get(key)!.iterResults.set(evt.iteration ?? 0, {
+      passed: evt.passed,
+      status: evt.status,
+      durationMs: evt.durationMs,
+      tests: evt.tests ?? [],
+    })
+  }
+  return [...rowMap.values()]
+}
+
+function RunResultsTable({
+  requestEvents,
+  totalIterations,
 }: {
-  event: import("@/types").RunEvent
-  showIteration: boolean
+  requestEvents: import("@/types").RunEvent[]
+  totalIterations: number
 }) {
-  const passed = event.tests?.every((t) => t.passed) ?? event.passed
-  const failedTests = event.tests?.filter((t) => !t.passed) ?? []
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const rows = buildRows(requestEvents)
+  const seenMax = rows.reduce((m, r) => {
+    const keys = [...r.iterResults.keys()]
+    return keys.length > 0 ? Math.max(m, ...keys) : m
+  }, 0)
+  const N = Math.max(totalIterations, seenMax, 1)
+
+  const toggle = (key: string) =>
+    setExpanded((s) => {
+      const n = new Set(s)
+      if (n.has(key)) n.delete(key)
+      else n.add(key)
+      return n
+    })
 
   return (
-    <div className="border-b border-border/40 last:border-0">
-      <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/20 text-xs">
-        {showIteration && (
-          <span className="text-[0.625rem] text-muted-foreground w-5 shrink-0 text-center">
-            {event.iteration ?? 1}
-          </span>
-        )}
-        <MethodBadge method={(event.method ?? "GET") as HttpMethod} className="w-12 text-center" />
-        <span className="flex-1 truncate text-foreground">{event.name ?? event.url ?? ""}</span>
-        {event.status != null && (
-          <span className={cn("font-mono shrink-0", statusColor(event.status))}>
-            {event.status}
-          </span>
-        )}
-        {event.tests != null && (
-          <span
-            className={cn(
-              "shrink-0 tabular-nums",
-              event.tests.length > 0 && failedTests.length > 0
-                ? "text-red-500"
-                : "text-muted-foreground",
-            )}
-          >
-            {event.tests.length - failedTests.length}/{event.tests.length}
-          </span>
-        )}
-        {event.durationMs != null && (
-          <span className="shrink-0 text-muted-foreground tabular-nums">
-            {formatDuration(event.durationMs)}
-          </span>
-        )}
-        {passed ? (
-          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-        ) : (
-          <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-        )}
-      </div>
-      {failedTests.length > 0 && (
-        <div className="px-3 pb-1.5 space-y-0.5">
-          {failedTests.map((t, i) => (
-            <p key={i} className="text-[0.625rem] text-red-500 pl-14 leading-snug">
-              ✗ {t.name}
-              {t.error && <span className="text-muted-foreground"> — {t.error}</span>}
-            </p>
-          ))}
+    <div>
+      {/* Iteration column header — only when multi-iteration */}
+      {N > 1 && (
+        <div className="flex items-center px-2 py-1 border-b border-border/40 bg-muted/10 sticky top-0">
+          <div className="flex-1" />
+          <div className="flex items-center gap-0.5 pl-2">
+            {Array.from({ length: N }, (_, i) => (
+              <div
+                key={i}
+                className="w-3.5 shrink-0 text-center text-[0.625rem] text-muted-foreground"
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
         </div>
       )}
+
+      {rows.map((row) => {
+        const isExpanded = expanded.has(row.key)
+        const sortedIters = [...row.iterResults.entries()].sort(([a], [b]) => b - a)
+        const lastResult = sortedIters[0]?.[1]
+        const failedTests = lastResult?.tests.filter((t) => !t.passed) ?? []
+        const allTests = [...row.iterResults.values()].flatMap((r) => r.tests)
+        const passedCount = allTests.filter((t) => t.passed).length
+        const totalCount = allTests.length
+
+        return (
+          <div key={row.key} className="border-b border-border/40 last:border-0">
+            <div className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted/20 text-xs">
+              <button
+                onClick={() => toggle(row.key)}
+                className="w-4 h-4 shrink-0 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronRight
+                  className={cn("h-3 w-3 transition-transform", isExpanded && "rotate-90")}
+                />
+              </button>
+              <MethodBadge
+                method={row.method as HttpMethod}
+                className="w-12 text-center shrink-0"
+              />
+              <span className="flex-1 truncate text-foreground min-w-0">{row.name}</span>
+              {lastResult?.status != null && (
+                <span className={cn("font-mono shrink-0", statusColor(lastResult.status))}>
+                  {lastResult.status}
+                </span>
+              )}
+              {totalCount > 0 && (
+                <span
+                  className={cn(
+                    "shrink-0 tabular-nums",
+                    passedCount < totalCount ? "text-red-500" : "text-muted-foreground",
+                  )}
+                >
+                  {passedCount}/{totalCount}
+                </span>
+              )}
+              {lastResult?.durationMs != null && (
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {formatDuration(lastResult.durationMs)}
+                </span>
+              )}
+              {/* Iteration cells */}
+              <div className="flex items-center gap-0.5 shrink-0 pl-2">
+                {Array.from({ length: N }, (_, i) => {
+                  const res = row.iterResults.get(i)
+                  return (
+                    <div
+                      key={i}
+                      title={`Iteration ${i + 1}`}
+                      className={cn(
+                        "w-3.5 h-3.5 rounded-sm shrink-0",
+                        res == null ? "bg-muted/50" : res.passed ? "bg-emerald-500" : "bg-red-500",
+                      )}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Failed tests inline — visible without expanding */}
+            {failedTests.length > 0 && !isExpanded && (
+              <div className="px-3 pb-1.5 space-y-0.5">
+                {failedTests.map((t, i) => (
+                  <p key={i} className="text-[0.625rem] text-red-500 pl-14 leading-snug">
+                    ✗ {t.name}
+                    {t.error && <span className="text-muted-foreground"> — {t.error}</span>}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            {/* Expanded: all tests per iteration */}
+            {isExpanded && (
+              <div className="pl-6 pb-1.5">
+                {[...row.iterResults.entries()]
+                  .sort(([a], [b]) => a - b)
+                  .map(([iter, result]) => (
+                    <div key={iter} className="py-0.5">
+                      {N > 1 && (
+                        <p className="text-[0.625rem] font-medium text-muted-foreground px-2 py-0.5">
+                          Iteration {iter + 1}
+                          {result.status != null && ` · ${result.status}`}
+                          {result.durationMs != null && ` · ${formatDuration(result.durationMs)}`}
+                        </p>
+                      )}
+                      {result.tests.length > 0 ? (
+                        result.tests.map((t, ti) => (
+                          <div
+                            key={ti}
+                            className="flex items-start gap-1.5 px-2 py-0.5 text-[0.625rem]"
+                          >
+                            {t.passed ? (
+                              <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500 shrink-0 mt-px" />
+                            ) : (
+                              <XCircle className="h-2.5 w-2.5 text-red-500 shrink-0 mt-px" />
+                            )}
+                            <span className={t.passed ? "text-muted-foreground" : "text-red-400"}>
+                              {t.name}
+                            </span>
+                            {t.error && (
+                              <span className="text-muted-foreground ml-1">— {t.error}</span>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-[0.625rem] text-muted-foreground px-2">
+                          HTTP {result.status ?? "—"}
+                          {result.durationMs != null && ` · ${formatDuration(result.durationMs)}`}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -333,7 +476,6 @@ function RunsTab({
   const startEvent = (displayRun?.events ?? []).find((e) => e.type === "start")
   const totalFromStart = startEvent?.total ?? 0
   const iterations = startEvent?.iterations ?? runOpts.iterations ?? 1
-  const showIteration = iterations > 1
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -454,9 +596,7 @@ function RunsTab({
           <div className="flex flex-1 overflow-hidden">
             <ScrollArea className="flex-1">
               {requestEvents.length > 0 ? (
-                requestEvents.map((evt, i) => (
-                  <RunEventRow key={i} event={evt} showIteration={showIteration} />
-                ))
+                <RunResultsTable requestEvents={requestEvents} totalIterations={iterations} />
               ) : displayRun.status === "running" ? (
                 <div className="flex items-center justify-center py-8">
                   <p className="text-xs text-muted-foreground">Waiting for first request…</p>

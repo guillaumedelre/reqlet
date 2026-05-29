@@ -677,6 +677,177 @@ func TestRun_SandboxTestScriptError(t *testing.T) {
 	assert.Contains(t, res.Iterations[0].Requests[0].Error.Error(), "ipc failure")
 }
 
+// ── auth resolution error ────────────────────────────────────────────────────
+
+func TestRun_AuthResolutionError(t *testing.T) {
+	r, srv, _ := newTestRunner(t, okServer())
+	col := simpleCollection("c", parser.Item{
+		Name: "r1",
+		Request: &parser.Request{
+			Method: "GET",
+			URL:    parser.URL{Raw: srv.URL + "/ok"},
+			Auth:   &parser.Auth{Type: "unsupported-auth-type"},
+		},
+	})
+
+	res, err := r.Run(context.Background(), col, nil, Options{})
+	require.NoError(t, err) // auth errors are captured in RequestResult.Error
+	require.Len(t, res.Iterations[0].Requests, 1)
+	require.Error(t, res.Iterations[0].Requests[0].Error)
+	assert.Contains(t, res.Iterations[0].Requests[0].Error.Error(), "auth")
+}
+
+// ── Options variable injection (EnvVars / ColVars / GlobalVars) ──────────────
+
+func TestRun_GlobalVars(t *testing.T) {
+	var capturedURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = "http://" + r.Host + r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := enginehttp.NewClient(enginehttp.DefaultOptions())
+	require.NoError(t, err)
+	sb := &mockSandbox{}
+	runner := New(client, sb)
+
+	host := srv.Listener.Addr().String()
+	col := simpleCollection("c", parser.Item{
+		Name: "r1",
+		Request: &parser.Request{
+			Method: "GET",
+			URL:    parser.URL{Raw: "http://{{global_host}}/path"},
+		},
+	})
+
+	_, err = runner.Run(context.Background(), col, nil, Options{
+		GlobalVars: map[string]string{"global_host": host},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "http://"+host+"/path", capturedURL)
+}
+
+func TestRun_EnvVars(t *testing.T) {
+	var capturedURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedURL = "http://" + r.Host + r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := enginehttp.NewClient(enginehttp.DefaultOptions())
+	require.NoError(t, err)
+	runner := New(client, &mockSandbox{})
+
+	host := srv.Listener.Addr().String()
+	col := simpleCollection("c", parser.Item{
+		Name:    "r1",
+		Request: &parser.Request{Method: "GET", URL: parser.URL{Raw: "http://{{env_host}}/path"}},
+	})
+
+	_, err = runner.Run(context.Background(), col, nil, Options{
+		EnvVars: map[string]string{"env_host": host},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "http://"+host+"/path", capturedURL)
+}
+
+func TestRun_ColVars(t *testing.T) {
+	var capturedPath string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedPath = r.URL.Path
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+
+	client, err := enginehttp.NewClient(enginehttp.DefaultOptions())
+	require.NoError(t, err)
+	runner := New(client, &mockSandbox{})
+
+	col := simpleCollection("c", parser.Item{
+		Name:    "r1",
+		Request: &parser.Request{Method: "GET", URL: parser.URL{Raw: srv.URL + "/{{col_version}}/data"}},
+	})
+
+	_, err = runner.Run(context.Background(), col, nil, Options{
+		ColVars: map[string]string{"col_version": "v2"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "/v2/data", capturedPath)
+}
+
+// ── DelayMS between requests ─────────────────────────────────────────────────
+
+func TestRun_DelayMS(t *testing.T) {
+	r, srv, _ := newTestRunner(t, okServer())
+	col := simpleCollection("c", getRequest(t, srv, "r1"), getRequest(t, srv, "r2"))
+
+	// A small delay should succeed without timing out.
+	res, err := r.Run(context.Background(), col, nil, Options{DelayMS: 1})
+	require.NoError(t, err)
+	require.Len(t, res.Iterations[0].Requests, 2)
+}
+
+func TestRun_DelayMS_ContextCancelledDuringDelay(t *testing.T) {
+	r, srv, _ := newTestRunner(t, okServer())
+	col := simpleCollection("c", getRequest(t, srv, "r1"), getRequest(t, srv, "r2"))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Cancel the context inside OnRequest, after the first request completes but
+	// before the second one starts. The delay select then picks up ctx.Done().
+	first := true
+	_, err := r.Run(ctx, col, nil, Options{
+		DelayMS: 5000, // long enough that ctx.Done() fires before the timer
+		OnRequest: func(_ int, _ RequestResult) {
+			if first {
+				first = false
+				cancel()
+			}
+		},
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// ── OnRequest callback ───────────────────────────────────────────────────────
+
+func TestRun_OnRequest(t *testing.T) {
+	r, srv, _ := newTestRunner(t, okServer())
+	col := simpleCollection("c", getRequest(t, srv, "r1"), getRequest(t, srv, "r2"))
+
+	var called []string
+	res, err := r.Run(context.Background(), col, nil, Options{
+		OnRequest: func(_ int, rr RequestResult) {
+			called = append(called, rr.Name)
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, res.Iterations[0].Requests, 2)
+	assert.Equal(t, []string{"r1", "r2"}, called)
+}
+
+// ── buildScriptContext: disabled header ───────────────────────────────────────
+
+func TestBuildScriptContext_DisabledHeader(t *testing.T) {
+	vars := buildVars(&parser.Collection{}, nil)
+	req := &parser.Request{
+		Method: "GET",
+		URL:    parser.URL{Raw: "https://example.com"},
+		Header: []parser.Header{
+			{Key: "X-Active", Value: "yes", Disabled: false},
+			{Key: "X-Skip", Value: "no", Disabled: true},
+		},
+	}
+	sctx := buildScriptContext(vars, req, nil, sandbox.ExecInfo{})
+	require.NotNil(t, sctx.Request)
+	assert.Equal(t, "yes", sctx.Request.Headers["X-Active"])
+	_, exists := sctx.Request.Headers["X-Skip"]
+	assert.False(t, exists, "disabled header must not appear in script context")
+}
+
 // ── RunResult.Passed ──────────────────────────────────────────────────────────
 
 func TestRunResult_Passed(t *testing.T) {

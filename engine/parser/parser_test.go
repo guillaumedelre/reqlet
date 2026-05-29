@@ -233,6 +233,12 @@ func TestParseCollectionFile_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "open collection")
 }
 
+func TestParseCollectionFile_Success(t *testing.T) {
+	c, err := ParseCollectionFile("testdata/collection_v21.json")
+	require.NoError(t, err)
+	assert.NotEmpty(t, c.Info.Name)
+}
+
 func TestParseCollection_URLObjectInvalid(t *testing.T) {
 	// URL field is neither a string nor a valid URL object
 	r := strings.NewReader(`{
@@ -290,6 +296,12 @@ func TestParseEnvironmentFile_NotFound(t *testing.T) {
 	_, err := ParseEnvironmentFile("testdata/does_not_exist.json")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "open environment")
+}
+
+func TestParseEnvironmentFile_Success(t *testing.T) {
+	e, err := ParseEnvironmentFile("testdata/environment.json")
+	require.NoError(t, err)
+	assert.NotEmpty(t, e.Name)
 }
 
 // ── Walk ─────────────────────────────────────────────────────────────────────

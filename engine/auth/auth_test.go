@@ -706,3 +706,119 @@ func TestOAuth2_InvalidJSON(t *testing.T) {
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+// ── awsBodyHash — error paths ─────────────────────────────────────────────────
+
+func TestAWSBodyHash_GetBodyError(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "https://api.example.com", strings.NewReader("body"))
+	require.NoError(t, err)
+	req.GetBody = func() (io.ReadCloser, error) {
+		return nil, fmt.Errorf("getbody failed")
+	}
+	_, err = awsBodyHash(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "getbody failed")
+}
+
+// ── parseDigestChallenge — entry without '=' ──────────────────────────────────
+
+func TestParseDigestChallenge_NoEquals(t *testing.T) {
+	// An entry without '=' must be silently skipped.
+	params := parseDigestChallenge(`noequalssign, realm="test"`)
+	assert.Equal(t, "test", params["realm"])
+	_, exists := params["noequalssign"]
+	assert.False(t, exists)
+}
+
+// ── Digest RoundTrip — GetBody error on retry ─────────────────────────────────
+
+func TestDigest_BodyReplayError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("WWW-Authenticate", `Digest realm="test", nonce="n1"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	inner := http.DefaultTransport
+	dt := &digestTransport{inner: inner, username: "u", password: "p"}
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", srv.URL, strings.NewReader("payload"))
+	require.NoError(t, err)
+	req.GetBody = func() (io.ReadCloser, error) {
+		return nil, fmt.Errorf("replay error")
+	}
+
+	_, err = dt.RoundTrip(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "replay body")
+}
+
+// ── oauth2.fetchToken — invalid URL ──────────────────────────────────────────
+
+func TestOAuth2_FetchToken_InvalidURL(t *testing.T) {
+	o := &oauth2{tokenURL: "://invalid-url", clientID: "id"} //nolint:gosec // test-only URL
+	_, err := o.fetchToken(context.Background(), variables.NewResolver())
+	require.Error(t, err)
+}
+
+// ── oauth2.fetchToken — network error ────────────────────────────────────────
+
+func TestOAuth2_FetchToken_NetworkError(t *testing.T) {
+	// Port 1 is never open; the connection will be refused.
+	o := &oauth2{tokenURL: "http://127.0.0.1:1/token", clientID: "id"} //nolint:gosec // test-only URL
+	_, err := o.fetchToken(context.Background(), variables.NewResolver())
+	require.Error(t, err)
+}
+
+// ── awsBodyHash — io.ReadAll error path ──────────────────────────────────────
+
+// errorReader always fails on Read, triggering the io.ReadAll error path.
+type errorReader struct{}
+
+func (errorReader) Read(_ []byte) (int, error) { return 0, fmt.Errorf("read error") }
+func (errorReader) Close() error               { return nil }
+
+func TestAWSBodyHash_ReadBodyError(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "https://api.example.com", strings.NewReader("body"))
+	require.NoError(t, err)
+	req.GetBody = func() (io.ReadCloser, error) {
+		return errorReader{}, nil
+	}
+	_, err = awsBodyHash(req)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read error")
+}
+
+// ── awsv4.Apply — bodyHash error propagation ─────────────────────────────────
+
+func TestAWSV4_Apply_BodyHashError(t *testing.T) {
+	a, err := newAWSV4([]parser.AuthParam{
+		authParam("accessKey", "AKID"),
+		authParam("secretKey", "SECRET"),
+		authParam("region", "us-east-1"),
+		authParam("service", "execute-api"),
+	})
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(context.Background(), "POST", "https://api.example.com", strings.NewReader("body"))
+	require.NoError(t, err)
+	req.GetBody = func() (io.ReadCloser, error) {
+		return errorReader{}, nil
+	}
+
+	err = a.Apply(context.Background(), req, newVars())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "awsv4: hash body")
+}
+
+// ── awsCanonicalHeaders — host already in request headers ────────────────────
+
+func TestAWSCanonicalHeaders_ExplicitHostHeader(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), "GET", "https://api.example.com", nil)
+	require.NoError(t, err)
+	// Setting "Host" in the request header directly covers the `if !ok` false branch.
+	req.Header.Set("Host", "override.example.com")
+	signed, canonical := awsCanonicalHeaders(req)
+	assert.Contains(t, signed, "host")
+	assert.Contains(t, canonical, "override.example.com")
+}

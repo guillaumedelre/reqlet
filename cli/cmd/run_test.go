@@ -376,6 +376,20 @@ func TestRunCollection_EmptyCollectionSuccess(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestRunCollection_WithJUnitReporter(t *testing.T) {
+	resetFlags(t)
+
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	flagRunner = writeStubRunner(t)
+	flagReporterJUnit = filepath.Join(dir, "report.xml")
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.NoError(t, err)
+}
+
 func TestRunCollection_WithEnvVarAndGlobalVar(t *testing.T) {
 	resetFlags(t)
 
