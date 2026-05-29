@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { api } from "./api"
-import type { Collection, Environment } from "@/types"
+import type { Collection, Environment, RunEvent, RunSummary } from "@/types"
 
 const mockFetch = vi.fn()
 globalThis.fetch = mockFetch as typeof fetch
@@ -168,5 +168,155 @@ describe("api.environments", () => {
     mockFetch.mockReturnValue(noContentResponse())
     await api.environments.delete("env-1")
     expect(mockFetch).toHaveBeenCalledWith("/api/environments/env-1", expect.any(Object))
+  })
+})
+
+// ---- helpers for run tests ----
+
+const sampleSummary: RunSummary = {
+  runId: "run-1",
+  collectionId: "col-1",
+  startedAt: "2026-01-01T00:00:00Z",
+  durationMs: 123,
+  total: 2,
+  passed: 2,
+  failed: 0,
+}
+
+interface MockES {
+  url: string
+  onmessage: ((e: MessageEvent) => void) | null
+  onerror: (() => void) | null
+  close: ReturnType<typeof vi.fn>
+}
+
+// Minimal EventSource mock — regular function so it can be used with `new`.
+function makeEventSourceMock() {
+  const instances: MockES[] = []
+
+  // Must be a regular function (not arrow) to support `new`
+  const MockEventSource = vi.fn(function (this: MockES, url: string) {
+    this.url = url
+    this.onmessage = null
+    this.onerror = null
+    this.close = vi.fn()
+    instances.push(this)
+  })
+
+  return { MockEventSource, instances }
+}
+
+describe("api.collections.run", () => {
+  it("sends POST /api/collections/:id/run with options", async () => {
+    mockFetch.mockReturnValue(okResponse({ runId: "run-abc" }))
+    const result = await api.collections.run("col-1", { iterations: 3, bail: true })
+    expect(mockFetch).toHaveBeenCalledWith("/api/collections/col-1/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ iterations: 3, bail: true }),
+    })
+    expect(result).toEqual({ runId: "run-abc" })
+  })
+
+  it("sends POST with empty body when no options provided", async () => {
+    mockFetch.mockReturnValue(okResponse({ runId: "run-def" }))
+    await api.collections.run("col-1")
+    expect(mockFetch).toHaveBeenCalledWith("/api/collections/col-1/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    })
+  })
+})
+
+describe("api.runs.get", () => {
+  it("sends GET /api/runs/:id and returns summary", async () => {
+    mockFetch.mockReturnValue(okResponse(sampleSummary))
+    const result = await api.runs.get("run-1")
+    expect(mockFetch).toHaveBeenCalledWith("/api/runs/run-1", {
+      method: "GET",
+      headers: undefined,
+      body: undefined,
+    })
+    expect(result).toEqual(sampleSummary)
+  })
+})
+
+describe("api.runs.stream", () => {
+  it("opens EventSource at /api/runs/:id/stream and delivers events", () => {
+    const { MockEventSource, instances } = makeEventSourceMock()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+
+    const onEvent = vi.fn()
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    api.runs.stream("run-1", { onEvent, onDone, onError })
+
+    expect(MockEventSource).toHaveBeenCalledWith("/api/runs/run-1/stream")
+    const inst = instances[0]
+
+    const reqEvent: RunEvent = { type: "request", name: "req1", passed: true }
+    inst.onmessage!({ data: JSON.stringify(reqEvent) } as MessageEvent)
+    expect(onEvent).toHaveBeenCalledWith(reqEvent)
+    expect(onDone).not.toHaveBeenCalled()
+  })
+
+  it("calls onDone and closes EventSource on done event", () => {
+    const { MockEventSource, instances } = makeEventSourceMock()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+
+    const onEvent = vi.fn()
+    const onDone = vi.fn()
+    const onError = vi.fn()
+    api.runs.stream("run-2", { onEvent, onDone, onError })
+
+    const inst = instances[0]
+    const doneEvent: RunEvent = { type: "done", passed: true, summary: sampleSummary }
+    inst.onmessage!({ data: JSON.stringify(doneEvent) } as MessageEvent)
+
+    expect(onEvent).toHaveBeenCalledWith(doneEvent)
+    expect(onDone).toHaveBeenCalledWith(sampleSummary)
+    expect(inst.close).toHaveBeenCalled()
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("calls onError and closes on connection error before done", () => {
+    const { MockEventSource, instances } = makeEventSourceMock()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+
+    const onError = vi.fn()
+    api.runs.stream("run-3", { onEvent: vi.fn(), onDone: vi.fn(), onError })
+
+    const inst = instances[0]
+    inst.onerror!()
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error))
+    expect(inst.close).toHaveBeenCalled()
+  })
+
+  it("does not call onError after done event", () => {
+    const { MockEventSource, instances } = makeEventSourceMock()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+
+    const onError = vi.fn()
+    api.runs.stream("run-4", { onEvent: vi.fn(), onDone: vi.fn(), onError })
+
+    const inst = instances[0]
+    // Receive done first, then server closes (triggers onerror in EventSource).
+    const doneEvent: RunEvent = { type: "done", passed: true, summary: sampleSummary }
+    inst.onmessage!({ data: JSON.stringify(doneEvent) } as MessageEvent)
+    inst.onerror!()
+
+    expect(onError).not.toHaveBeenCalled()
+  })
+
+  it("returned cleanup function closes the EventSource", () => {
+    const { MockEventSource, instances } = makeEventSourceMock()
+    globalThis.EventSource = MockEventSource as unknown as typeof EventSource
+
+    const cleanup = api.runs.stream("run-5", { onEvent: vi.fn(), onDone: vi.fn(), onError: vi.fn() })
+    cleanup()
+
+    expect(instances[0].close).toHaveBeenCalled()
   })
 })
