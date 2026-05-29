@@ -26,7 +26,9 @@ const SUB_TAB_CLS =
 
 function formatDuration(ms: number): string {
   if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  const s = Math.floor(ms / 1000)
+  const rem = ms % 1000
+  return rem > 0 ? `${s}s ${rem}ms` : `${s}s`
 }
 
 function formatRelTime(iso: string): string {

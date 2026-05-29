@@ -555,7 +555,7 @@ describe("RunsTab — done state", () => {
     renderPane()
     finishRunInStore()
     expect(screen.getByText(/2 total/)).toBeInTheDocument()
-    expect(screen.getByText(/1\.24s/)).toBeInTheDocument()
+    expect(screen.getByText(/1s 240ms/)).toBeInTheDocument()
   })
 
   it("shows failed count when failures exist", () => {
@@ -760,7 +760,7 @@ describe("duration formatting", () => {
       useRunsStore.getState().startRun("run-1", "c1")
       useRunsStore.getState().finishRun("run-1", { ...REQ_SUMMARY, durationMs: 2500 })
     })
-    expect(screen.getByText(/2\.50s/)).toBeInTheDocument()
+    expect(screen.getByText(/2s 500ms/)).toBeInTheDocument()
   })
 })
 
