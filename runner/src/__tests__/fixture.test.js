@@ -12,7 +12,7 @@ import { describe, it, expect, beforeAll } from "@jest/globals";
 import { execute } from "../executor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES = resolve(__dirname, "../../../../fixtures");
+const FIXTURES = resolve(__dirname, "../../../fixtures");
 
 // ── Load fixtures ─────────────────────────────────────────────────────────────
 
