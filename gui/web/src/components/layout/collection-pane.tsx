@@ -355,7 +355,7 @@ function RunResultsTable({
               {/* Iteration cells */}
               <div className="flex items-center gap-0.5 shrink-0 pl-2">
                 {Array.from({ length: N }, (_, i) => {
-                  const res = row.iterResults.get(i + 1)
+                  const res = row.iterResults.get(i)
                   return (
                     <div
                       key={i}
@@ -391,7 +391,7 @@ function RunResultsTable({
                     <div key={iter} className="py-0.5">
                       {N > 1 && (
                         <p className="text-[0.625rem] font-medium text-muted-foreground px-2 py-0.5">
-                          Iteration {iter}
+                          Iteration {iter + 1}
                           {result.status != null && ` · ${result.status}`}
                           {result.durationMs != null && ` · ${formatDuration(result.durationMs)}`}
                         </p>
