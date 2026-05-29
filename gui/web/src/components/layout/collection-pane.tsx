@@ -707,19 +707,6 @@ export function CollectionPane() {
             }}
           />
         </div>
-        {isCollection && (
-          <div className="px-3 shrink-0">
-            <Button
-              size="sm"
-              className="h-6 text-xs gap-1 px-2"
-              onClick={handleRun}
-              disabled={isStarting}
-            >
-              <Play className="h-3 w-3" />
-              Run
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Sub-tabs */}

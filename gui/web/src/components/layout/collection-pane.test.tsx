@@ -219,8 +219,8 @@ describe("collection tab — structure", () => {
     expect(screen.getByText("My Collection")).toBeInTheDocument()
   })
 
-  it("shows Run button for collection tabs", () => {
-    setupCollection()
+  it("shows Run button in the Runs sub-tab config bar", () => {
+    setupCollection(undefined, "runs")
     renderPane()
     expect(screen.getByRole("button", { name: /^Run$/i })).toBeInTheDocument()
   })
@@ -349,19 +349,19 @@ describe("RunsTab — config form", () => {
 })
 
 // ---------------------------------------------------------------------------
-// Header Run button — triggers run
+// Config bar Run button — triggers run
 // ---------------------------------------------------------------------------
 
 describe("header Run button", () => {
   it("calls api.collections.run with collection id", async () => {
-    setupCollection()
+    setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
     await waitFor(() => expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({})))
   })
 
   it("switches active sub-tab to 'runs'", async () => {
-    setupCollection()
+    setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
     await waitFor(() => {
@@ -370,7 +370,7 @@ describe("header Run button", () => {
   })
 
   it("calls api.runs.stream with the returned runId", async () => {
-    setupCollection()
+    setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
     await waitFor(() =>
@@ -385,12 +385,10 @@ describe("header Run button", () => {
     setupCollection(undefined, "runs")
     renderPane()
 
-    // Set iterations to 3
     const [iterInput] = screen.getAllByRole("spinbutton")
     fireEvent.change(iterInput, { target: { value: "3" } })
 
-    const runBtns = screen.getAllByRole("button", { name: /^Run$/i })
-    fireEvent.click(runBtns[runBtns.length - 1])
+    fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
 
     await waitFor(() =>
       expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ iterations: 3 })),
@@ -400,7 +398,7 @@ describe("header Run button", () => {
   it("shows toast.error when api.collections.run throws", async () => {
     const { toast } = await import("sonner")
     mockRun.mockRejectedValueOnce(new Error("server error"))
-    setupCollection()
+    setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("server error"))
