@@ -26,6 +26,7 @@ type server struct {
 	sandbox      sandbox.Runner
 	storage      *storage.Storage
 	cancels      sync.Map // key: requestID string, value: context.CancelFunc
+	runs         sync.Map // key: runID string, value: *runEntry
 }
 
 func (s *server) newMux(webContent fs.FS) http.Handler {
@@ -53,6 +54,10 @@ func (s *server) newMux(webContent fs.FS) http.Handler {
 	mux.HandleFunc("GET /api/environments/{id}", s.getEnvironment)
 	mux.HandleFunc("PUT /api/environments/{id}", s.updateEnvironment)
 	mux.HandleFunc("DELETE /api/environments/{id}", s.deleteEnvironment)
+
+	mux.HandleFunc("POST /api/collections/{id}/run", s.handleRunCollection)
+	mux.HandleFunc("GET /api/runs/{runId}/stream", s.handleRunStream)
+	mux.HandleFunc("GET /api/runs/{runId}", s.handleGetRun)
 
 	mux.HandleFunc("POST /api/sandbox/run", s.handleSandboxRun)
 
