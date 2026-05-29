@@ -24,7 +24,9 @@ type Options struct {
 	Bail         bool                                    // stop on the first failed test
 	Data         []map[string]string                     // per-iteration variable data (CSV/JSON rows)
 	SaveResponse bool                                    // attach the HTTP response to each RequestResult
-	GlobalVars   map[string]string                       // pre-set global variables (applied before collection vars)
+	GlobalVars   map[string]string                       // overrides global scope (caller-resolved values win over collection)
+	EnvVars      map[string]string                       // overrides environment scope (caller-resolved currentValue wins over storage)
+	ColVars      map[string]string                       // overrides collection scope (caller-resolved currentValue wins over JSON)
 	OnRequest    func(iterIdx int, result RequestResult) // optional streaming callback
 }
 
@@ -99,6 +101,12 @@ func (r *Runner) Run(ctx context.Context, col *parser.Collection, env *parser.En
 		vars := buildVars(col, env)
 		for k, v := range opts.GlobalVars {
 			vars.Set(variables.ScopeGlobal, k, v)
+		}
+		for k, v := range opts.EnvVars {
+			vars.Set(variables.ScopeEnvironment, k, v)
+		}
+		for k, v := range opts.ColVars {
+			vars.Set(variables.ScopeCollection, k, v)
 		}
 		if i < len(opts.Data) {
 			for k, v := range opts.Data[i] {

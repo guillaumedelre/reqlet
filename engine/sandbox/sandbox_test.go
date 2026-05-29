@@ -318,6 +318,16 @@ func TestExecute_DoneWhileWaiting(t *testing.T) {
 	assert.Contains(t, err.Error(), "node process exited")
 }
 
+// ── NewRunner error paths ─────────────────────────────────────────────────────
+
+func TestNewRunner_StartError(t *testing.T) {
+	// A path whose second-level parent does not exist forces cmd.Dir to a
+	// non-existent directory, which causes cmd.Start() to fail with a chdir error.
+	_, err := NewRunner("/truly_nonexistent_8x7y3z/src/index.js")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sandbox: start node")
+}
+
 func TestReadLoop_InvalidJSON(t *testing.T) {
 	pr, pw := io.Pipe()
 	r := &nodeRunner{

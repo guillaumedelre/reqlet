@@ -51,9 +51,14 @@ type response struct {
 // The working directory is set to the script's directory so that Node.js
 // resolves node_modules correctly.
 func NewRunner(scriptPath string) (Runner, error) {
-	cmd := exec.Command("node", scriptPath) //nolint:gosec // scriptPath is controlled by the caller
+	// Resolve to absolute so Node can find the file regardless of cmd.Dir.
+	absPath, err := filepath.Abs(scriptPath)
+	if err != nil {
+		return nil, fmt.Errorf("sandbox: resolve script path: %w", err)
+	}
+	cmd := exec.Command("node", absPath) //nolint:gosec // scriptPath is controlled by the caller
 	// node_modules lives in the parent of src/, so set cwd there.
-	cmd.Dir = filepath.Dir(filepath.Dir(scriptPath))
+	cmd.Dir = filepath.Dir(filepath.Dir(absPath))
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -128,6 +133,7 @@ func (r *nodeRunner) Close() error {
 func (r *nodeRunner) readLoop(stdout io.Reader) {
 	defer close(r.done)
 	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 4*1024*1024), 4*1024*1024) // 4 MB — handles large response bodies
 	for scanner.Scan() {
 		var resp ipcResponse
 		if err := json.Unmarshal(scanner.Bytes(), &resp); err != nil {

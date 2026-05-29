@@ -46,6 +46,7 @@ services:
     volumes:
       - ./runner:/app
       - runner-modules:/app/node_modules
+      - ./fixtures:/fixtures:ro
     working_dir: /app
 
   web:
@@ -70,6 +71,7 @@ services:
       - .:/app
       - go-cache:/root/.cache/go-build
       - go-mod-cache:/go/pkg/mod
+      - runner-modules:/app/runner/node_modules
     working_dir: /app
     ports:
       - "3001:8080"

@@ -679,3 +679,65 @@ func TestResponseSummary_Kilobytes(t *testing.T) {
 	s := responseSummary(makeResponse(200, "200 OK", make([]byte, 2048), 50*time.Millisecond))
 	assert.Contains(t, s, "2 kB")
 }
+
+// ── OnRequest no-ops (JSON and JUnit) ─────────────────────────────────────────
+
+func TestJSON_OnRequest_IsNoop(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewJSONWriter(&buf)
+	r.OnRequest(0, makeResult("GET /ping", []sandbox.TestResult{{Name: "OK", Passed: true}},
+		makeResponse(200, "200 OK", nil, 5*time.Millisecond)))
+	assert.Empty(t, buf.String(), "OnRequest must not write anything for JSON reporter")
+}
+
+func TestJUnit_OnRequest_IsNoop(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewJUnitWriter(&buf)
+	r.OnRequest(0, makeResult("GET /ping", []sandbox.TestResult{{Name: "OK", Passed: true}},
+		makeResponse(200, "200 OK", nil, 5*time.Millisecond)))
+	assert.Empty(t, buf.String(), "OnRequest must not write anything for JUnit reporter")
+}
+
+// ── OnDone writes to file path ────────────────────────────────────────────────
+
+func TestJSON_OnDone_WritesToFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.json")
+	r := NewJSON(path)
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0, makeResult("R", []sandbox.TestResult{
+		{Name: "T", Passed: true},
+	}, makeResponse(200, "200 OK", nil, 10*time.Millisecond)))))
+
+	data, err := os.ReadFile(path) //nolint:gosec // test-only temp path
+	require.NoError(t, err)
+	assert.Contains(t, string(data), `"collection"`)
+}
+
+func TestJSON_OnDone_InvalidPath_WritesToStderr(t *testing.T) {
+	r := NewJSON("/nonexistent_dir_9x8y7z/report.json")
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0)))
+	// No panic; error is logged to stderr.
+}
+
+func TestJUnit_OnDone_WritesToFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "report.xml")
+	r := NewJUnit(path)
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0, makeResult("R", []sandbox.TestResult{
+		{Name: "T", Passed: true},
+	}, makeResponse(200, "200 OK", nil, 10*time.Millisecond)))))
+
+	data, err := os.ReadFile(path) //nolint:gosec // test-only temp path
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "testsuites")
+}
+
+func TestJUnit_OnDone_InvalidPath_WritesToStderr(t *testing.T) {
+	r := NewJUnit("/nonexistent_dir_9x8y7z/report.xml")
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0)))
+	// No panic; error is logged to stderr.
+}

@@ -17,12 +17,18 @@ import (
 
 // ---- request / response types ----
 
+type runVariables struct {
+	Globals             map[string]string `json:"globals,omitempty"`
+	Environment         map[string]string `json:"environment,omitempty"`
+	CollectionVariables map[string]string `json:"collectionVariables,omitempty"`
+}
+
 type runReq struct {
-	Iterations    int    `json:"iterations"`
-	DelayMS       int    `json:"delayMs"`
-	Bail          bool   `json:"bail"`
-	Folder        string `json:"folder"`
-	EnvironmentID string `json:"environmentId"`
+	Iterations int           `json:"iterations"`
+	DelayMS    int           `json:"delayMs"`
+	Bail       bool          `json:"bail"`
+	Folder     string        `json:"folder"`
+	Variables  *runVariables `json:"variables,omitempty"`
 }
 
 type runTestResult struct {
@@ -190,14 +196,6 @@ func (s *server) handleRunCollection(w http.ResponseWriter, r *http.Request) {
 		req.Iterations = 1
 	}
 
-	var env *parser.Environment
-	if req.EnvironmentID != "" {
-		envData, envErr := s.environments.get(req.EnvironmentID)
-		if envErr == nil {
-			env, _ = EnvironmentToParser(envData)
-		}
-	}
-
 	globalSettings := s.loadSettings(r)
 	httpOpts := enginehttp.DefaultOptions()
 	httpOpts.Insecure = !globalSettings.SSLVerification
@@ -237,12 +235,22 @@ func (s *server) handleRunCollection(w http.ResponseWriter, r *http.Request) {
 		entry.appendAndSend(runEvent{Type: "start", Total: total, Iterations: iters})
 
 		indexPerIter := make([]int, iters)
+		var globalVars, envVars, colVars map[string]string
+		if req.Variables != nil {
+			globalVars = req.Variables.Globals
+			envVars = req.Variables.Environment
+			colVars = req.Variables.CollectionVariables
+		}
+
 		opts := runner.Options{
 			Iterations:   iters,
 			DelayMS:      req.DelayMS,
 			Bail:         req.Bail,
 			Folder:       req.Folder,
 			SaveResponse: true,
+			GlobalVars:   globalVars,
+			EnvVars:      envVars,
+			ColVars:      colVars,
 			OnRequest: func(iterIdx int, result runner.RequestResult) {
 				idx := indexPerIter[iterIdx]
 				indexPerIter[iterIdx]++
@@ -282,7 +290,7 @@ func (s *server) handleRunCollection(w http.ResponseWriter, r *http.Request) {
 		// but the sandbox honours the context timeout passed per-script inside runner.
 		_ = scriptTimeout
 
-		runResult, runErr := colRunner.Run(context.Background(), col, env, opts)
+		runResult, runErr := colRunner.Run(context.Background(), col, nil, opts)
 
 		if runErr != nil {
 			errEvt := runEvent{Type: "error", Error: runErr.Error()}
