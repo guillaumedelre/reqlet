@@ -1,5 +1,6 @@
-import { useState } from "react"
-import { Play, ChevronRight, Plus, Trash2 } from "lucide-react"
+import { useState, useEffect, useRef, useCallback } from "react"
+import { Play, ChevronRight, Plus, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -10,13 +11,36 @@ import { CodeEditor } from "@/components/ui/code-editor"
 import { cn } from "@/lib/utils"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
+import { useRunsStore } from "@/store/runs"
+import { api } from "@/lib/api"
+import { MethodBadge } from "@/components/method-badge"
 import { AuthPanel } from "./auth-panel"
-import type { CollectionSubTab, FolderSubTab, EnvVariable } from "@/types"
+import type { CollectionSubTab, FolderSubTab, EnvVariable, RunOptions, HttpMethod } from "@/types"
 
 // ---------- Sub-tab trigger style ----------
 
 const SUB_TAB_CLS =
   "h-8 px-3 text-xs rounded-none border-0 border-b-2 border-transparent !bg-transparent !shadow-none data-active:border-primary data-active:text-foreground dark:data-active:!bg-transparent"
+
+// ---------- Helpers ----------
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`
+  return `${(ms / 1000).toFixed(2)}s`
+}
+
+function formatRelTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  if (diff < 60_000) return "just now"
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  return `${Math.floor(diff / 3_600_000)}h ago`
+}
+
+function statusColor(status: number): string {
+  if (status >= 200 && status < 300) return "text-emerald-500"
+  if (status >= 300 && status < 400) return "text-yellow-500"
+  return "text-red-500"
+}
 
 // ---------- Breadcrumb ----------
 
@@ -203,18 +227,299 @@ function ScriptsTab({
   )
 }
 
-// ---------- Runs empty state ----------
+// ---------- Runs tab ----------
 
-function RunsEmpty() {
+function RunEventRow({
+  event,
+  showIteration,
+}: {
+  event: import("@/types").RunEvent
+  showIteration: boolean
+}) {
+  const passed = event.tests?.every((t) => t.passed) ?? event.passed
+  const failedTests = event.tests?.filter((t) => !t.passed) ?? []
+
   return (
-    <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
-      <Play className="h-8 w-8 text-muted-foreground/40" />
-      <div>
-        <p className="text-sm font-medium text-foreground">No runs yet</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          Use the Run button to execute this collection
-        </p>
+    <div className="border-b border-border/40 last:border-0">
+      <div className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/20 text-xs">
+        {showIteration && (
+          <span className="text-[0.625rem] text-muted-foreground w-5 shrink-0 text-center">
+            {event.iteration ?? 1}
+          </span>
+        )}
+        <MethodBadge method={(event.method ?? "GET") as HttpMethod} className="w-12 text-center" />
+        <span className="flex-1 truncate text-foreground">{event.name ?? event.url ?? ""}</span>
+        {event.status != null && (
+          <span className={cn("font-mono shrink-0", statusColor(event.status))}>
+            {event.status}
+          </span>
+        )}
+        {event.tests != null && (
+          <span
+            className={cn(
+              "shrink-0 tabular-nums",
+              event.tests.length > 0 && failedTests.length > 0
+                ? "text-red-500"
+                : "text-muted-foreground",
+            )}
+          >
+            {event.tests.length - failedTests.length}/{event.tests.length}
+          </span>
+        )}
+        {event.durationMs != null && (
+          <span className="shrink-0 text-muted-foreground tabular-nums">
+            {formatDuration(event.durationMs)}
+          </span>
+        )}
+        {passed ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+        ) : (
+          <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+        )}
       </div>
+      {failedTests.length > 0 && (
+        <div className="px-3 pb-1.5 space-y-0.5">
+          {failedTests.map((t, i) => (
+            <p key={i} className="text-[0.625rem] text-red-500 pl-14 leading-snug">
+              ✗ {t.name}
+              {t.error && <span className="text-muted-foreground"> — {t.error}</span>}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function RunsTab({
+  collectionId,
+  runOpts,
+  onOptsChange,
+  onRun,
+  isStarting,
+}: {
+  collectionId: string
+  runOpts: RunOptions
+  onOptsChange: (patch: Partial<RunOptions>) => void
+  onRun: () => void
+  isStarting: boolean
+}) {
+  const { runs, activeRunId } = useRunsStore()
+
+  const collectionRuns = [...runs.entries()]
+    .filter(([, r]) => r.collectionId === collectionId)
+    .sort((a, b) => new Date(b[1].startedAt).getTime() - new Date(a[1].startedAt).getTime())
+
+  const activeRun =
+    activeRunId && runs.get(activeRunId)?.collectionId === collectionId
+      ? runs.get(activeRunId)!
+      : null
+
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+
+  // Auto-select the active run when a new one starts
+  useEffect(() => {
+    if (activeRunId && runs.get(activeRunId)?.collectionId === collectionId) {
+      setSelectedRunId(activeRunId)
+    }
+  }, [activeRunId, collectionId, runs])
+
+  const displayRunId = selectedRunId ?? collectionRuns[0]?.[0] ?? null
+  const displayRun = displayRunId ? runs.get(displayRunId) : null
+
+  const isRunning = activeRun?.status === "running"
+
+  const requestEvents = (displayRun?.events ?? []).filter((e) => e.type === "request")
+  const startEvent = (displayRun?.events ?? []).find((e) => e.type === "start")
+  const totalFromStart = startEvent?.total ?? 0
+  const iterations = startEvent?.iterations ?? runOpts.iterations ?? 1
+  const showIteration = iterations > 1
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Config bar */}
+      <div className="flex items-center gap-4 px-3 py-2 border-b border-border shrink-0 bg-muted/20">
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+          Iterations
+          <Input
+            type="number"
+            min={1}
+            max={999}
+            value={runOpts.iterations ?? 1}
+            onChange={(e) =>
+              onOptsChange({ iterations: Math.max(1, parseInt(e.target.value) || 1) })
+            }
+            className="h-6 w-14 text-xs px-1.5 text-center"
+            disabled={isRunning}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground shrink-0">
+          Delay (ms)
+          <Input
+            type="number"
+            min={0}
+            value={runOpts.delayMs ?? 0}
+            onChange={(e) => onOptsChange({ delayMs: Math.max(0, parseInt(e.target.value) || 0) })}
+            className="h-6 w-16 text-xs px-1.5 text-center"
+            disabled={isRunning}
+          />
+        </label>
+        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer shrink-0">
+          <Checkbox
+            checked={runOpts.bail ?? false}
+            onCheckedChange={(v) => onOptsChange({ bail: !!v })}
+            disabled={isRunning}
+          />
+          Stop on failure
+        </label>
+        <div className="flex-1" />
+        <Button
+          size="sm"
+          className="h-6 text-xs gap-1 px-2 shrink-0"
+          onClick={onRun}
+          disabled={isStarting || isRunning}
+        >
+          {isStarting || isRunning ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Play className="h-3 w-3" />
+          )}
+          {isRunning ? "Running…" : "Run"}
+        </Button>
+      </div>
+
+      {/* Run results */}
+      {displayRun ? (
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Summary bar */}
+          <div
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 border-b border-border shrink-0 text-xs",
+              displayRun.status === "running" ? "bg-muted/10" : "bg-muted/20",
+            )}
+          >
+            {displayRun.status === "running" ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+                <span className="text-muted-foreground">
+                  {requestEvents.length}
+                  {totalFromStart > 0 ? ` / ${totalFromStart * iterations}` : ""} requests
+                </span>
+              </>
+            ) : displayRun.status === "done" && displayRun.summary ? (
+              <>
+                <span className="text-emerald-500 font-medium">
+                  ✓ {displayRun.summary.passed} passed
+                </span>
+                {displayRun.summary.failed > 0 && (
+                  <span className="text-red-500 font-medium">
+                    ✗ {displayRun.summary.failed} failed
+                  </span>
+                )}
+                <span className="text-muted-foreground">
+                  {displayRun.summary.total} total · {formatDuration(displayRun.summary.durationMs)}
+                </span>
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs gap-1 px-2"
+                  onClick={onRun}
+                  disabled={isStarting}
+                >
+                  <Play className="h-3 w-3" />
+                  Run Again
+                </Button>
+              </>
+            ) : displayRun.status === "error" ? (
+              <>
+                <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+                <span className="text-red-500 truncate">{displayRun.error ?? "Run failed"}</span>
+                <div className="flex-1" />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-xs gap-1 px-2"
+                  onClick={onRun}
+                  disabled={isStarting}
+                >
+                  <Play className="h-3 w-3" />
+                  Retry
+                </Button>
+              </>
+            ) : null}
+          </div>
+
+          {/* Event list + past runs */}
+          <div className="flex flex-1 overflow-hidden">
+            <ScrollArea className="flex-1">
+              {requestEvents.length > 0 ? (
+                requestEvents.map((evt, i) => (
+                  <RunEventRow key={i} event={evt} showIteration={showIteration} />
+                ))
+              ) : displayRun.status === "running" ? (
+                <div className="flex items-center justify-center py-8">
+                  <p className="text-xs text-muted-foreground">Waiting for first request…</p>
+                </div>
+              ) : null}
+            </ScrollArea>
+
+            {/* Past runs sidebar */}
+            {collectionRuns.length > 1 && (
+              <div className="w-36 border-l border-border flex flex-col shrink-0 overflow-hidden">
+                <p className="px-2 py-1.5 text-[0.625rem] font-medium text-muted-foreground uppercase tracking-wider border-b border-border shrink-0">
+                  Past Runs
+                </p>
+                <ScrollArea className="flex-1">
+                  {collectionRuns.map(([runId, run]) => (
+                    <button
+                      key={runId}
+                      onClick={() => setSelectedRunId(runId)}
+                      className={cn(
+                        "w-full text-left px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors",
+                        selectedRunId === runId && "bg-accent",
+                      )}
+                    >
+                      <div className="flex items-center gap-1 text-[0.625rem]">
+                        {run.status === "running" ? (
+                          <Loader2 className="h-2.5 w-2.5 animate-spin text-muted-foreground" />
+                        ) : run.status === "done" && run.summary ? (
+                          run.summary.failed === 0 ? (
+                            <CheckCircle2 className="h-2.5 w-2.5 text-emerald-500 shrink-0" />
+                          ) : (
+                            <XCircle className="h-2.5 w-2.5 text-red-500 shrink-0" />
+                          )
+                        ) : (
+                          <XCircle className="h-2.5 w-2.5 text-red-500 shrink-0" />
+                        )}
+                        <span className="text-muted-foreground truncate">
+                          {formatRelTime(run.startedAt)}
+                        </span>
+                      </div>
+                      {run.summary && (
+                        <p className="text-[0.625rem] text-muted-foreground mt-0.5">
+                          {run.summary.passed}/{run.summary.total} ·{" "}
+                          {formatDuration(run.summary.durationMs)}
+                        </p>
+                      )}
+                    </button>
+                  ))}
+                </ScrollArea>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="h-full flex flex-col items-center justify-center gap-3 text-center px-6">
+          <Play className="h-8 w-8 text-muted-foreground/40" />
+          <div>
+            <p className="text-sm font-medium text-foreground">No runs yet</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Configure options above and click Run
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -268,14 +573,58 @@ export function CollectionPane() {
     updateItemAuth,
   } = useWorkspaceStore()
   const { openCollectionTab, openFolderTab } = useTabsStore()
+  const { startRun, appendEvent, finishRun, failRun } = useRunsStore()
 
+  const [runOpts, setRunOpts] = useState<RunOptions>({ iterations: 1, delayMs: 0, bail: false })
+  const [isStarting, setIsStarting] = useState(false)
+  const sseCleanupRef = useRef<(() => void) | null>(null)
+
+  // Derived before hooks so useCallback is unconditional
   const activeTab = tabs.find((t) => t.id === activeTabId)
+  const collection = collections.find((c) => c.id === activeTab?.collectionId)
+
+  useEffect(
+    () => () => {
+      sseCleanupRef.current?.()
+    },
+    [],
+  )
+
+  const handleRun = useCallback(async () => {
+    if (!collection || isStarting) return
+    setIsStarting(true)
+    setTabCollectionSubTab(activeTabId, "runs")
+    try {
+      const { runId } = await api.collections.run(collection.id, runOpts)
+      startRun(runId, collection.id)
+      sseCleanupRef.current?.()
+      sseCleanupRef.current = api.runs.stream(runId, {
+        onEvent: (evt) => appendEvent(runId, evt),
+        onDone: (summary) => finishRun(runId, summary),
+        onError: (err) => failRun(runId, err.message),
+      })
+    } catch (err) {
+      toast.error((err as Error).message || "Failed to start run")
+    } finally {
+      setIsStarting(false)
+    }
+  }, [
+    collection,
+    isStarting,
+    activeTabId,
+    runOpts,
+    setTabCollectionSubTab,
+    startRun,
+    appendEvent,
+    finishRun,
+    failRun,
+  ])
+
   if (!activeTab || (activeTab.type !== "collection" && activeTab.type !== "folder")) return null
 
   const subTab = (activeTab.collectionSubTab ?? "overview") as CollectionSubTab | FolderSubTab
   const isCollection = activeTab.type === "collection"
 
-  const collection = collections.find((c) => c.id === activeTab.collectionId)
   if (!collection) return null
 
   const folderPath = !isCollection && activeTab.folderId ? findFolderPath(activeTab.folderId) : null
@@ -340,7 +689,6 @@ export function CollectionPane() {
               if (col) openCollectionTab(col)
             }}
             onFolderClick={(id) => {
-              // find the folder item and open its tab
               function findFolderItem(
                 items: import("@/types").CollectionItem[],
                 fid: string,
@@ -361,7 +709,12 @@ export function CollectionPane() {
         </div>
         {isCollection && (
           <div className="px-3 shrink-0">
-            <Button size="sm" className="h-6 text-xs gap-1 px-2">
+            <Button
+              size="sm"
+              className="h-6 text-xs gap-1 px-2"
+              onClick={handleRun}
+              disabled={isStarting}
+            >
               <Play className="h-3 w-3" />
               Run
             </Button>
@@ -429,7 +782,13 @@ export function CollectionPane() {
 
         {isCollection && (
           <TabsContent value="runs" className="flex-1 overflow-hidden mt-0">
-            <RunsEmpty />
+            <RunsTab
+              collectionId={collection.id}
+              runOpts={runOpts}
+              onOptsChange={(patch) => setRunOpts((o) => ({ ...o, ...patch }))}
+              onRun={handleRun}
+              isStarting={isStarting}
+            />
           </TabsContent>
         )}
       </Tabs>

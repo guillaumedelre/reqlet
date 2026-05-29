@@ -31,27 +31,45 @@ describe("initial state", () => {
 
 describe("startRun", () => {
   it("creates a running entry and sets activeRunId", () => {
-    useRunsStore.getState().startRun("r1")
+    useRunsStore.getState().startRun("r1", "col-1")
     const { activeRunId, runs } = useRunsStore.getState()
     expect(activeRunId).toBe("r1")
     const entry = runs.get("r1")
     expect(entry?.status).toBe("running")
+    expect(entry?.collectionId).toBe("col-1")
     expect(entry?.events).toEqual([])
     expect(entry?.summary).toBeNull()
     expect(entry?.error).toBeNull()
   })
 
+  it("stores startedAt as a valid ISO string", () => {
+    const before = Date.now()
+    useRunsStore.getState().startRun("r1", "col-1")
+    const after = Date.now()
+    const entry = useRunsStore.getState().runs.get("r1")!
+    const ts = new Date(entry.startedAt).getTime()
+    expect(ts).toBeGreaterThanOrEqual(before)
+    expect(ts).toBeLessThanOrEqual(after)
+  })
+
   it("tracks multiple independent runs", () => {
-    useRunsStore.getState().startRun("r1")
-    useRunsStore.getState().startRun("r2")
+    useRunsStore.getState().startRun("r1", "col-1")
+    useRunsStore.getState().startRun("r2", "col-2")
     expect(useRunsStore.getState().runs.size).toBe(2)
     expect(useRunsStore.getState().activeRunId).toBe("r2")
+  })
+
+  it("associates each run with its collection", () => {
+    useRunsStore.getState().startRun("r1", "col-A")
+    useRunsStore.getState().startRun("r2", "col-B")
+    expect(useRunsStore.getState().runs.get("r1")?.collectionId).toBe("col-A")
+    expect(useRunsStore.getState().runs.get("r2")?.collectionId).toBe("col-B")
   })
 })
 
 describe("appendEvent", () => {
   it("appends events in order", () => {
-    useRunsStore.getState().startRun("r1")
+    useRunsStore.getState().startRun("r1", "col-1")
     useRunsStore.getState().appendEvent("r1", startEvent)
     useRunsStore.getState().appendEvent("r1", reqEvent)
     const events = useRunsStore.getState().runs.get("r1")!.events
@@ -66,7 +84,7 @@ describe("appendEvent", () => {
   })
 
   it("does not mutate existing event arrays", () => {
-    useRunsStore.getState().startRun("r1")
+    useRunsStore.getState().startRun("r1", "col-1")
     useRunsStore.getState().appendEvent("r1", startEvent)
     const before = useRunsStore.getState().runs.get("r1")!.events
     useRunsStore.getState().appendEvent("r1", reqEvent)
@@ -79,7 +97,7 @@ describe("appendEvent", () => {
 
 describe("finishRun", () => {
   it("sets status to done and stores summary", () => {
-    useRunsStore.getState().startRun("r1")
+    useRunsStore.getState().startRun("r1", "col-1")
     useRunsStore.getState().appendEvent("r1", doneEvent)
     useRunsStore.getState().finishRun("r1", summary)
     const entry = useRunsStore.getState().runs.get("r1")!
@@ -96,7 +114,7 @@ describe("finishRun", () => {
 
 describe("failRun", () => {
   it("sets status to error and stores message", () => {
-    useRunsStore.getState().startRun("r1")
+    useRunsStore.getState().startRun("r1", "col-1")
     useRunsStore.getState().failRun("r1", "SSE connection error")
     const entry = useRunsStore.getState().runs.get("r1")!
     expect(entry.status).toBe("error")
@@ -111,8 +129,8 @@ describe("failRun", () => {
 
 describe("resetRuns", () => {
   it("clears all run state and active run", () => {
-    useRunsStore.getState().startRun("r1")
-    useRunsStore.getState().startRun("r2")
+    useRunsStore.getState().startRun("r1", "col-1")
+    useRunsStore.getState().startRun("r2", "col-2")
     useRunsStore.getState().resetRuns()
     const { activeRunId, runs } = useRunsStore.getState()
     expect(activeRunId).toBeNull()
@@ -123,7 +141,7 @@ describe("resetRuns", () => {
 describe("full lifecycle", () => {
   it("start → events → done", () => {
     const { startRun, appendEvent, finishRun } = useRunsStore.getState()
-    startRun("r1")
+    startRun("r1", "col-1")
     appendEvent("r1", startEvent)
     appendEvent("r1", reqEvent)
     appendEvent("r1", doneEvent)
@@ -138,7 +156,7 @@ describe("full lifecycle", () => {
 
   it("start → error path", () => {
     const { startRun, appendEvent, failRun } = useRunsStore.getState()
-    startRun("r1")
+    startRun("r1", "col-1")
     appendEvent("r1", startEvent)
     failRun("r1", "network error")
 

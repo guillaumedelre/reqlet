@@ -6,6 +6,8 @@ export type RunStatus = "running" | "done" | "error"
 
 export interface RunState {
   status: RunStatus
+  collectionId: string
+  startedAt: string
   events: RunEvent[]
   summary: RunSummary | null
   error: string | null
@@ -14,7 +16,7 @@ export interface RunState {
 interface RunsState {
   activeRunId: string | null
   runs: Map<string, RunState>
-  startRun: (runId: string) => void
+  startRun: (runId: string, collectionId: string) => void
   appendEvent: (runId: string, event: RunEvent) => void
   finishRun: (runId: string, summary: RunSummary) => void
   failRun: (runId: string, error: string) => void
@@ -25,10 +27,17 @@ export const useRunsStore = create<RunsState>()((set) => ({
   activeRunId: null,
   runs: new Map(),
 
-  startRun: (runId) =>
+  startRun: (runId, collectionId) =>
     set((s) => {
       const runs = new Map(s.runs)
-      runs.set(runId, { status: "running", events: [], summary: null, error: null })
+      runs.set(runId, {
+        status: "running",
+        collectionId,
+        startedAt: new Date().toISOString(),
+        events: [],
+        summary: null,
+        error: null,
+      })
       return { activeRunId: runId, runs }
     }),
 
