@@ -242,6 +242,198 @@ describe("api.runs.get", () => {
   })
 })
 
+describe("api.collections.import", () => {
+  it("sends POST /api/collections/import with file text content", async () => {
+    mockFetch.mockReturnValue(okResponse(sampleCollection, 200))
+    const file = new File(['{"info":{"name":"My API"}}'], "api.json", {
+      type: "application/json",
+    })
+    const result = await api.collections.import(file)
+    expect(mockFetch).toHaveBeenCalledWith("/api/collections/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: '{"info":{"name":"My API"}}',
+    })
+    expect(result).toEqual(sampleCollection)
+  })
+
+  it("throws with server error message on failure", async () => {
+    mockFetch.mockReturnValue(
+      errorResponse({ error: "Invalid Postman format", code: "bad_request" }),
+    )
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.collections.import(file)).rejects.toThrow("Invalid Postman format")
+  })
+
+  it("throws fallback message when error JSON cannot be parsed", async () => {
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error("bad json")),
+      } as Response),
+    )
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.collections.import(file)).rejects.toThrow("Request failed")
+  })
+
+  it("uses fallback message when error field is absent from error body", async () => {
+    mockFetch.mockReturnValue(errorResponse({ code: "bad_request" }))
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.collections.import(file)).rejects.toThrow("Request failed")
+  })
+})
+
+describe("api.collections.export", () => {
+  let mockAnchor: { href: string; download: string; click: ReturnType<typeof vi.fn> }
+
+  beforeEach(() => {
+    mockAnchor = { href: "", download: "", click: vi.fn() }
+    globalThis.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url")
+    globalThis.URL.revokeObjectURL = vi.fn()
+    vi.spyOn(document, "createElement").mockReturnValue(mockAnchor as unknown as HTMLElement)
+    vi.spyOn(document.body, "appendChild").mockReturnValue(mockAnchor as unknown as Node)
+    vi.spyOn(document.body, "removeChild").mockReturnValue(mockAnchor as unknown as Node)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("downloads with filename from Content-Disposition header", async () => {
+    const blob = new Blob(["{}"], { type: "application/json" })
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h: string) =>
+            h === "Content-Disposition" ? 'attachment; filename="my-api.json"' : null,
+        },
+        blob: () => Promise.resolve(blob),
+      } as unknown as Response),
+    )
+    await api.collections.export("col-1")
+    expect(mockAnchor.download).toBe("my-api.json")
+    expect(mockAnchor.click).toHaveBeenCalled()
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
+  })
+
+  it("uses fallback filename when Content-Disposition is absent", async () => {
+    const blob = new Blob(["{}"])
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: () => Promise.resolve(blob),
+      } as unknown as Response),
+    )
+    await api.collections.export("col-1")
+    expect(mockAnchor.download).toBe("collection.postman_collection.json")
+  })
+
+  it("throws when response is not ok", async () => {
+    mockFetch.mockReturnValue(Promise.resolve({ ok: false, status: 403 } as Response))
+    await expect(api.collections.export("col-1")).rejects.toThrow("Export failed")
+  })
+})
+
+describe("api.environments.import", () => {
+  it("sends POST /api/environments/import with file text content", async () => {
+    mockFetch.mockReturnValue(okResponse(sampleEnvironment, 200))
+    const file = new File(['{"name":"Dev"}'], "dev.json", { type: "application/json" })
+    const result = await api.environments.import(file)
+    expect(mockFetch).toHaveBeenCalledWith("/api/environments/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: '{"name":"Dev"}',
+    })
+    expect(result).toEqual(sampleEnvironment)
+  })
+
+  it("throws with server error message on failure", async () => {
+    mockFetch.mockReturnValue(
+      errorResponse({ error: "Invalid environment format", code: "bad_request" }),
+    )
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.environments.import(file)).rejects.toThrow("Invalid environment format")
+  })
+
+  it("throws fallback message when error JSON cannot be parsed", async () => {
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: false,
+        status: 500,
+        json: () => Promise.reject(new Error("bad json")),
+      } as Response),
+    )
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.environments.import(file)).rejects.toThrow("Request failed")
+  })
+
+  it("uses fallback message when error field is absent from error body", async () => {
+    mockFetch.mockReturnValue(errorResponse({ code: "bad_request" }))
+    const file = new File(["{}"], "bad.json", { type: "application/json" })
+    await expect(api.environments.import(file)).rejects.toThrow("Request failed")
+  })
+})
+
+describe("api.environments.export", () => {
+  let mockAnchor: { href: string; download: string; click: ReturnType<typeof vi.fn> }
+
+  beforeEach(() => {
+    mockAnchor = { href: "", download: "", click: vi.fn() }
+    globalThis.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url")
+    globalThis.URL.revokeObjectURL = vi.fn()
+    vi.spyOn(document, "createElement").mockReturnValue(mockAnchor as unknown as HTMLElement)
+    vi.spyOn(document.body, "appendChild").mockReturnValue(mockAnchor as unknown as Node)
+    vi.spyOn(document.body, "removeChild").mockReturnValue(mockAnchor as unknown as Node)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it("downloads with filename from Content-Disposition header", async () => {
+    const blob = new Blob(["{}"])
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: {
+          get: (h: string) =>
+            h === "Content-Disposition" ? 'attachment; filename="dev-env.json"' : null,
+        },
+        blob: () => Promise.resolve(blob),
+      } as unknown as Response),
+    )
+    await api.environments.export("env-1")
+    expect(mockAnchor.download).toBe("dev-env.json")
+    expect(mockAnchor.click).toHaveBeenCalled()
+    expect(globalThis.URL.revokeObjectURL).toHaveBeenCalledWith("blob:mock-url")
+  })
+
+  it("uses fallback filename when Content-Disposition is absent", async () => {
+    const blob = new Blob(["{}"])
+    mockFetch.mockReturnValue(
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        blob: () => Promise.resolve(blob),
+      } as unknown as Response),
+    )
+    await api.environments.export("env-1")
+    expect(mockAnchor.download).toBe("environment.postman_environment.json")
+  })
+
+  it("throws when response is not ok", async () => {
+    mockFetch.mockReturnValue(Promise.resolve({ ok: false, status: 403 } as Response))
+    await expect(api.environments.export("env-1")).rejects.toThrow("Export failed")
+  })
+})
+
 describe("api.runs.stream", () => {
   it("opens EventSource at /api/runs/:id/stream and delivers events", () => {
     const { MockEventSource, instances } = makeEventSourceMock()
@@ -314,7 +506,11 @@ describe("api.runs.stream", () => {
     const { MockEventSource, instances } = makeEventSourceMock()
     globalThis.EventSource = MockEventSource as unknown as typeof EventSource
 
-    const cleanup = api.runs.stream("run-5", { onEvent: vi.fn(), onDone: vi.fn(), onError: vi.fn() })
+    const cleanup = api.runs.stream("run-5", {
+      onEvent: vi.fn(),
+      onDone: vi.fn(),
+      onError: vi.fn(),
+    })
     cleanup()
 
     expect(instances[0].close).toHaveBeenCalled()

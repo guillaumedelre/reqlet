@@ -278,6 +278,23 @@ describe("save — happy path", () => {
 // ---------------------------------------------------------------------------
 
 describe("save — error path", () => {
+  it("shows BackendError message when putSettings fails with BackendError", async () => {
+    const Err = (backend as unknown as { BackendError: new (c: string, m: string) => Error })
+      .BackendError
+    vi.mocked(backend.putSettings).mockRejectedValue(new Err("network", "Connection refused"))
+    render(<SettingsDialog />)
+    openDialog()
+
+    await screen.findByRole("switch", { name: /ssl certificate verification/i })
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith("Connection refused")
+    })
+  })
+
   it("shows an error toast when putSettings fails", async () => {
     vi.mocked(backend.putSettings).mockRejectedValue(new Error("network error"))
     render(<SettingsDialog />)
@@ -566,5 +583,31 @@ describe("general section — new fields", () => {
     expect(backend.putSettings).toHaveBeenCalledWith(
       expect.objectContaining({ scriptTimeoutMs: 2000 }),
     )
+  })
+
+  it("timeout input falls back to 0 when cleared", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("30000")
+    act(() => fireEvent.change(input, { target: { value: "" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(useSettingsStore.getState().timeoutDefault).toBe(0)
+  })
+
+  it("toggling no-cache header patches the form", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const toggle = await screen.findByRole("switch", { name: /send no-cache header/i })
+    act(() => fireEvent.click(toggle))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(useSettingsStore.getState().noCacheHeader).toBe(true)
   })
 })

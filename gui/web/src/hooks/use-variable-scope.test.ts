@@ -403,4 +403,86 @@ describe("useVariableScope", () => {
     const { result } = renderHook(() => useVariableScope())
     expect(result.current.resolvedMap.get("url")).toBe("https://{{unknown}}/path")
   })
+
+  it("returns empty map when collectionId is provided but collection does not exist", () => {
+    useWorkspaceStore.setState({ collections: [] })
+    const { result } = renderHook(() => useVariableScope("nonexistent"))
+    expect(result.current.resolvedMap.size).toBe(0)
+  })
+
+  it("ignores disabled collection variables", () => {
+    useWorkspaceStore.setState({
+      collections: [
+        {
+          id: "col-1",
+          name: "API",
+          description: "",
+          auth: { type: "none" },
+          items: [],
+          preRequestScript: "",
+          testScript: "",
+          variables: [
+            { id: "v1", enabled: false, key: "secret", initialValue: "x", currentValue: "x" },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useVariableScope("col-1"))
+    expect(result.current.resolvedMap.has("secret")).toBe(false)
+  })
+
+  it("falls back to initialValue for collection variable when currentValue is empty", () => {
+    useWorkspaceStore.setState({
+      collections: [
+        {
+          id: "col-1",
+          name: "API",
+          description: "",
+          auth: { type: "none" },
+          items: [],
+          preRequestScript: "",
+          testScript: "",
+          variables: [
+            { id: "v1", enabled: true, key: "ver", initialValue: "v1", currentValue: "" },
+          ],
+        },
+      ],
+    })
+    const { result } = renderHook(() => useVariableScope("col-1"))
+    expect(result.current.resolvedMap.get("ver")).toBe("v1")
+  })
+
+  it("falls back to initialValue for environment variable when currentValue is empty", () => {
+    useWorkspaceStore.setState({
+      environments: [
+        {
+          id: "env-1",
+          name: "Dev",
+          variables: [
+            { id: "v1", enabled: true, key: "host", initialValue: "localhost", currentValue: "" },
+          ],
+        },
+      ],
+    })
+    useUiStore.setState({ activeEnvironmentId: "env-1" })
+    const { result } = renderHook(() => useVariableScope())
+    expect(result.current.resolvedMap.get("host")).toBe("localhost")
+  })
+
+  it("ignores disabled environment variables", () => {
+    useWorkspaceStore.setState({
+      environments: [
+        {
+          id: "env-1",
+          name: "Dev",
+          variables: [
+            { id: "v1", enabled: false, key: "secret", initialValue: "x", currentValue: "x" },
+          ],
+        },
+      ],
+    })
+    useUiStore.setState({ activeEnvironmentId: "env-1" })
+    const { result } = renderHook(() => useVariableScope())
+    expect(result.current.resolvedMap.has("secret")).toBe(false)
+  })
 })

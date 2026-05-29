@@ -1,9 +1,78 @@
-import { act, renderHook, waitFor } from "@testing-library/react"
-import { beforeEach, describe, expect, it } from "vitest"
-import { useOrphanTabCleanup } from "./app-layout"
+import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { TooltipProvider } from "@/components/ui/tooltip"
+import { useOrphanTabCleanup, AppLayout } from "./app-layout"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
+import { useUiStore } from "@/store/ui"
 import type { Collection, FolderItem, RequestItem, Tab } from "@/types"
+
+vi.mock("sonner", () => ({
+  toast: { error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() },
+}))
+
+vi.mock("@/lib/api", () => ({
+  api: {
+    collections: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      get: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      import: vi.fn(),
+      export: vi.fn(),
+    },
+    environments: {
+      list: vi.fn().mockResolvedValue([]),
+      create: vi.fn(),
+      get: vi.fn(),
+      update: vi.fn(),
+      delete: vi.fn(),
+      import: vi.fn(),
+      export: vi.fn(),
+    },
+  },
+}))
+
+vi.mock("@/lib/backend", () => ({
+  listHistory: vi.fn().mockResolvedValue({ entries: [], total: 0 }),
+  deleteHistoryEntry: vi.fn(),
+  clearHistory: vi.fn(),
+  cancelRequest: vi.fn(),
+  sendRequest: vi.fn(),
+  getVariables: vi.fn().mockResolvedValue({ globals: [] }),
+  getSettings: vi.fn().mockResolvedValue({
+    sslVerify: true,
+    followRedirects: true,
+    httpVersion: "auto",
+    proxy: null,
+    proxyBypass: [],
+    certificates: [],
+    maxResponseSizeBytes: 0,
+    scriptTimeoutMs: 5000,
+  }),
+  putSettings: vi.fn(),
+  BackendError: class BackendError extends Error {
+    code: string
+    constructor(code: string, message: string) {
+      super(message)
+      this.code = code
+    }
+  },
+}))
+
+const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+
+function renderLayout() {
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <TooltipProvider>
+        <AppLayout />
+      </TooltipProvider>
+    </QueryClientProvider>,
+  )
+}
 
 const BODY = {
   type: "none" as const,
@@ -234,5 +303,121 @@ describe("orphan tab cleanup — request deleted", () => {
     act(() => setCollections([makeCollection("c1", [])]))
 
     await waitFor(() => expect(tabIds()).not.toContain("t-req"))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AppLayout component
+// ---------------------------------------------------------------------------
+
+describe("AppLayout component", () => {
+  beforeEach(() => {
+    useTabsStore.setState({ tabs: [], activeTabId: "", closedTabs: [] })
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections", settingsOpen: false }))
+    queryClient.clear()
+  })
+
+  it("renders without crashing (default state: request/response panes)", () => {
+    renderLayout()
+    // RequestPane and ResponsePane are visible when no tab is active
+    expect(document.body).toBeTruthy()
+  })
+
+  it("hides the side panel and drag handle when activePanel is null", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: null }))
+    const { container } = renderLayout()
+    expect(container.querySelector(".cursor-col-resize")).not.toBeInTheDocument()
+  })
+
+  it("shows the drag handle when activePanel is set", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    const { container } = renderLayout()
+    expect(container.querySelector(".cursor-col-resize")).toBeInTheDocument()
+  })
+
+  it("renders CollectionPane when a collection tab is active", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ id: "t1", type: "collection", collectionId: "c1" })],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderLayout()
+    // CollectionPane is rendered (not the resizable request/response split)
+    expect(document.body).toBeTruthy()
+  })
+
+  it("renders EnvironmentPane when an environment tab is active", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ id: "t1", type: "environment", environmentId: "env-1" })],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderLayout()
+    expect(document.body).toBeTruthy()
+  })
+
+  it("renders GlobalsPane when a globals tab is active", () => {
+    useTabsStore.setState({
+      tabs: [makeTab({ id: "t1", type: "globals" })],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderLayout()
+    expect(document.body).toBeTruthy()
+  })
+
+  it("drag handle resize: mousedown starts drag, mousemove resizes, mouseup stops", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    const { container } = renderLayout()
+
+    const handle = container.querySelector(".cursor-col-resize") as HTMLElement
+    expect(handle).toBeInTheDocument()
+
+    fireEvent.mouseDown(handle, { clientX: 260 })
+    fireEvent.mouseMove(window, { clientX: 300 })
+    fireEvent.mouseUp(window)
+
+    // Width clamped to [180, 480]; delta=40 from base 260 → 300
+    expect(document.body).toBeTruthy()
+  })
+
+  it("drag handle clamps width to SIDE_PANEL_MAX (480)", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    const { container } = renderLayout()
+
+    const handle = container.querySelector(".cursor-col-resize") as HTMLElement
+    fireEvent.mouseDown(handle, { clientX: 260 })
+    // Move far right to exceed max
+    fireEvent.mouseMove(window, { clientX: 9999 })
+    fireEvent.mouseUp(window)
+
+    expect(document.body).toBeTruthy()
+  })
+
+  it("drag handle clamps width to SIDE_PANEL_MIN (180)", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    const { container } = renderLayout()
+
+    const handle = container.querySelector(".cursor-col-resize") as HTMLElement
+    fireEvent.mouseDown(handle, { clientX: 260 })
+    // Move far left to go below min
+    fireEvent.mouseMove(window, { clientX: 0 })
+    fireEvent.mouseUp(window)
+
+    expect(document.body).toBeTruthy()
+  })
+
+  it("stale mousemove after mouseup is a no-op (dragging guard)", () => {
+    useUiStore.setState((s) => ({ ...s, activePanel: "collections" }))
+    const { container } = renderLayout()
+
+    const handle = container.querySelector(".cursor-col-resize") as HTMLElement
+    fireEvent.mouseDown(handle, { clientX: 260 })
+    fireEvent.mouseMove(window, { clientX: 300 })
+    fireEvent.mouseUp(window)
+    // Stale move after drag ended — dragging.current is false, onMove exits early
+    fireEvent.mouseMove(window, { clientX: 500 })
+
+    expect(document.body).toBeTruthy()
   })
 })

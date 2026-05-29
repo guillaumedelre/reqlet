@@ -987,3 +987,48 @@ describe("recursive helper: request passthrough branches", () => {
     expect(globals[1].key).toBe("")
   })
 })
+
+// ── findFolderPath — request sibling branch (line 106) ────────────────────
+
+describe("findFolderPath — items containing both requests and folders", () => {
+  it("finds a folder when request items precede it in the list", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    // Add a request at root BEFORE the folder — exercises the false branch of
+    // `if (!("method" in item))` in findFolderInItems (line 106).
+    useWorkspaceStore.getState().addRequest("c1")
+    const folder = useWorkspaceStore.getState().addFolder("c1")
+
+    const path = useWorkspaceStore.getState().findFolderPath(folder.id)
+    expect(path).not.toBeNull()
+    expect(path![path!.length - 1].id).toBe(folder.id)
+  })
+
+  it("returns null when folderId does not exist in a mixed list", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    useWorkspaceStore.getState().addRequest("c1")
+    useWorkspaceStore.getState().addFolder("c1")
+
+    const path = useWorkspaceStore.getState().findFolderPath("nonexistent")
+    expect(path).toBeNull()
+  })
+})
+
+// ── deleteItem — request sibling kept during folder recursion (line 119) ──
+
+describe("deleteItem — request sibling preserved during folder recursion", () => {
+  it("keeps a root-level sibling request when deleting from inside a folder", () => {
+    useWorkspaceStore.setState({ ...EMPTY, collections: [makeCollection("c1")] })
+    const folder = useWorkspaceStore.getState().addFolder("c1")
+    const siblingReq = useWorkspaceStore.getState().addRequest("c1")
+    const innerReq = useWorkspaceStore.getState().addRequest("c1", folder.id)
+
+    // deleteFromList([folder, siblingReq], innerReq.id):
+    //   filter: keeps both (neither id matches innerReq)
+    //   map: folder → recurse (false branch); siblingReq → keep as-is (TRUE branch, line 119)
+    useWorkspaceStore.getState().deleteItem("c1", innerReq.id)
+
+    const items = useWorkspaceStore.getState().collections[0].items
+    expect(items.find((i) => i.id === siblingReq.id)).toBeDefined()
+    expect((items.find((i) => i.id === folder.id) as FolderItem).items).toHaveLength(0)
+  })
+})

@@ -221,6 +221,48 @@ describe("EnvRow — variable editing", () => {
     })
   })
 
+  it("toggles variable enabled state via checkbox", async () => {
+    setupStores(ENV_WITH_VAR)
+    render(<EnvironmentPane />)
+
+    const checkbox = screen.getByRole("checkbox")
+    expect(checkbox).toHaveAttribute("data-state", "checked")
+
+    act(() => {
+      fireEvent.click(checkbox)
+    })
+
+    await waitFor(() => {
+      const env = useWorkspaceStore.getState().environments.find((e) => e.id === ENV_WITH_VAR.id)!
+      expect(env.variables[0].enabled).toBe(false)
+    })
+  })
+
+  it("deletes a variable with empty key after confirming the dialog", async () => {
+    const envWithEmptyKey: Environment = {
+      id: "env-test",
+      name: "Test Env",
+      variables: [{ id: "v1", enabled: true, key: "", initialValue: "", currentValue: "" }],
+    }
+    setEnvs([envWithEmptyKey])
+    useTabsStore.setState({ tabs: [ENV_TAB], activeTabId: "tab-env", closedTabs: [] })
+    render(<EnvironmentPane />)
+
+    const deleteBtn = screen.getAllByRole("button")[0]
+    act(() => {
+      fireEvent.click(deleteBtn)
+    })
+    const confirmBtn = await screen.findByRole("button", { name: /delete/i })
+    act(() => {
+      fireEvent.click(confirmBtn)
+    })
+
+    await waitFor(() => {
+      const env = useWorkspaceStore.getState().environments.find((e) => e.id === envWithEmptyKey.id)
+      expect(env?.variables).toHaveLength(0)
+    })
+  })
+
   it("deletes the variable after confirming the dialog", async () => {
     setEnvs([ENV_WITH_VAR])
     useTabsStore.setState({ tabs: [ENV_TAB], activeTabId: "tab-env", closedTabs: [] })

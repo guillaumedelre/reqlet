@@ -85,6 +85,34 @@ describe("rendering", () => {
     const { container } = renderBar()
     expect(container.querySelector(".bg-orange-400")).not.toBeInTheDocument()
   })
+
+  it("renders icon for collection tab type", () => {
+    setup([makeTab({ type: "collection", title: "My Collection" })])
+    const { container } = renderBar()
+    expect(screen.getByText("My Collection")).toBeInTheDocument()
+    expect(container.querySelector("svg")).toBeInTheDocument()
+  })
+
+  it("renders icon for folder tab type", () => {
+    setup([makeTab({ type: "folder", title: "My Folder" })])
+    const { container } = renderBar()
+    expect(screen.getByText("My Folder")).toBeInTheDocument()
+    expect(container.querySelector("svg")).toBeInTheDocument()
+  })
+
+  it("renders icon for environment tab type", () => {
+    setup([makeTab({ type: "environment", title: "Prod", environmentId: "env-1" })])
+    const { container } = renderBar()
+    expect(screen.getByText("Prod")).toBeInTheDocument()
+    expect(container.querySelector("svg")).toBeInTheDocument()
+  })
+
+  it("renders icon for globals tab type", () => {
+    setup([makeTab({ type: "globals", title: "Globals" })])
+    const { container } = renderBar()
+    expect(screen.getByText("Globals")).toBeInTheDocument()
+    expect(container.querySelector("svg")).toBeInTheDocument()
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -272,5 +300,122 @@ describe("context menu", () => {
     fireEvent.click(screen.getByText("Close Other Tabs"))
 
     expect(screen.getByText(/2 tabs have unsaved changes/)).toBeInTheDocument()
+  })
+
+  it("shows dirty-tab dialog when closing tabs to the right that have unsaved changes", () => {
+    setup(
+      [makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second", dirty: true })],
+      "t1",
+    )
+    renderBar()
+
+    fireEvent.contextMenu(screen.getByText("First"))
+    fireEvent.click(screen.getByText("Close Tabs to the Right"))
+
+    expect(screen.getByText("Close without saving?")).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Drag and drop
+// ---------------------------------------------------------------------------
+
+const mockDataTransfer = {
+  effectAllowed: "none" as DataTransfer["effectAllowed"],
+  dropEffect: "none" as DataTransfer["dropEffect"],
+  setData: () => {},
+  getData: () => "",
+}
+
+describe("drag and drop", () => {
+  it("reorders tabs when dragging and dropping", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+    const tab2 = screen.getByText("Second").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    fireEvent.dragOver(tab2, { dataTransfer: mockDataTransfer })
+    fireEvent.drop(tab2, { dataTransfer: mockDataTransfer })
+
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t2")
+    expect(tabs[1].id).toBe("t1")
+  })
+
+  it("does not reorder when dropping on same tab", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    fireEvent.drop(tab1, { dataTransfer: mockDataTransfer })
+
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t1")
+  })
+
+  it("clears drag state on drag end", () => {
+    setup([makeTab({ id: "t1", title: "First" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    fireEvent.dragEnd(tab1)
+
+    expect(useTabsStore.getState().activeTabId).toBe("t1")
+  })
+
+  it("drag leave does not reset dragOver when hovering a different tab", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+    const tab2 = screen.getByText("Second").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    fireEvent.dragOver(tab2, { dataTransfer: mockDataTransfer })
+    // Leave tab1 while dragging over tab2 — should not clear tab2 hover state
+    fireEvent.dragLeave(tab1)
+    fireEvent.drop(tab2, { dataTransfer: mockDataTransfer })
+
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t2")
+  })
+
+  it("dragOver on source tab does not set dragOverId", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    // Dragging over itself: dragSrcIdRef.current === tab.id, so no state update
+    fireEvent.dragOver(tab1, { dataTransfer: mockDataTransfer })
+
+    // Tab order unchanged (no reorder triggered)
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t1")
+  })
+
+  it("dragLeave on the hovered tab clears dragOver state", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab1 = screen.getByText("First").closest("[draggable]") as HTMLElement
+    const tab2 = screen.getByText("Second").closest("[draggable]") as HTMLElement
+
+    fireEvent.dragStart(tab1, { dataTransfer: mockDataTransfer })
+    fireEvent.dragOver(tab2, { dataTransfer: mockDataTransfer })
+    // Leave tab2 while it is the current hover target — clears dragOver
+    fireEvent.dragLeave(tab2)
+
+    // Drop should still work (dragSrcIdRef not cleared by dragLeave)
+    fireEvent.drop(tab2, { dataTransfer: mockDataTransfer })
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t2")
   })
 })
