@@ -272,3 +272,49 @@ export function isFolder(item: CollectionItem): item is FolderItem {
 export function isRequest(item: CollectionItem): item is RequestItem {
   return "method" in item
 }
+
+// ---- Collection Runner ----
+
+export interface RunOptions {
+  iterations?: number
+  delayMs?: number
+  bail?: boolean
+  folder?: string
+  environmentId?: string
+}
+
+export interface RunTestResult {
+  name: string
+  passed: boolean
+  error?: string
+}
+
+export interface RunSummary {
+  runId: string
+  collectionId: string
+  startedAt: string
+  durationMs: number
+  total: number
+  passed: number
+  failed: number
+}
+
+export type RunEventType = "start" | "request" | "done" | "error"
+
+export interface RunEvent {
+  type: RunEventType
+  total?: number
+  iterations?: number
+  iteration?: number
+  index?: number
+  name?: string
+  method?: string
+  url?: string
+  status?: number
+  durationMs?: number
+  tests?: RunTestResult[]
+  passed: boolean
+  skipped?: boolean
+  error?: string
+  summary?: RunSummary
+}

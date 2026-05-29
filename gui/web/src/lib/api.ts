@@ -1,4 +1,4 @@
-import type { Collection, Environment } from "@/types"
+import type { Collection, Environment, RunEvent, RunOptions, RunSummary } from "@/types"
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -50,6 +50,8 @@ export const api = {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     },
+    run: (id: string, opts: RunOptions = {}): Promise<{ runId: string }> =>
+      request<{ runId: string }>("POST", `/collections/${id}/run`, opts),
   },
   environments: {
     list: () => request<Environment[]>("GET", "/environments"),
@@ -86,6 +88,35 @@ export const api = {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+    },
+  },
+  runs: {
+    get: (runId: string): Promise<RunSummary> => request<RunSummary>("GET", `/runs/${runId}`),
+    stream: (
+      runId: string,
+      callbacks: {
+        onEvent: (event: RunEvent) => void
+        onDone: (summary: RunSummary) => void
+        onError: (err: Error) => void
+      },
+    ): (() => void) => {
+      const es = new EventSource(`/api/runs/${runId}/stream`)
+      let completed = false
+
+      es.onmessage = (e: MessageEvent) => {
+        const evt = JSON.parse(e.data as string) as RunEvent
+        callbacks.onEvent(evt)
+        if (evt.type === "done" && evt.summary) {
+          completed = true
+          callbacks.onDone(evt.summary)
+          es.close()
+        }
+      }
+      es.onerror = () => {
+        if (!completed) callbacks.onError(new Error("SSE connection error"))
+        es.close()
+      }
+      return () => es.close()
     },
   },
 }

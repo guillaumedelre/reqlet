@@ -90,6 +90,14 @@ describe("sendRequest", () => {
     mockFetch.mockReturnValue(errorResponse({ error: "bad", code: "bad_request" }))
     await expect(sendRequest(minimalReq)).rejects.toBeInstanceOf(BackendError)
   })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(sendRequest(minimalReq)).rejects.toMatchObject({
+      code: "request_failed",
+      message: "Request failed",
+    })
+  })
 })
 
 describe("cancelRequest", () => {
@@ -112,6 +120,14 @@ describe("cancelRequest", () => {
     mockFetch.mockReturnValue(errorResponse({ error: "server error", code: "internal_error" }, 500))
     await expect(cancelRequest("req-1")).rejects.toBeInstanceOf(BackendError)
   })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}, 500))
+    await expect(cancelRequest("req-1")).rejects.toMatchObject({
+      code: "cancel_failed",
+      message: "Cancel failed",
+    })
+  })
 })
 
 describe("runScript", () => {
@@ -128,6 +144,14 @@ describe("runScript", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "sandbox_failed" }))
     await expect(runScript({ script: "" })).rejects.toBeInstanceOf(BackendError)
+  })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(runScript({ script: "" })).rejects.toMatchObject({
+      code: "sandbox_failed",
+      message: "Script execution failed",
+    })
   })
 })
 
@@ -148,6 +172,14 @@ describe("listHistory", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
     await expect(listHistory()).rejects.toBeInstanceOf(BackendError)
+  })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(listHistory()).rejects.toMatchObject({
+      code: "request_failed",
+      message: "Request failed",
+    })
   })
 })
 
@@ -203,6 +235,14 @@ describe("getVariables", () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "request_failed" }))
     await expect(getVariables()).rejects.toBeInstanceOf(BackendError)
   })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(getVariables()).rejects.toMatchObject({
+      code: "request_failed",
+      message: "Request failed",
+    })
+  })
 })
 
 describe("getSettings", () => {
@@ -224,6 +264,14 @@ describe("getSettings", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
     await expect(getSettings()).rejects.toBeInstanceOf(BackendError)
+  })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(getSettings()).rejects.toMatchObject({
+      code: "request_failed",
+      message: "Request failed",
+    })
   })
 })
 
@@ -249,6 +297,14 @@ describe("putSettings", () => {
   it("throws BackendError on non-ok response", async () => {
     mockFetch.mockReturnValue(errorResponse({ error: "fail", code: "internal_error" }))
     await expect(putSettings({ sslVerification: false })).rejects.toBeInstanceOf(BackendError)
+  })
+
+  it("uses fallback code and message when error fields are missing", async () => {
+    mockFetch.mockReturnValue(errorResponse({}))
+    await expect(putSettings({})).rejects.toMatchObject({
+      code: "request_failed",
+      message: "Request failed",
+    })
   })
 })
 
@@ -325,5 +381,52 @@ describe("sendRequest — new optional fields", () => {
     expect(body.requestProxyUrl).toBeUndefined()
     expect(body.requestProxyUsername).toBeUndefined()
     expect(body.requestProxyPassword).toBeUndefined()
+  })
+})
+
+// ── Wails context — not_implemented branches ───────────────────────────────
+
+describe("Wails context — not_implemented branches", () => {
+  beforeEach(() => {
+    ;(window as Window & { go?: unknown }).go = {}
+  })
+  afterEach(() => {
+    delete (window as Window & { go?: unknown }).go
+  })
+
+  it("runScript throws BackendError not_implemented", async () => {
+    await expect(runScript({ script: "" })).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("getVariables throws BackendError not_implemented", async () => {
+    await expect(getVariables()).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("getSettings throws BackendError not_implemented", async () => {
+    await expect(getSettings()).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("putSettings throws BackendError not_implemented", async () => {
+    await expect(putSettings({})).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("listHistory throws BackendError not_implemented", async () => {
+    await expect(listHistory()).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("deleteHistoryEntry throws BackendError not_implemented", async () => {
+    await expect(deleteHistoryEntry("e-1")).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("clearHistory throws BackendError not_implemented", async () => {
+    await expect(clearHistory()).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("cancelRequest throws BackendError not_implemented", async () => {
+    await expect(cancelRequest("req-1")).rejects.toMatchObject({ code: "not_implemented" })
+  })
+
+  it("sendRequest throws BackendError not_implemented", async () => {
+    await expect(sendRequest(minimalReq)).rejects.toMatchObject({ code: "not_implemented" })
   })
 })
