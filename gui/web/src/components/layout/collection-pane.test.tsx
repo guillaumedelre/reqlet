@@ -358,13 +358,27 @@ describe("header Run button", () => {
     setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
-    await waitFor(() => expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ iterations: 1 })))
+    await waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ iterations: 1 })),
+    )
   })
 
   it("passes resolved variables to the run API", async () => {
     act(() => {
       useWorkspaceStore.getState().setEnvironments([
-        { id: "env-test", name: "Test", variables: [{ id: "v1", enabled: true, key: "baseUrl", initialValue: "http://init", currentValue: "http://current" }] },
+        {
+          id: "env-test",
+          name: "Test",
+          variables: [
+            {
+              id: "v1",
+              enabled: true,
+              key: "baseUrl",
+              initialValue: "http://init",
+              currentValue: "http://current",
+            },
+          ],
+        },
       ])
       useUiStore.getState().setActiveEnvironment("env-test")
     })
@@ -374,7 +388,9 @@ describe("header Run button", () => {
     await waitFor(() =>
       expect(mockRun).toHaveBeenCalledWith(
         "c1",
-        expect.objectContaining({ variables: expect.objectContaining({ environment: { baseUrl: "http://current" } }) }),
+        expect.objectContaining({
+          variables: expect.objectContaining({ environment: { baseUrl: "http://current" } }),
+        }),
       ),
     )
     act(() => {
@@ -849,8 +865,20 @@ describe("per-tab run options", () => {
     useWorkspaceStore.setState((s) => ({ ...s, collections: [col1, col2] }))
     useTabsStore.setState({
       tabs: [
-        makeTab({ id: "t1", type: "collection", collectionId: "c1", collectionSubTab: "runs", runOptions: { iterations: 1, delayMs: 0, bail: false } }),
-        makeTab({ id: "t2", type: "collection", collectionId: "c2", collectionSubTab: "runs", runOptions: { iterations: 1, delayMs: 0, bail: false } }),
+        makeTab({
+          id: "t1",
+          type: "collection",
+          collectionId: "c1",
+          collectionSubTab: "runs",
+          runOptions: { iterations: 1, delayMs: 0, bail: false },
+        }),
+        makeTab({
+          id: "t2",
+          type: "collection",
+          collectionId: "c2",
+          collectionSubTab: "runs",
+          runOptions: { iterations: 1, delayMs: 0, bail: false },
+        }),
       ],
       activeTabId: "t1",
       closedTabs: [],
@@ -875,7 +903,15 @@ describe("folder tab — Runs sub-tab", () => {
     const col = makeCollection("c1", [folder])
     useWorkspaceStore.setState((s) => ({ ...s, collections: [col] }))
     useTabsStore.setState({
-      tabs: [makeTab({ id: "t1", type: "folder", collectionId: "c1", folderId: "f1", collectionSubTab: "runs" })],
+      tabs: [
+        makeTab({
+          id: "t1",
+          type: "folder",
+          collectionId: "c1",
+          folderId: "f1",
+          collectionSubTab: "runs",
+        }),
+      ],
       activeTabId: "t1",
       closedTabs: [],
     })
@@ -892,10 +928,7 @@ describe("folder tab — Runs sub-tab", () => {
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
     await waitFor(() =>
-      expect(mockRun).toHaveBeenCalledWith(
-        "c1",
-        expect.objectContaining({ folder: "Folder f1" }),
-      ),
+      expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ folder: "Folder f1" })),
     )
   })
 
@@ -1027,7 +1060,15 @@ describe("folder tab — scripts sub-tab", () => {
     const col = makeCollection("c1", [folder])
     useWorkspaceStore.setState((s) => ({ ...s, collections: [col] }))
     useTabsStore.setState({
-      tabs: [makeTab({ id: "t1", type: "folder", collectionId: "c1", folderId: "f1", collectionSubTab: "scripts" })],
+      tabs: [
+        makeTab({
+          id: "t1",
+          type: "folder",
+          collectionId: "c1",
+          folderId: "f1",
+          collectionSubTab: "scripts",
+        }),
+      ],
       activeTabId: "t1",
       closedTabs: [],
     })

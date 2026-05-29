@@ -518,7 +518,7 @@ function RunsTab({
     if (entry?.collectionId === collectionId && entry?.folderId === folderId) {
       onSelectedRunIdChange(activeRunId)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRunId, collectionId, folderId, runs])
 
   const displayRunId = selectedRunId ?? collectionRuns[0]?.[0] ?? null
