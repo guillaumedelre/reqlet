@@ -11,7 +11,7 @@ export type RawContentType =
 export type RequestSubTab = "params" | "auth" | "headers" | "body" | "scripts" | "settings" | "code"
 export type ResponseSubTab = "body" | "headers" | "cookies" | "tests" | "timeline" | "visualize"
 export type CollectionSubTab = "overview" | "authorization" | "variables" | "scripts" | "runs"
-export type FolderSubTab = "overview" | "authorization" | "scripts"
+export type FolderSubTab = "overview" | "authorization" | "scripts" | "runs"
 
 export interface KeyValuePair {
   id: string
@@ -263,6 +263,8 @@ export interface Tab {
   requestSubTab: RequestSubTab
   responseSubTab: ResponseSubTab
   collectionSubTab: CollectionSubTab | FolderSubTab
+  runOptions?: RunOptions
+  runSelectedRunId?: string | null
 }
 
 export function isFolder(item: CollectionItem): item is FolderItem {
@@ -280,7 +282,11 @@ export interface RunOptions {
   delayMs?: number
   bail?: boolean
   folder?: string
-  environmentId?: string
+  variables?: {
+    globals?: Record<string, string>
+    environment?: Record<string, string>
+    collectionVariables?: Record<string, string>
+  }
 }
 
 export interface RunTestResult {

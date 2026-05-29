@@ -31,6 +31,7 @@ export default defineConfig({
         "src/lib/**",
         "src/types.ts",
         "src/components/layout/app-layout.tsx",
+        "src/components/layout/collection-pane.tsx",
         "src/components/layout/environment-pane.tsx",
         "src/components/layout/header-bar.tsx",
         "src/components/layout/side-panel.tsx",

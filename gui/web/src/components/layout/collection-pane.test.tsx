@@ -5,6 +5,7 @@ import { CollectionPane } from "./collection-pane"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
 import { useRunsStore } from "@/store/runs"
+import { useUiStore } from "@/store/ui"
 import type { Collection, FolderItem, RequestItem, RunEvent, RunSummary, Tab } from "@/types"
 import { DEFAULT_REQUEST } from "@/types"
 
@@ -271,13 +272,13 @@ describe("folder tab — structure", () => {
     expect(screen.queryByRole("button", { name: /^Run$/i })).not.toBeInTheDocument()
   })
 
-  it("shows 3 sub-tabs for folder: overview, authorization, scripts (no runs, no variables)", () => {
+  it("shows 4 sub-tabs for folder: overview, authorization, scripts, runs (no variables)", () => {
     setupFolder()
     renderPane()
     expect(screen.getByRole("tab", { name: /overview/i })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: /authorization/i })).toBeInTheDocument()
     expect(screen.getByRole("tab", { name: /scripts/i })).toBeInTheDocument()
-    expect(screen.queryByRole("tab", { name: /runs/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /runs/i })).toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: /variables/i })).not.toBeInTheDocument()
   })
 })
@@ -357,7 +358,45 @@ describe("header Run button", () => {
     setupCollection(undefined, "runs")
     renderPane()
     fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
-    await waitFor(() => expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({})))
+    await waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ iterations: 1 })),
+    )
+  })
+
+  it("passes resolved variables to the run API", async () => {
+    act(() => {
+      useWorkspaceStore.getState().setEnvironments([
+        {
+          id: "env-test",
+          name: "Test",
+          variables: [
+            {
+              id: "v1",
+              enabled: true,
+              key: "baseUrl",
+              initialValue: "http://init",
+              currentValue: "http://current",
+            },
+          ],
+        },
+      ])
+      useUiStore.getState().setActiveEnvironment("env-test")
+    })
+    setupCollection(undefined, "runs")
+    renderPane()
+    fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
+    await waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith(
+        "c1",
+        expect.objectContaining({
+          variables: expect.objectContaining({ environment: { baseUrl: "http://current" } }),
+        }),
+      ),
+    )
+    act(() => {
+      useWorkspaceStore.getState().setEnvironments([])
+      useUiStore.getState().setActiveEnvironment(null)
+    })
   })
 
   it("switches active sub-tab to 'runs'", async () => {
@@ -547,45 +586,45 @@ describe("RunsTab — done state", () => {
     setupCollection(undefined, "runs")
     renderPane()
     finishRunInStore()
-    expect(screen.getByText(/2 passed/)).toBeInTheDocument()
+    const card = screen.getByText("Passed").closest("div")!
+    expect(within(card).getByText("2")).toBeInTheDocument()
   })
 
   it("shows total and duration", () => {
     setupCollection(undefined, "runs")
     renderPane()
     finishRunInStore()
-    expect(screen.getByText(/2 total/)).toBeInTheDocument()
-    expect(screen.getByText(/1s 240ms/)).toBeInTheDocument()
+    const totalCard = screen.getByText("Total").closest("div")!
+    expect(within(totalCard).getByText("2")).toBeInTheDocument()
+    const durationCard = screen.getByText("Duration").closest("div")!
+    expect(within(durationCard).getByText("1s 240ms")).toBeInTheDocument()
   })
 
   it("shows failed count when failures exist", () => {
     setupCollection(undefined, "runs")
     renderPane()
     finishRunInStore({ ...REQ_SUMMARY, passed: 1, failed: 1 })
-    expect(screen.getByText(/1 failed/)).toBeInTheDocument()
+    const card = screen.getByText("Failed").closest("div")!
+    expect(within(card).getByText("1")).toBeInTheDocument()
   })
 
-  it("does not show failed count when all passed", () => {
+  it("shows 0 in failed card when all passed", () => {
     setupCollection(undefined, "runs")
     renderPane()
     finishRunInStore()
-    expect(screen.queryByText(/failed/)).not.toBeInTheDocument()
+    // Failed card is always shown; value must be 0 when no failures
+    const card = screen.getByText("Failed").closest("div")!
+    expect(within(card).getByText("0")).toBeInTheDocument()
   })
 
-  it("shows Run Again button", () => {
+  it("shows 4 summary metric cards", () => {
     setupCollection(undefined, "runs")
     renderPane()
     finishRunInStore()
-    expect(screen.getByRole("button", { name: /run again/i })).toBeInTheDocument()
-  })
-
-  it("Run Again calls api.collections.run again", async () => {
-    setupCollection(undefined, "runs")
-    renderPane()
-    finishRunInStore()
-    mockRun.mockResolvedValueOnce({ runId: "run-2" })
-    fireEvent.click(screen.getByRole("button", { name: /run again/i }))
-    await waitFor(() => expect(mockRun).toHaveBeenCalledTimes(1))
+    expect(screen.getByText("Passed")).toBeInTheDocument()
+    expect(screen.getByText("Failed")).toBeInTheDocument()
+    expect(screen.getByText("Total")).toBeInTheDocument()
+    expect(screen.getByText("Duration")).toBeInTheDocument()
   })
 })
 
@@ -787,5 +826,255 @@ describe("breadcrumb navigation", () => {
     fireEvent.click(colLink)
 
     expect(useTabsStore.getState().activeTabId).toBe("t-col")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Per-tab run options
+// ---------------------------------------------------------------------------
+
+describe("per-tab run options", () => {
+  it("runOptions defaults to { iterations: 1, delayMs: 0, bail: false } when tab has no saved options", () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    const inputs = screen.getAllByRole("spinbutton")
+    expect(inputs[0]).toHaveValue(1)
+    expect(inputs[1]).toHaveValue(0)
+    expect(screen.getByRole("checkbox")).not.toBeChecked()
+  })
+
+  it("changing iterations updates runOptions.iterations in the tabs store", () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    const [iterInput] = screen.getAllByRole("spinbutton")
+    fireEvent.change(iterInput, { target: { value: "7" } })
+    expect(useTabsStore.getState().tabs[0].runOptions?.iterations).toBe(7)
+  })
+
+  it("changing delay updates runOptions.delayMs in the tabs store", () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    const [, delayInput] = screen.getAllByRole("spinbutton")
+    fireEvent.change(delayInput, { target: { value: "300" } })
+    expect(useTabsStore.getState().tabs[0].runOptions?.delayMs).toBe(300)
+  })
+
+  it("runOptions are independent between two collection tabs", () => {
+    const col1 = makeCollection("c1", [makeRequest("r1")])
+    const col2 = makeCollection("c2", [makeRequest("r2")])
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [col1, col2] }))
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          id: "t1",
+          type: "collection",
+          collectionId: "c1",
+          collectionSubTab: "runs",
+          runOptions: { iterations: 1, delayMs: 0, bail: false },
+        }),
+        makeTab({
+          id: "t2",
+          type: "collection",
+          collectionId: "c2",
+          collectionSubTab: "runs",
+          runOptions: { iterations: 1, delayMs: 0, bail: false },
+        }),
+      ],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderPane()
+    const [iterInput] = screen.getAllByRole("spinbutton")
+    fireEvent.change(iterInput, { target: { value: "5" } })
+
+    const state = useTabsStore.getState()
+    expect(state.tabs.find((t) => t.id === "t1")?.runOptions?.iterations).toBe(5)
+    expect(state.tabs.find((t) => t.id === "t2")?.runOptions?.iterations).toBe(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Folder tab — Runs sub-tab
+// ---------------------------------------------------------------------------
+
+describe("folder tab — Runs sub-tab", () => {
+  function setupFolderRunsTab() {
+    const folder = makeFolder("f1", [makeRequest("req1")])
+    const col = makeCollection("c1", [folder])
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [col] }))
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          id: "t1",
+          type: "folder",
+          collectionId: "c1",
+          folderId: "f1",
+          collectionSubTab: "runs",
+        }),
+      ],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+  }
+
+  it("shows Run button when folder tab's Runs sub-tab is active", () => {
+    setupFolderRunsTab()
+    renderPane()
+    expect(screen.getByRole("button", { name: /^Run$/i })).toBeInTheDocument()
+  })
+
+  it("calls api.collections.run with folder name when Run is clicked from folder Runs tab", async () => {
+    setupFolderRunsTab()
+    renderPane()
+    fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
+    await waitFor(() =>
+      expect(mockRun).toHaveBeenCalledWith("c1", expect.objectContaining({ folder: "Folder f1" })),
+    )
+  })
+
+  it("startRun is called with folderId as third argument", async () => {
+    setupFolderRunsTab()
+    renderPane()
+    fireEvent.click(screen.getByRole("button", { name: /^Run$/i }))
+    await waitFor(() => {
+      const run = useRunsStore.getState().runs.get("run-1")
+      expect(run?.folderId).toBe("f1")
+    })
+  })
+
+  it("folder run does NOT appear in collection tab's RunsTab", () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-1", "c1", "f1")
+    })
+    expect(screen.getByText("No runs yet")).toBeInTheDocument()
+  })
+
+  it("collection run does NOT appear in folder tab's RunsTab", () => {
+    setupFolderRunsTab()
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-1", "c1", undefined)
+    })
+    expect(screen.getByText("No runs yet")).toBeInTheDocument()
+  })
+
+  it("folder run DOES appear in folder tab's RunsTab", () => {
+    setupFolderRunsTab()
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-1", "c1", "f1")
+      useRunsStore.getState().appendEvent("run-1", REQ_EVENT_OK)
+      useRunsStore.getState().finishRun("run-1", { ...REQ_SUMMARY, collectionId: "c1" })
+    })
+    expect(screen.getByText("Request req1")).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Per-tab runSelectedRunId
+// ---------------------------------------------------------------------------
+
+describe("per-tab runSelectedRunId", () => {
+  it("clicking a past run button updates runSelectedRunId in the tabs store", () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-1", "c1")
+      useRunsStore.getState().finishRun("run-1", REQ_SUMMARY)
+      useRunsStore.getState().startRun("run-2", "c1")
+      useRunsStore.getState().finishRun("run-2", { ...REQ_SUMMARY, runId: "run-2" })
+    })
+    const sidebar = screen.getByText("Past Runs").closest("div")!.parentElement!
+    const items = within(sidebar).getAllByRole("button")
+    fireEvent.click(items[1])
+    const selectedId = useTabsStore.getState().tabs[0].runSelectedRunId
+    expect(["run-1", "run-2"]).toContain(selectedId)
+  })
+
+  it("auto-selects active run that belongs to this collection", async () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-1", "c1")
+    })
+    await waitFor(() => {
+      expect(useTabsStore.getState().tabs[0].runSelectedRunId).toBe("run-1")
+    })
+  })
+
+  it("does NOT auto-select a run from a different collection", async () => {
+    setupCollection(undefined, "runs")
+    renderPane()
+    act(() => {
+      useRunsStore.getState().startRun("run-x", "other-col")
+    })
+    // Give React a tick to process any potential side effects
+    await new Promise((r) => setTimeout(r, 50))
+    const selectedId = useTabsStore.getState().tabs[0].runSelectedRunId
+    expect(selectedId).not.toBe("run-x")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Breadcrumb onFolderClick
+// ---------------------------------------------------------------------------
+
+describe("breadcrumb onFolderClick", () => {
+  it("clicking a folder segment in a deep breadcrumb opens the folder tab", () => {
+    const parentFolder = makeFolder("parent", [makeFolder("f1", [makeRequest("req1")])])
+    const col = makeCollection("c1", [parentFolder])
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [col] }))
+    useTabsStore.setState({
+      tabs: [makeTab({ id: "t1", type: "folder", collectionId: "c1", folderId: "f1" })],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderPane()
+
+    const parentLink = screen.getByText("Folder parent")
+    fireEvent.click(parentLink)
+
+    const state = useTabsStore.getState()
+    const folderTab = state.tabs.find((t) => t.type === "folder" && t.folderId === "parent")
+    expect(folderTab).toBeDefined()
+    expect(state.activeTabId).toBe(folderTab!.id)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Folder tab — scripts sub-tab
+// ---------------------------------------------------------------------------
+
+describe("folder tab — scripts sub-tab", () => {
+  it("renders folder preRequestScript in the scripts sub-tab", () => {
+    const folder: FolderItem = {
+      id: "f1",
+      name: "Folder f1",
+      auth: { type: "inherit" },
+      preRequestScript: "// folder pre",
+      testScript: "",
+      items: [],
+    }
+    const col = makeCollection("c1", [folder])
+    useWorkspaceStore.setState((s) => ({ ...s, collections: [col] }))
+    useTabsStore.setState({
+      tabs: [
+        makeTab({
+          id: "t1",
+          type: "folder",
+          collectionId: "c1",
+          folderId: "f1",
+          collectionSubTab: "scripts",
+        }),
+      ],
+      activeTabId: "t1",
+      closedTabs: [],
+    })
+    renderPane()
+    const editors = screen.getAllByTestId("code-editor") as HTMLTextAreaElement[]
+    const hasPreScript = editors.some((el) => el.defaultValue === "// folder pre")
+    expect(hasPreScript).toBe(true)
   })
 })
