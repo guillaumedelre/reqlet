@@ -25,6 +25,8 @@ const TAB_DEFAULTS = {
   requestSubTab: "params" as RequestSubTab,
   responseSubTab: "body" as ResponseSubTab,
   collectionSubTab: "overview" as CollectionSubTab | FolderSubTab,
+  runOptions: { iterations: 1, delayMs: 0, bail: false },
+  runSelectedRunId: null,
 }
 
 function newRequestTab(overrides: Partial<Tab> = {}): Tab {

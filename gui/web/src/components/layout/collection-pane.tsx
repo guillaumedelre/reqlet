@@ -1,5 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react"
-import { Play, ChevronRight, Plus, Trash2, CheckCircle2, XCircle, Loader2 } from "lucide-react"
+import {
+  Play,
+  ChevronRight,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Loader2,
+  Timer,
+} from "lucide-react"
 import { toast } from "sonner"
 import { useDeleteConfirm } from "@/hooks/use-delete-confirm"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -12,6 +21,7 @@ import { cn } from "@/lib/utils"
 import { useTabsStore } from "@/store/tabs"
 import { useWorkspaceStore } from "@/store/workspace"
 import { useRunsStore } from "@/store/runs"
+import { useVariableScope } from "@/hooks/use-variable-scope"
 import { api } from "@/lib/api"
 import { MethodBadge } from "@/components/method-badge"
 import { AuthPanel } from "./auth-panel"
@@ -36,6 +46,20 @@ function formatRelTime(iso: string): string {
   if (diff < 60_000) return "just now"
   if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
   return `${Math.floor(diff / 3_600_000)}h ago`
+}
+
+function findFolderItem(
+  items: import("@/types").CollectionItem[],
+  id: string,
+): import("@/types").FolderItem | null {
+  for (const item of items) {
+    if (!("method" in item)) {
+      if (item.id === id) return item
+      const found = findFolderItem(item.items, id)
+      if (found) return found
+    }
+  }
+  return null
 }
 
 function statusColor(status: number): string {
@@ -235,6 +259,7 @@ interface IterResult {
   passed: boolean
   status?: number
   durationMs?: number
+  error?: string
   tests: import("@/types").RunTestResult[]
 }
 
@@ -261,6 +286,7 @@ function buildRows(events: import("@/types").RunEvent[]): RequestRowData[] {
       passed: evt.passed,
       status: evt.status,
       durationMs: evt.durationMs,
+      error: evt.error,
       tests: evt.tests ?? [],
     })
   }
@@ -372,6 +398,23 @@ function RunResultsTable({
               </div>
             </div>
 
+            {/* Network errors — always visible, one line per failed iteration */}
+            {!isExpanded && [...row.iterResults.values()].some((r) => r.error) && (
+              <div className="px-3 pb-1.5 space-y-0.5">
+                {[...row.iterResults.entries()]
+                  .filter(([, r]) => r.error)
+                  .map(([iter, r]) => (
+                    <p
+                      key={iter}
+                      className="text-[0.625rem] text-red-400 pl-14 leading-snug font-mono"
+                    >
+                      {N > 1 && <span className="text-muted-foreground mr-1">#{iter + 1}</span>}
+                      {r.error}
+                    </p>
+                  ))}
+              </div>
+            )}
+
             {/* Failed tests inline — visible without expanding */}
             {failedTests.length > 0 && !isExpanded && (
               <div className="px-3 pb-1.5 space-y-0.5">
@@ -398,7 +441,11 @@ function RunResultsTable({
                           {result.durationMs != null && ` · ${formatDuration(result.durationMs)}`}
                         </p>
                       )}
-                      {result.tests.length > 0 ? (
+                      {result.error ? (
+                        <p className="text-[0.625rem] text-red-400 px-2 font-mono break-all">
+                          {result.error}
+                        </p>
+                      ) : result.tests.length > 0 ? (
                         result.tests.map((t, ti) => (
                           <div
                             key={ti}
@@ -436,36 +483,43 @@ function RunResultsTable({
 
 function RunsTab({
   collectionId,
+  folderId,
   runOpts,
   onOptsChange,
+  selectedRunId,
+  onSelectedRunIdChange,
   onRun,
   isStarting,
 }: {
   collectionId: string
+  folderId?: string
   runOpts: RunOptions
   onOptsChange: (patch: Partial<RunOptions>) => void
+  selectedRunId: string | null
+  onSelectedRunIdChange: (id: string | null) => void
   onRun: () => void
   isStarting: boolean
 }) {
   const { runs, activeRunId } = useRunsStore()
 
   const collectionRuns = [...runs.entries()]
-    .filter(([, r]) => r.collectionId === collectionId)
+    .filter(([, r]) => r.collectionId === collectionId && r.folderId === folderId)
     .sort((a, b) => new Date(b[1].startedAt).getTime() - new Date(a[1].startedAt).getTime())
 
+  const activeRunEntry = activeRunId ? runs.get(activeRunId) : null
   const activeRun =
-    activeRunId && runs.get(activeRunId)?.collectionId === collectionId
-      ? runs.get(activeRunId)!
+    activeRunEntry?.collectionId === collectionId && activeRunEntry?.folderId === folderId
+      ? activeRunEntry
       : null
 
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-
-  // Auto-select the active run when a new one starts
+  // Auto-select the active run when a new one starts for this collection/folder
   useEffect(() => {
-    if (activeRunId && runs.get(activeRunId)?.collectionId === collectionId) {
-      setSelectedRunId(activeRunId)
+    const entry = activeRunId ? runs.get(activeRunId) : null
+    if (entry?.collectionId === collectionId && entry?.folderId === folderId) {
+      onSelectedRunIdChange(activeRunId)
     }
-  }, [activeRunId, collectionId, runs])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRunId, collectionId, folderId, runs])
 
   const displayRunId = selectedRunId ?? collectionRuns[0]?.[0] ?? null
   const displayRun = displayRunId ? runs.get(displayRunId) : null
@@ -533,64 +587,108 @@ function RunsTab({
       {/* Run results */}
       {displayRun ? (
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Summary bar */}
-          <div
-            className={cn(
-              "flex items-center gap-3 px-3 py-2 border-b border-border shrink-0 text-xs",
-              displayRun.status === "running" ? "bg-muted/10" : "bg-muted/20",
-            )}
-          >
-            {displayRun.status === "running" ? (
-              <>
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
-                <span className="text-muted-foreground">
-                  {requestEvents.length}
-                  {totalFromStart > 0 ? ` / ${totalFromStart * iterations}` : ""} requests
-                </span>
-              </>
-            ) : displayRun.status === "done" && displayRun.summary ? (
-              <>
-                <span className="text-emerald-500 font-medium">
-                  ✓ {displayRun.summary.passed} passed
-                </span>
-                {displayRun.summary.failed > 0 && (
-                  <span className="text-red-500 font-medium">
-                    ✗ {displayRun.summary.failed} failed
-                  </span>
+          {/* Summary area */}
+          {displayRun.status === "running" ? (
+            <div className="flex items-center gap-3 px-3 py-2 border-b border-border shrink-0 text-xs bg-muted/10">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground shrink-0" />
+              <span className="text-muted-foreground">
+                {requestEvents.length}
+                {totalFromStart > 0 ? ` / ${totalFromStart * iterations}` : ""} requests
+              </span>
+            </div>
+          ) : displayRun.status === "done" && displayRun.summary ? (
+            <div className="grid grid-cols-4 gap-1.5 px-3 py-2 border-b border-border shrink-0">
+              <div
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-md px-2 py-2",
+                  displayRun.summary.failed === 0 ? "bg-emerald-500/10" : "bg-muted/20",
                 )}
-                <span className="text-muted-foreground">
-                  {displayRun.summary.total} total · {formatDuration(displayRun.summary.durationMs)}
+              >
+                <span className="text-[0.6rem] font-medium text-muted-foreground uppercase tracking-wider">
+                  Passed
                 </span>
-                <div className="flex-1" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-xs gap-1 px-2"
-                  onClick={onRun}
-                  disabled={isStarting}
-                >
-                  <Play className="h-3 w-3" />
-                  Run Again
-                </Button>
-              </>
-            ) : displayRun.status === "error" ? (
-              <>
-                <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
-                <span className="text-red-500 truncate">{displayRun.error ?? "Run failed"}</span>
-                <div className="flex-1" />
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 text-xs gap-1 px-2"
-                  onClick={onRun}
-                  disabled={isStarting}
-                >
-                  <Play className="h-3 w-3" />
-                  Retry
-                </Button>
-              </>
-            ) : null}
-          </div>
+                <div className="flex items-center gap-1">
+                  <CheckCircle2
+                    className={cn(
+                      "h-3 w-3 shrink-0",
+                      displayRun.summary.failed === 0
+                        ? "text-emerald-500"
+                        : "text-muted-foreground",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-base font-bold tabular-nums leading-none",
+                      displayRun.summary.failed === 0 ? "text-emerald-500" : "text-foreground",
+                    )}
+                  >
+                    {displayRun.summary.passed}
+                  </span>
+                </div>
+              </div>
+              <div
+                className={cn(
+                  "flex flex-col items-center gap-1 rounded-md px-2 py-2",
+                  displayRun.summary.failed > 0 ? "bg-red-500/10" : "bg-muted/20",
+                )}
+              >
+                <span className="text-[0.6rem] font-medium text-muted-foreground uppercase tracking-wider">
+                  Failed
+                </span>
+                <div className="flex items-center gap-1">
+                  <XCircle
+                    className={cn(
+                      "h-3 w-3 shrink-0",
+                      displayRun.summary.failed > 0 ? "text-red-500" : "text-muted-foreground",
+                    )}
+                  />
+                  <span
+                    className={cn(
+                      "text-base font-bold tabular-nums leading-none",
+                      displayRun.summary.failed > 0 ? "text-red-500" : "text-foreground",
+                    )}
+                  >
+                    {displayRun.summary.failed}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col items-center gap-1 rounded-md bg-muted/20 px-2 py-2">
+                <span className="text-[0.6rem] font-medium text-muted-foreground uppercase tracking-wider">
+                  Total
+                </span>
+                <span className="text-base font-bold tabular-nums leading-none text-foreground">
+                  {displayRun.summary.total}
+                </span>
+              </div>
+              <div className="flex flex-col items-center gap-1 rounded-md bg-muted/20 px-2 py-2">
+                <span className="text-[0.6rem] font-medium text-muted-foreground uppercase tracking-wider">
+                  Duration
+                </span>
+                <div className="flex items-center gap-1">
+                  <Timer className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-bold tabular-nums leading-none text-foreground">
+                    {formatDuration(displayRun.summary.durationMs)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : displayRun.status === "error" ? (
+            <div className="flex items-center gap-3 px-3 py-2 border-b border-border shrink-0 text-xs bg-red-500/5">
+              <XCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+              <span className="text-red-500 truncate">{displayRun.error ?? "Run failed"}</span>
+              <div className="flex-1" />
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 text-xs gap-1 px-2"
+                onClick={onRun}
+                disabled={isStarting}
+              >
+                <Play className="h-3 w-3" />
+                Retry
+              </Button>
+            </div>
+          ) : null}
 
           {/* Event list + past runs */}
           <div className="flex flex-1 overflow-hidden">
@@ -614,7 +712,7 @@ function RunsTab({
                   {collectionRuns.map(([runId, run]) => (
                     <button
                       key={runId}
-                      onClick={() => setSelectedRunId(runId)}
+                      onClick={() => onSelectedRunIdChange(runId)}
                       className={cn(
                         "w-full text-left px-2 py-1.5 border-b border-border/40 last:border-0 hover:bg-muted/20 transition-colors",
                         selectedRunId === runId && "bg-accent",
@@ -703,7 +801,7 @@ function Overview({
 // ---------- CollectionPane ----------
 
 export function CollectionPane() {
-  const { tabs, activeTabId, setTabCollectionSubTab } = useTabsStore()
+  const { tabs, activeTabId, setTabCollectionSubTab, updateTab } = useTabsStore()
   const {
     collections,
     findFolderPath,
@@ -715,13 +813,20 @@ export function CollectionPane() {
   const { openCollectionTab, openFolderTab } = useTabsStore()
   const { startRun, appendEvent, finishRun, failRun } = useRunsStore()
 
-  const [runOpts, setRunOpts] = useState<RunOptions>({ iterations: 1, delayMs: 0, bail: false })
   const [isStarting, setIsStarting] = useState(false)
   const sseCleanupRef = useRef<(() => void) | null>(null)
 
-  // Derived before hooks so useCallback is unconditional
+  // Derived before hooks so useCallback deps are unconditional
   const activeTab = tabs.find((t) => t.id === activeTabId)
   const collection = collections.find((c) => c.id === activeTab?.collectionId)
+  const isCollection = activeTab?.type === "collection"
+  const folder =
+    !isCollection && activeTab?.folderId && collection
+      ? findFolderItem(collection.items, activeTab.folderId)
+      : null
+  const runOpts = activeTab?.runOptions ?? { iterations: 1, delayMs: 0, bail: false }
+
+  const { globals, environment, collectionVariables } = useVariableScope(collection?.id)
 
   useEffect(
     () => () => {
@@ -735,8 +840,12 @@ export function CollectionPane() {
     setIsStarting(true)
     setTabCollectionSubTab(activeTabId, "runs")
     try {
-      const { runId } = await api.collections.run(collection.id, runOpts)
-      startRun(runId, collection.id)
+      const { runId } = await api.collections.run(collection.id, {
+        ...runOpts,
+        ...(folder ? { folder: folder.name } : {}),
+        variables: { globals, environment, collectionVariables },
+      })
+      startRun(runId, collection.id, folder?.id ?? undefined)
       sseCleanupRef.current?.()
       sseCleanupRef.current = api.runs.stream(runId, {
         onEvent: (evt) => appendEvent(runId, evt),
@@ -750,6 +859,7 @@ export function CollectionPane() {
     }
   }, [
     collection,
+    folder,
     isStarting,
     activeTabId,
     runOpts,
@@ -763,31 +873,10 @@ export function CollectionPane() {
   if (!activeTab || (activeTab.type !== "collection" && activeTab.type !== "folder")) return null
 
   const subTab = (activeTab.collectionSubTab ?? "overview") as CollectionSubTab | FolderSubTab
-  const isCollection = activeTab.type === "collection"
 
   if (!collection) return null
 
   const folderPath = !isCollection && activeTab.folderId ? findFolderPath(activeTab.folderId) : null
-
-  const folder =
-    !isCollection && activeTab.folderId
-      ? (() => {
-          function findFolder(
-            items: import("@/types").CollectionItem[],
-            id: string,
-          ): import("@/types").FolderItem | null {
-            for (const item of items) {
-              if (!("method" in item)) {
-                if (item.id === id) return item
-                const found = findFolder(item.items, id)
-                if (found) return found
-              }
-            }
-            return null
-          }
-          return findFolder(collection.items, activeTab.folderId!)
-        })()
-      : null
 
   const displayName = isCollection ? collection.name : (folder?.name ?? "")
   const description = isCollection ? collection.description : ""
@@ -814,7 +903,7 @@ export function CollectionPane() {
     "scripts",
     "runs",
   ]
-  const folderSubTabs: FolderSubTab[] = ["overview", "authorization", "scripts"]
+  const folderSubTabs: FolderSubTab[] = ["overview", "authorization", "scripts", "runs"]
   const subTabs = isCollection ? collectionSubTabs : folderSubTabs
 
   return (
@@ -829,19 +918,6 @@ export function CollectionPane() {
               if (col) openCollectionTab(col)
             }}
             onFolderClick={(id) => {
-              function findFolderItem(
-                items: import("@/types").CollectionItem[],
-                fid: string,
-              ): import("@/types").FolderItem | null {
-                for (const item of items) {
-                  if (!("method" in item)) {
-                    if (item.id === fid) return item
-                    const found = findFolderItem(item.items, fid)
-                    if (found) return found
-                  }
-                }
-                return null
-              }
               const fi = findFolderItem(collection.items, id)
               if (fi) openFolderTab(fi, collection.id)
             }}
@@ -907,17 +983,20 @@ export function CollectionPane() {
           ) : null}
         </TabsContent>
 
-        {isCollection && (
-          <TabsContent value="runs" className="flex-1 overflow-hidden mt-0">
-            <RunsTab
-              collectionId={collection.id}
-              runOpts={runOpts}
-              onOptsChange={(patch) => setRunOpts((o) => ({ ...o, ...patch }))}
-              onRun={handleRun}
-              isStarting={isStarting}
-            />
-          </TabsContent>
-        )}
+        <TabsContent value="runs" className="flex-1 overflow-hidden mt-0">
+          <RunsTab
+            collectionId={collection.id}
+            folderId={folder?.id}
+            runOpts={runOpts}
+            onOptsChange={(patch) =>
+              updateTab(activeTabId, { runOptions: { ...runOpts, ...patch } })
+            }
+            selectedRunId={activeTab.runSelectedRunId ?? null}
+            onSelectedRunIdChange={(id) => updateTab(activeTabId, { runSelectedRunId: id })}
+            onRun={handleRun}
+            isStarting={isStarting}
+          />
+        </TabsContent>
       </Tabs>
     </div>
   )
