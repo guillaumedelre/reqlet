@@ -194,13 +194,9 @@ describe("pm.sendRequest", () => {
       headers: { get: jest.fn().mockReturnValue("text/plain") },
     });
 
-    let capturedText;
-    const script = `pm.sendRequest("https://example.com/txt", (err, res) => { capturedText = res.text(); })`;
-    const ctx = { ...emptyCtx };
-    const sandbox = { capturedText: undefined };
-
+    const script = `pm.sendRequest("https://example.com/txt", (err, res) => { void res.text(); })`;
     // Run via execute — the callback runs asynchronously, flush with a microtask tick.
-    await execute(script, "prerequest", ctx);
+    await execute(script, "prerequest", emptyCtx);
     await new Promise((r) => setTimeout(r, 10));
 
     expect(globalThis.fetch).toHaveBeenCalled();
@@ -214,8 +210,7 @@ describe("pm.sendRequest", () => {
       headers: { get: jest.fn().mockReturnValue("application/json") },
     });
 
-    let capturedJson;
-    const script = `pm.sendRequest("https://example.com/json", (err, res) => { capturedJson = res.json(); })`;
+    const script = `pm.sendRequest("https://example.com/json", (err, res) => { void res.json(); })`;
     await execute(script, "prerequest", emptyCtx);
     await new Promise((r) => setTimeout(r, 10));
 
