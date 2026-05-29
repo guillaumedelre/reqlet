@@ -1,0 +1,810 @@
+{
+	"info": {
+		"_postman_id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+		"name": "JSONPlaceholder Test Suite",
+		"description": "Suite de tests E2E sur l'API JSONPlaceholder. Couvre les cas success et erreur pour tous les endpoints CRUD, les ressources imbriquées et le filtrage par query param.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Posts",
+			"item": [
+				{
+					"name": "GET List all posts",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Content-Type is JSON\", function () {",
+									"    pm.expect(pm.response.headers.get(\"Content-Type\")).to.include(\"application/json\");",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array\", function () {",
+									"    var body = pm.response.json();",
+									"    pm.expect(body).to.be.an(\"array\");",
+									"    pm.expect(body.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"Each post has required fields with correct types\", function () {",
+									"    var body = pm.response.json();",
+									"    body.forEach(function (post) {",
+									"        pm.expect(post).to.have.property(\"id\").that.is.a(\"number\");",
+									"        pm.expect(post).to.have.property(\"title\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(post).to.have.property(\"body\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(post).to.have.property(\"userId\").that.is.a(\"number\");",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{posts_endpoint}}",
+							"host": ["{{posts_endpoint}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET Get post by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Post schema is valid\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post).to.have.property(\"id\").that.is.a(\"number\");",
+									"    pm.expect(post).to.have.property(\"title\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(post).to.have.property(\"body\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(post).to.have.property(\"userId\").that.is.a(\"number\");",
+									"});",
+									"",
+									"pm.test(\"Post ID matches requested ID\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post.id).to.equal(parseInt(pm.environment.get(\"post_id\")));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{posts_endpoint}}/{{post_id}}",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{post_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET Get post - Not Found",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 404\", function () {",
+									"    pm.response.to.have.status(404);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Body is empty object\", function () {",
+									"    var body = pm.response.json();",
+									"    pm.expect(body).to.be.an(\"object\");",
+									"    pm.expect(Object.keys(body)).to.have.lengthOf(0);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{posts_endpoint}}/{{nonexistent_id}}",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{nonexistent_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "POST Create post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 201\", function () {",
+									"    pm.response.to.have.status(201);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Created post has an assigned ID\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post).to.have.property(\"id\").that.is.a(\"number\");",
+									"    pm.environment.set(\"created_post_id\", post.id);",
+									"});",
+									"",
+									"pm.test(\"Response echoes the request body\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post.title).to.equal(\"Test post title\");",
+									"    pm.expect(post.body).to.equal(\"Test post body content\");",
+									"    pm.expect(post.userId).to.equal(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"title\": \"Test post title\",\n\t\"body\": \"Test post body content\",\n\t\"userId\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{posts_endpoint}}",
+							"host": ["{{posts_endpoint}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PUT Update post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Updated fields are reflected in the response\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post).to.have.property(\"id\").that.is.a(\"number\");",
+									"    pm.expect(post.title).to.equal(\"Updated title\");",
+									"    pm.expect(post.body).to.equal(\"Updated body content\");",
+									"    pm.expect(post.userId).to.equal(1);",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"id\": 1,\n\t\"title\": \"Updated title\",\n\t\"body\": \"Updated body content\",\n\t\"userId\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{posts_endpoint}}/{{post_id}}",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{post_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "PATCH Partial update post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Patched title is reflected\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post.title).to.equal(\"Patched title only\");",
+									"});",
+									"",
+									"pm.test(\"Other fields are preserved\", function () {",
+									"    var post = pm.response.json();",
+									"    pm.expect(post).to.have.property(\"body\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(post).to.have.property(\"userId\").that.is.a(\"number\");",
+									"    pm.expect(post).to.have.property(\"id\").that.is.a(\"number\");",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"title\": \"Patched title only\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{posts_endpoint}}/{{post_id}}",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{post_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "DELETE Delete post",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Response body is empty object\", function () {",
+									"    var body = pm.response.json();",
+									"    pm.expect(body).to.be.an(\"object\");",
+									"    pm.expect(Object.keys(body)).to.have.lengthOf(0);",
+									"});",
+									"",
+									"pm.test(\"created_post_id is cleared after deletion\", function () {",
+									"    pm.environment.unset(\"created_post_id\");",
+									"    pm.expect(pm.environment.get(\"created_post_id\")).to.be.undefined;",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{posts_endpoint}}/{{post_id}}",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{post_id}}"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Comments",
+			"item": [
+				{
+					"name": "GET Comments for post (nested route)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array of comments\", function () {",
+									"    var comments = pm.response.json();",
+									"    pm.expect(comments).to.be.an(\"array\");",
+									"    pm.expect(comments.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"Each comment has required fields\", function () {",
+									"    var comments = pm.response.json();",
+									"    comments.forEach(function (comment) {",
+									"        pm.expect(comment).to.have.property(\"id\").that.is.a(\"number\");",
+									"        pm.expect(comment).to.have.property(\"postId\").that.is.a(\"number\");",
+									"        pm.expect(comment).to.have.property(\"name\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(comment).to.have.property(\"email\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(comment).to.have.property(\"body\").that.is.a(\"string\").and.not.empty;",
+									"    });",
+									"});",
+									"",
+									"pm.test(\"All comments belong to the requested post\", function () {",
+									"    var comments = pm.response.json();",
+									"    var postId = parseInt(pm.environment.get(\"post_id\"));",
+									"    comments.forEach(function (comment) {",
+									"        pm.expect(comment.postId).to.equal(postId);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{posts_endpoint}}/{{post_id}}/comments",
+							"host": ["{{posts_endpoint}}"],
+							"path": ["{{post_id}}", "comments"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET Filter comments by postId",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty filtered array\", function () {",
+									"    var comments = pm.response.json();",
+									"    pm.expect(comments).to.be.an(\"array\");",
+									"    pm.expect(comments.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"All comments match the postId filter\", function () {",
+									"    var comments = pm.response.json();",
+									"    var postId = parseInt(pm.environment.get(\"post_id\"));",
+									"    comments.forEach(function (comment) {",
+									"        pm.expect(comment.postId).to.equal(postId);",
+									"    });",
+									"});",
+									"",
+									"pm.test(\"Email fields have a valid format\", function () {",
+									"    var comments = pm.response.json();",
+									"    comments.forEach(function (comment) {",
+									"        pm.expect(comment.email).to.match(/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{comments_endpoint}}?postId={{post_id}}",
+							"host": ["{{comments_endpoint}}"],
+							"query": [
+								{
+									"key": "postId",
+									"value": "{{post_id}}"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Users",
+			"item": [
+				{
+					"name": "GET List all users",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array of users\", function () {",
+									"    var users = pm.response.json();",
+									"    pm.expect(users).to.be.an(\"array\");",
+									"    pm.expect(users.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"Each user has required fields\", function () {",
+									"    var users = pm.response.json();",
+									"    users.forEach(function (user) {",
+									"        pm.expect(user).to.have.property(\"id\").that.is.a(\"number\");",
+									"        pm.expect(user).to.have.property(\"name\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(user).to.have.property(\"username\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(user).to.have.property(\"email\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(user).to.have.property(\"address\").that.is.an(\"object\");",
+									"        pm.expect(user).to.have.property(\"company\").that.is.an(\"object\");",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{users_endpoint}}",
+							"host": ["{{users_endpoint}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET Get user by ID",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"User schema is valid\", function () {",
+									"    var user = pm.response.json();",
+									"    pm.expect(user).to.have.property(\"id\").that.is.a(\"number\");",
+									"    pm.expect(user).to.have.property(\"name\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(user).to.have.property(\"username\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(user).to.have.property(\"email\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(user).to.have.property(\"phone\").that.is.a(\"string\").and.not.empty;",
+									"    pm.expect(user).to.have.property(\"website\").that.is.a(\"string\").and.not.empty;",
+									"});",
+									"",
+									"pm.test(\"Address has expected structure\", function () {",
+									"    var user = pm.response.json();",
+									"    pm.expect(user.address).to.have.property(\"street\").that.is.a(\"string\");",
+									"    pm.expect(user.address).to.have.property(\"city\").that.is.a(\"string\");",
+									"    pm.expect(user.address).to.have.property(\"zipcode\").that.is.a(\"string\");",
+									"    pm.expect(user.address).to.have.property(\"geo\").that.is.an(\"object\");",
+									"});",
+									"",
+									"pm.test(\"User ID matches requested ID\", function () {",
+									"    var user = pm.response.json();",
+									"    pm.expect(user.id).to.equal(parseInt(pm.environment.get(\"user_id\")));",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{users_endpoint}}/{{user_id}}",
+							"host": ["{{users_endpoint}}"],
+							"path": ["{{user_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET User posts (nested route)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array of posts\", function () {",
+									"    var posts = pm.response.json();",
+									"    pm.expect(posts).to.be.an(\"array\");",
+									"    pm.expect(posts.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"All posts belong to the requested user\", function () {",
+									"    var posts = pm.response.json();",
+									"    var userId = parseInt(pm.environment.get(\"user_id\"));",
+									"    posts.forEach(function (post) {",
+									"        pm.expect(post.userId).to.equal(userId);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{users_endpoint}}/{{user_id}}/posts",
+							"host": ["{{users_endpoint}}"],
+							"path": ["{{user_id}}", "posts"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Albums & Photos",
+			"item": [
+				{
+					"name": "GET Album photos (nested route)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array of photos\", function () {",
+									"    var photos = pm.response.json();",
+									"    pm.expect(photos).to.be.an(\"array\");",
+									"    pm.expect(photos.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"Each photo has required fields\", function () {",
+									"    var photos = pm.response.json();",
+									"    photos.forEach(function (photo) {",
+									"        pm.expect(photo).to.have.property(\"id\").that.is.a(\"number\");",
+									"        pm.expect(photo).to.have.property(\"albumId\").that.is.a(\"number\");",
+									"        pm.expect(photo).to.have.property(\"title\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(photo).to.have.property(\"url\").that.is.a(\"string\").and.not.empty;",
+									"        pm.expect(photo).to.have.property(\"thumbnailUrl\").that.is.a(\"string\").and.not.empty;",
+									"    });",
+									"});",
+									"",
+									"pm.test(\"All photos belong to the requested album\", function () {",
+									"    var photos = pm.response.json();",
+									"    var albumId = parseInt(pm.environment.get(\"album_id\"));",
+									"    photos.forEach(function (photo) {",
+									"        pm.expect(photo.albumId).to.equal(albumId);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{albums_endpoint}}/{{album_id}}/photos",
+							"host": ["{{albums_endpoint}}"],
+							"path": ["{{album_id}}", "photos"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "GET User albums (nested route)",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response time < 2s\", function () {",
+									"    pm.expect(pm.response.responseTime).to.be.below(2000);",
+									"});",
+									"",
+									"pm.test(\"Returns a non-empty array of albums\", function () {",
+									"    var albums = pm.response.json();",
+									"    pm.expect(albums).to.be.an(\"array\");",
+									"    pm.expect(albums.length).to.be.above(0);",
+									"});",
+									"",
+									"pm.test(\"Each album has required fields\", function () {",
+									"    var albums = pm.response.json();",
+									"    albums.forEach(function (album) {",
+									"        pm.expect(album).to.have.property(\"id\").that.is.a(\"number\");",
+									"        pm.expect(album).to.have.property(\"userId\").that.is.a(\"number\");",
+									"        pm.expect(album).to.have.property(\"title\").that.is.a(\"string\").and.not.empty;",
+									"    });",
+									"});",
+									"",
+									"pm.test(\"All albums belong to the requested user\", function () {",
+									"    var albums = pm.response.json();",
+									"    var userId = parseInt(pm.environment.get(\"user_id\"));",
+									"    albums.forEach(function (album) {",
+									"        pm.expect(album.userId).to.equal(userId);",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{users_endpoint}}/{{user_id}}/albums",
+							"host": ["{{users_endpoint}}"],
+							"path": ["{{user_id}}", "albums"]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

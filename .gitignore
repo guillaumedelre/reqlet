@@ -70,8 +70,8 @@ ehthumbs.db
 .env.local
 .env.*.local
 
-# Local test fixtures (real collections, not committed)
-fixtures/
+# Local test fixtures (real private collections — committed fixtures live in fixtures/)
+# fixtures/
 
 # Internal project files
 CLAUDE.md
