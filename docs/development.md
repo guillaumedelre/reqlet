@@ -102,43 +102,28 @@ make shell-node      # interactive Node.js shell (runner/)
 make shell-web       # interactive shell in web container (gui/web/)
 ```
 
-### Test pyramid
-
-The project uses a 4-level test pyramid across all languages:
-
-| Level | Name | Definition | Go build tag |
-|-------|------|-----------|-------------|
-| N1 | **Unit** | No external I/O, no child processes | _(none)_ |
-| N2 | **Functional** | Spawns real processes (Node SEA, CLI binary) | `//go:build functional` |
-| N3 | **Integration** | Cross-language calls, real DB | `//go:build integration` |
-| N4 | **E2E** | Real browser (Playwright) | N/A |
-
-In Go, functional test files start with `//go:build functional`. They require `node` in PATH
-and `runner/src/index.js` to be present. Currently: `engine/sandbox/sandbox_test.go` and
-`cli/cmd/run_functional_test.go`.
-
 ### Go test scope
 
-Tests cover `./engine/...`, `./cli/...`, `./agent/...`, and `./hub/...`. `gui/` requires GTK
-headers and is compiled separately via `Dockerfile.gui`.
+Tests cover `./engine/...`, `./cli/...`, and `./agent/...`. `gui/` requires GTK headers
+and is compiled separately via `Dockerfile.gui`.
 
-### Go (engine/, cli/, agent/, hub/) — direct docker compose commands
+### Go (engine/, cli/, agent/) — direct docker compose commands
 
 ```bash
 # Interactive Go shell
 docker compose run --rm go sh
 
-# Run unit tests (N1 — no Node required)
+# Run all tests
 docker compose run --rm test
 
-# Run unit tests with coverage report
-docker compose run --rm test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/... ./hub/...
+# Run tests with coverage report
+docker compose run --rm test gotestsum -- -coverprofile=coverage.out -covermode=atomic ./engine/... ./cli/... ./agent/...
 
-# Run functional tests (N2 — requires node + runner/src/index.js)
-docker compose run --rm test gotestsum -- -tags=functional ./engine/... ./cli/... ./agent/... ./hub/...
+# Run unit tests only (exclude integration)
+docker compose run --rm test gotestsum -- -tags=!integration ./engine/... ./cli/... ./agent/...
 
-# Run integration tests (N3)
-docker compose run --rm test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/... ./hub/...
+# Run integration tests only
+docker compose run --rm test gotestsum -- -tags=integration ./engine/... ./cli/... ./agent/...
 
 # Lint (golangci-lint via official image)
 docker compose run --rm lint
@@ -548,37 +533,29 @@ the URL. Template variables like `{{baseUrl}}` are preserved as-is (no encoding)
 
 ## Running what CI runs
 
-CI is structured as **15 jobs**: one `go / lint & format` job, 6 × 2 test jobs (unit +
-functional per component), `reqlet-gui (build only)`, and `docker`.
-
-Before opening a PR, replicate locally:
+Before opening a PR, replicate the four CI jobs locally:
 
 ```bash
-# go / lint & format
+# 1. go — formatting, lint, tests
 docker compose run --rm go gofumpt -l . | tee /tmp/gofumpt.out && test ! -s /tmp/gofumpt.out
 docker compose run --rm lint
-
-# reqlet-engine / unit tests  +  reqlet-cli / unit tests  +  reqlet-agent / unit tests  +  reqlet-hub / unit tests
 docker compose run --rm test
 
-# reqlet-engine / functional tests  +  reqlet-cli / functional tests  (requires node)
-docker compose run --rm test gotestsum -- -tags=functional ./engine/... ./cli/...
-
-# reqlet-web / unit tests
+# 2. web — format, lint, build, tests
 docker compose run --rm web npm run format:check
 docker compose run --rm web npm run lint
 docker compose run --rm web npm run build
 docker compose run --rm web npm run test:ci
 
-# reqlet-runner / unit tests
+# 3. runner — lint + tests
 docker compose run --rm node npm run lint
 docker compose run --rm node npm test
 
-# docker images
+# 4. docker — build images
 docker build -f Dockerfile.dev .
 docker build -f Dockerfile .
+docker build -f Dockerfile.gui .
 docker build -f Dockerfile.agent .
-docker build -f Dockerfile.hub .
 ```
 
 ## Web agent (reqlet-agent)
