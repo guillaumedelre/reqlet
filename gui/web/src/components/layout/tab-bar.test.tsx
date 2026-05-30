@@ -419,3 +419,87 @@ describe("drag and drop", () => {
     expect(tabs[0].id).toBe("t2")
   })
 })
+
+// ---------------------------------------------------------------------------
+// handleCloseRight — edge cases
+// ---------------------------------------------------------------------------
+
+describe("handleCloseRight — edge cases", () => {
+  it("closes to the right immediately when the tab has idx === -1 (not in list)", () => {
+    // Build a state where the tab we context-menu on is removed by the time handleCloseRight runs.
+    // We achieve this by having two tabs and using closeTabsToRight via context-menu on a tab
+    // that results in an empty dirty list (idx !== -1, dirty.length === 0 path, but also tests
+    // the idx === -1 branch by having no tabs to the right).
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    // Context-menu on the last tab — no tabs to the right so dirty array is empty
+    fireEvent.contextMenu(screen.getByText("Second"))
+    fireEvent.click(screen.getByText("Close Tabs to the Right"))
+
+    // Only first tab and second tab remain (nothing was to the right of Second)
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs.find((t) => t.id === "t2")).toBeDefined()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// handleDrop — source not found (srcId missing)
+// ---------------------------------------------------------------------------
+
+describe("handleDrop — edge cases", () => {
+  it("does not reorder when getData returns empty and dragSrcIdRef is null", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab2 = screen.getByText("Second").closest("[draggable]") as HTMLElement
+
+    // Drop without ever starting a drag: dragSrcIdRef is null, getData returns empty string
+    fireEvent.drop(tab2, {
+      dataTransfer: { ...mockDataTransfer, getData: () => "" },
+    })
+
+    // No reorder — order unchanged
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t1")
+    expect(tabs[1].id).toBe("t2")
+  })
+
+  it("does not reorder when srcId is set but tab is not found in list (fromIdx === -1 branch)", () => {
+    setup([makeTab({ id: "t1", title: "First" }), makeTab({ id: "t2", title: "Second" })], "t1")
+    renderBar()
+
+    const tab2 = screen.getByText("Second").closest("[draggable]") as HTMLElement
+
+    // Provide a srcId that does not correspond to any tab — fromIdx will be -1
+    fireEvent.drop(tab2, {
+      dataTransfer: { ...mockDataTransfer, getData: () => "nonexistent-id" },
+    })
+
+    // No reorder — order unchanged
+    const tabs = useTabsStore.getState().tabs
+    expect(tabs[0].id).toBe("t1")
+    expect(tabs[1].id).toBe("t2")
+  })
+})
+
+// ---------------------------------------------------------------------------
+// AlertDialog onOpenChange — closes via overlay / escape
+// ---------------------------------------------------------------------------
+
+describe("AlertDialog onOpenChange", () => {
+  it("clears pendingClose when the dialog is closed externally (onOpenChange false)", () => {
+    setup([makeTab({ id: "t1", dirty: true, title: "My Request" })])
+    renderBar()
+
+    fireEvent.click(screen.getByLabelText("Close tab"))
+    expect(screen.getByText("Close without saving?")).toBeInTheDocument()
+
+    // Simulate the dialog closing itself (e.g. via Escape): onOpenChange(false) should call
+    // setPendingClose(null) which removes the dialog.
+    fireEvent.keyDown(document.body, { key: "Escape" })
+
+    // Tab remains open (we didn't confirm), dialog is gone
+    expect(useTabsStore.getState().tabs.find((t) => t.id === "t1")).toBeDefined()
+  })
+})

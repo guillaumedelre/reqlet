@@ -1267,3 +1267,62 @@ func TestBuildBody_FormDataFile_InvalidBase64(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "decode file")
 }
+
+// ── Execute: buildBody error propagated ──────────────────────────────────────
+
+// TestExecute_BuildBodyError covers the Execute code path where buildBody
+// returns an error (invalid base64 in a FormData file field).
+func TestExecute_BuildBodyError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	c := newClient(t)
+	req := &parser.Request{
+		Method: "POST",
+		URL:    parser.URL{Raw: srv.URL},
+		Body: &parser.Body{
+			Mode: parser.BodyModeFormData,
+			FormData: []parser.FormDataParam{
+				{Key: "file", Value: "!!!invalid-base64!!!", Type: "file"},
+			},
+		},
+	}
+	_, err := c.Execute(context.Background(), req, newVars(), nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build body")
+}
+
+// ── Execute: response body read error ────────────────────────────────────────
+
+// brokenBodyServer returns a response that closes the connection midway
+// through the body, causing io.ReadAll to return an error.
+func brokenBodyServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Declare a large Content-Length but close the connection early.
+		w.Header().Set("Content-Length", "10000")
+		w.WriteHeader(http.StatusOK)
+		// Flush the headers but don't write the promised body.
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		// Hijack the connection and close it abruptly.
+		hijacker, ok := w.(http.Hijacker)
+		if !ok {
+			return
+		}
+		conn, _, _ := hijacker.Hijack()
+		_ = conn.Close()
+	}))
+}
+
+func TestExecute_ReadBodyError(t *testing.T) {
+	srv := brokenBodyServer(t)
+	defer srv.Close()
+
+	c := newClient(t)
+	_, err := c.Execute(context.Background(), parseRequest("GET", srv.URL), newVars(), nil)
+	require.Error(t, err)
+}

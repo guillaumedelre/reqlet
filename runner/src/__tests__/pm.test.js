@@ -706,6 +706,229 @@ describe("buildPm — pm.response.to.not.be.* negation chains", () => {
   });
 });
 
+describe("buildPm — pm.response.to.be.html", () => {
+  const ctxHtml = {
+    ...baseCtx,
+    response: {
+      status: "OK",
+      code: 200,
+      responseTime: 10,
+      responseSize: 20,
+      headers: { "content-type": "text/html; charset=utf-8" },
+      cookies: {},
+      body: "<h1>hello</h1>",
+    },
+  };
+
+  it("to.be.html passes when content-type includes html", () => {
+    const { pm } = buildPm(ctxHtml);
+    expect(() => pm.response.to.be.html).not.toThrow();
+  });
+
+  it("to.not.be.html passes when content-type does not include html", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: { ...ctxHtml.response, headers: { "content-type": "application/json" } },
+    });
+    expect(() => pm.response.to.not.be.html).not.toThrow();
+  });
+
+  it("to.not.be.html throws when content-type includes html", () => {
+    const { pm } = buildPm(ctxHtml);
+    expect(() => pm.response.to.not.be.html).toThrow(/html/);
+  });
+});
+
+describe("buildPm — pm.response.to.not.be.text", () => {
+  it("to.not.be.text passes when content-type does not include text", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 11,
+        headers: { "content-type": "application/json" },
+        cookies: {},
+        body: '{"ok":true}',
+      },
+    });
+    expect(() => pm.response.to.not.be.text).not.toThrow();
+  });
+
+  it("to.not.be.text throws when content-type includes text", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 5,
+        headers: { "content-type": "text/plain" },
+        cookies: {},
+        body: "hello",
+      },
+    });
+    expect(() => pm.response.to.not.be.text).toThrow(/text/);
+  });
+});
+
+describe("buildPm — pm.response.to.be.* with Content-Type header variants", () => {
+  it("to.be.json passes with capitalized Content-Type header", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 11,
+        headers: { "Content-Type": "application/json" },
+        cookies: {},
+        body: '{"ok":true}',
+      },
+    });
+    expect(() => pm.response.to.be.json).not.toThrow();
+  });
+
+  it("to.be.json throws when no content-type header present", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 5,
+        headers: {},
+        cookies: {},
+        body: "hello",
+      },
+    });
+    expect(() => pm.response.to.be.json).toThrow(/json/);
+  });
+
+  it("to.be.html passes with capitalized Content-Type header", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 20,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+        cookies: {},
+        body: "<h1>hello</h1>",
+      },
+    });
+    expect(() => pm.response.to.be.html).not.toThrow();
+  });
+
+  it("to.be.html throws when no content-type header present", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 5,
+        headers: {},
+        cookies: {},
+        body: "hello",
+      },
+    });
+    expect(() => pm.response.to.be.html).toThrow(/html/);
+  });
+
+  it("to.be.text passes with capitalized Content-Type header", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 5,
+        headers: { "Content-Type": "text/plain" },
+        cookies: {},
+        body: "hello",
+      },
+    });
+    expect(() => pm.response.to.be.text).not.toThrow();
+  });
+
+  it("to.be.text throws when no content-type header present", () => {
+    const { pm } = buildPm({
+      ...baseCtx,
+      response: {
+        status: "OK",
+        code: 200,
+        responseTime: 10,
+        responseSize: 5,
+        headers: {},
+        cookies: {},
+        body: "hello",
+      },
+    });
+    expect(() => pm.response.to.be.text).toThrow(/text/);
+  });
+});
+
+describe("buildPm — assertion methods with absent response fields", () => {
+  it("to.have.header works when res.headers is absent", () => {
+    const ctx = { ...baseCtx, response: { code: 200, status: "OK", responseTime: 0, responseSize: 0, cookies: {} } };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.have.header("x-missing")).toThrow(/x-missing/);
+  });
+
+  it("to.have.body works when res.body is absent (treats as empty string)", () => {
+    const ctx = { ...baseCtx, response: { code: 200, status: "OK", responseTime: 0, responseSize: 0, headers: {}, cookies: {} } };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.have.body("anything")).toThrow(/anything/);
+    expect(() => pm.response.to.have.body("")).not.toThrow();
+  });
+
+  it("to.have.jsonBody throws when res.body is absent (null is not valid JSON object)", () => {
+    const ctx = { ...baseCtx, response: { code: 200, status: "OK", responseTime: 0, responseSize: 0, headers: {}, cookies: {} } };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.have.jsonBody()).toThrow(/valid JSON/);
+  });
+
+  it("to.have.jsonBody traverses into non-object value (returns undefined)", () => {
+    const ctx = {
+      ...baseCtx,
+      response: { ...baseCtx.response, body: '{"a":42}', headers: {} },
+    };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.have.jsonBody("a.b")).toThrow(/a\.b/);
+  });
+
+  it("to.have.jsonSchema works when res.body is absent (treats as null)", () => {
+    const ctx = { ...baseCtx, response: { code: 200, status: "OK", responseTime: 0, responseSize: 0, headers: {}, cookies: {} } };
+    const { pm } = buildPm(ctx);
+    const schema = { type: "null" };
+    expect(() => pm.response.to.have.jsonSchema(schema)).not.toThrow();
+  });
+});
+
+describe("buildPm — pm.sendRequest injection", () => {
+  it("sendRequest is null by default", () => {
+    const { pm } = buildPm({ ...baseCtx });
+    expect(pm.sendRequest).toBeNull();
+  });
+
+  it("sendRequest can be injected and calls back with response", () => {
+    const { pm } = buildPm({ ...baseCtx });
+    const fakeResponse = { code: 200, status: "OK", headers: {}, body: "{}", responseTime: 5 };
+    pm.sendRequest = (_req, cb) => cb(null, fakeResponse);
+    let cbErr = "not-called";
+    let cbRes = "not-called";
+    pm.sendRequest("https://example.com", (err, res) => {
+      cbErr = err;
+      cbRes = res;
+    });
+    expect(cbErr).toBeNull();
+    expect(cbRes).toBe(fakeResponse);
+  });
+});
+
 describe("buildPm — makeHeaderList.toObject", () => {
   it("pm.response.headers.toObject() returns a copy of headers", () => {
     const ctx = {
@@ -719,6 +942,256 @@ describe("buildPm — makeHeaderList.toObject", () => {
     const obj = pm.response.headers.toObject();
     expect(obj["content-type"]).toBe("application/json");
     expect(obj["x-request-id"]).toBe("abc");
+  });
+});
+
+describe("buildPm — defensive defaults when context fields are absent", () => {
+  it("handles missing iterationData (uses empty object)", () => {
+    const ctx = {
+      ...baseCtx,
+      iterationData: undefined,
+    };
+    const { pm } = buildPm(ctx);
+    expect(pm.iterationData.has("anything")).toBe(false);
+  });
+
+  it("handles missing request (uses empty object)", () => {
+    const ctx = { ...baseCtx, request: undefined };
+    const { pm } = buildPm(ctx);
+    expect(pm.request.url).toBe("");
+    expect(pm.request.method).toBe("GET");
+    expect(pm.request.body).toBeNull();
+  });
+
+  it("handles request with missing url/method/headers/body fields", () => {
+    const ctx = { ...baseCtx, request: {} };
+    const { pm } = buildPm(ctx);
+    expect(pm.request.url).toBe("");
+    expect(pm.request.method).toBe("GET");
+    expect(pm.request.body).toBeNull();
+  });
+
+  it("handles missing response (uses empty object)", () => {
+    const ctx = { ...baseCtx, response: undefined };
+    const { pm } = buildPm(ctx);
+    expect(pm.response.code).toBe(0);
+    expect(pm.response.status).toBe("");
+    expect(pm.response.responseTime).toBe(0);
+    expect(pm.response.responseSize).toBe(0);
+  });
+
+  it("handles response with missing fields (uses defaults)", () => {
+    const ctx = { ...baseCtx, response: {} };
+    const { pm } = buildPm(ctx);
+    expect(pm.response.code).toBe(0);
+    expect(pm.response.status).toBe("");
+    expect(pm.response.text()).toBe("");
+  });
+
+  it("response.json() with no body returns null", () => {
+    const ctx = { ...baseCtx, response: {} };
+    const { pm } = buildPm(ctx);
+    expect(pm.response.json()).toBeNull();
+  });
+
+  it("handles missing cookies in response (pm.cookies empty)", () => {
+    const ctx = { ...baseCtx, response: { ...baseCtx.response, cookies: undefined } };
+    const { pm } = buildPm(ctx);
+    expect(pm.cookies.has("anything")).toBe(false);
+  });
+
+  it("pm.test() captures error.message when error has no message", () => {
+    const { pm, collectResults } = buildPm({ ...baseCtx });
+    pm.test("throws string", () => { throw "raw string error"; });
+    const t = collectResults().tests[0];
+    expect(t.passed).toBe(false);
+    expect(t.error).toBe("raw string error");
+  });
+});
+
+describe("buildPm — pm.execution.location defaults", () => {
+  it("location is empty array when ctx.info.location absent", () => {
+    const ctx = { ...baseCtx, info: { ...baseCtx.info, location: undefined, locationCurrent: undefined } };
+    const { pm } = buildPm(ctx);
+    expect(Array.isArray(pm.execution.location)).toBe(true);
+    expect(pm.execution.location.current).toBe(baseCtx.info.requestName);
+  });
+
+  it("location.current uses locationCurrent when present", () => {
+    const ctx = { ...baseCtx, info: { ...baseCtx.info, locationCurrent: "folder > req" } };
+    const { pm } = buildPm(ctx);
+    expect(pm.execution.location.current).toBe("folder > req");
+  });
+});
+
+describe("buildPm — makeHeaderList with missing headers", () => {
+  it("to.have.header with capitalized key finds lowercase header", () => {
+    const ctx = {
+      ...baseCtx,
+      response: {
+        ...baseCtx.response,
+        headers: { "content-type": "application/json" },
+      },
+    };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.have.header("Content-Type")).not.toThrow();
+  });
+
+  it("to.not.have.header passes when header absent", () => {
+    const { pm } = buildPm({ ...baseCtx });
+    expect(() => pm.response.to.not.have.header("x-custom")).not.toThrow();
+  });
+
+  it("to.not.have.header throws when header present", () => {
+    const ctx = {
+      ...baseCtx,
+      response: {
+        ...baseCtx.response,
+        headers: { "x-custom": "value" },
+      },
+    };
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.header("x-custom")).toThrow(/x-custom/);
+  });
+
+  it("to.have.header with value throws when value mismatches", () => {
+    const ctx = {
+      ...baseCtx,
+      response: {
+        ...baseCtx.response,
+        headers: { "content-type": "text/plain" },
+      },
+    };
+    const { pm } = buildPm(ctx);
+    expect(() =>
+      pm.response.to.have.header("content-type", "application/json"),
+    ).toThrow(/application\/json/);
+  });
+});
+
+describe("buildPm — pm.response.to.have.body negation", () => {
+  const ctx = {
+    ...baseCtx,
+    response: {
+      ...baseCtx.response,
+      body: "hello world",
+      headers: {},
+    },
+  };
+
+  it("to.not.have.body passes when string absent", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.body("missing")).not.toThrow();
+  });
+
+  it("to.not.have.body throws when string present", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.body("hello")).toThrow(/hello/);
+  });
+
+  it("to.not.have.body passes when regex does not match", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.body(/missing/)).not.toThrow();
+  });
+
+  it("to.not.have.body throws when regex matches", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.body(/world/)).toThrow(/world/);
+  });
+});
+
+describe("buildPm — pm.response.to.have.jsonBody with value negation", () => {
+  const ctx = {
+    ...baseCtx,
+    response: {
+      ...baseCtx.response,
+      headers: { "content-type": "application/json" },
+      body: '{"id":42}',
+    },
+  };
+
+  it("to.not.have.jsonBody with value passes when value differs", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.jsonBody("id", 99)).not.toThrow();
+  });
+
+  it("to.not.have.jsonBody with value throws when value matches", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.jsonBody("id", 42)).toThrow();
+  });
+
+  it("to.not.have.jsonBody path throws when path exists", () => {
+    const { pm } = buildPm(ctx);
+    expect(() => pm.response.to.not.have.jsonBody("id")).toThrow(/id/);
+  });
+});
+
+describe("buildPm — pm.response.to.have.jsonSchema negation", () => {
+  const ctx = {
+    ...baseCtx,
+    response: {
+      ...baseCtx.response,
+      headers: { "content-type": "application/json" },
+      body: '{"id":1}',
+    },
+  };
+
+  it("to.not.have.jsonSchema passes when body does not match schema", () => {
+    const { pm } = buildPm(ctx);
+    const schema = { type: "object", required: ["missing"] };
+    expect(() => pm.response.to.not.have.jsonSchema(schema)).not.toThrow();
+  });
+
+  it("to.not.have.jsonSchema throws when body matches schema", () => {
+    const { pm } = buildPm(ctx);
+    const schema = { type: "object" };
+    expect(() => pm.response.to.not.have.jsonSchema(schema)).toThrow();
+  });
+});
+
+describe("buildPm — remaining be.* negation chains", () => {
+  const ctx500 = {
+    ...baseCtx,
+    response: { ...baseCtx.response, code: 500, status: "Internal Server Error" },
+  };
+  const ctx200 = {
+    ...baseCtx,
+    response: { ...baseCtx.response, code: 200, status: "OK" },
+  };
+  const ctx301 = {
+    ...baseCtx,
+    response: { ...baseCtx.response, code: 301, status: "Moved" },
+  };
+
+  it("to.not.be.serverError passes when not 5xx", () => {
+    const { pm } = buildPm(ctx200);
+    expect(() => pm.response.to.not.be.serverError).not.toThrow();
+  });
+
+  it("to.not.be.serverError throws when 5xx", () => {
+    const { pm } = buildPm(ctx500);
+    expect(() => pm.response.to.not.be.serverError).toThrow();
+  });
+
+  it("to.not.be.clientError passes when not 4xx", () => {
+    const { pm } = buildPm(ctx200);
+    expect(() => pm.response.to.not.be.clientError).not.toThrow();
+  });
+
+  it("to.not.be.clientError throws when 4xx", () => {
+    const ctx400 = { ...baseCtx, response: { ...baseCtx.response, code: 400 } };
+    const { pm } = buildPm(ctx400);
+    expect(() => pm.response.to.not.be.clientError).toThrow();
+  });
+
+  it("to.not.be.redirection passes when not 3xx", () => {
+    const { pm } = buildPm(ctx200);
+    expect(() => pm.response.to.not.be.redirection).not.toThrow();
+  });
+
+  it("to.not.be.redirection throws when 3xx", () => {
+    const { pm } = buildPm(ctx301);
+    expect(() => pm.response.to.not.be.redirection).toThrow();
   });
 });
 

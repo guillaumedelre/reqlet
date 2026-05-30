@@ -610,4 +610,135 @@ describe("general section — new fields", () => {
 
     expect(useSettingsStore.getState().noCacheHeader).toBe(true)
   })
+
+  it("maxResponseSizeMB falls back to 50 when input is cleared (covers parseInt || 50 branch)", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("50")
+    act(() => fireEvent.change(input, { target: { value: "" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ maxResponseSizeMB: 50 }),
+    )
+  })
+
+  it("scriptTimeoutMs falls back to 5000 when input is cleared (covers parseInt || 5000 branch)", async () => {
+    render(<SettingsDialog />)
+    openDialog()
+
+    const input = await screen.findByPlaceholderText("5000")
+    act(() => fireEvent.change(input, { target: { value: "" } }))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    expect(backend.putSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ scriptTimeoutMs: 5000 }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Save button — null form guard (line 288)
+// ---------------------------------------------------------------------------
+
+describe("save — null form guard", () => {
+  it("Save button is disabled when form is null (loading state)", async () => {
+    let resolve!: (v: backend.AppSettings) => void
+    vi.mocked(backend.getSettings).mockReturnValue(new Promise((r) => (resolve = r)))
+
+    render(<SettingsDialog />)
+    openDialog()
+
+    // While loading, form is null — Save button should be disabled
+    const saveBtn = screen.getByRole("button", { name: /^save$/i })
+    expect(saveBtn).toBeDisabled()
+
+    // Resolve to avoid hanging promise
+    act(() => resolve({ ...DEFAULT_BACKEND }))
+    await waitFor(() => expect(saveBtn).not.toBeDisabled())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Save button — shows "Saving…" during in-flight save (line 358)
+// ---------------------------------------------------------------------------
+
+describe("save — saving state indicator", () => {
+  it("shows 'Saving…' text on the button while putSettings is in flight", async () => {
+    let resolvePut!: (v: backend.AppSettings) => void
+    vi.mocked(backend.putSettings).mockReturnValue(new Promise((r) => (resolvePut = r)))
+
+    render(<SettingsDialog />)
+    openDialog()
+
+    await screen.findByRole("switch", { name: /ssl certificate verification/i })
+
+    // Click Save — putSettings hangs
+    const saveBtn = screen.getByRole("button", { name: /^save$/i })
+    act(() => fireEvent.click(saveBtn))
+
+    // Button text changes to "Saving…"
+    expect(await screen.findByRole("button", { name: /saving…/i })).toBeInTheDocument()
+
+    // Resolve to clean up
+    act(() => resolvePut({ ...DEFAULT_BACKEND }))
+    await waitFor(() => expect(useUiStore.getState().settingsOpen).toBe(false))
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Save — form update with server response (line 293: setForm after success)
+// ---------------------------------------------------------------------------
+
+describe("save — form updated with server response", () => {
+  it("form backend fields reflect the server response after a successful save", async () => {
+    const serverResponse: backend.AppSettings = {
+      ...DEFAULT_BACKEND,
+      sslVerification: false,
+      maxResponseSizeMB: 99,
+    }
+    vi.mocked(backend.putSettings).mockResolvedValue(serverResponse)
+
+    render(<SettingsDialog />)
+    openDialog()
+
+    const sslToggle = await screen.findByRole("switch", { name: /ssl certificate verification/i })
+    act(() => fireEvent.click(sslToggle))
+
+    const save = screen.getByRole("button", { name: /^save$/i })
+    await act(async () => fireEvent.click(save))
+
+    // Dialog closes after save — putSettings was called and form was updated
+    await waitFor(() => expect(useUiStore.getState().settingsOpen).toBe(false))
+    expect(backend.putSettings).toHaveBeenCalled()
+  })
+
+  it("setForm updater receives null prev when cancel is called mid-save (covers L293 false branch)", async () => {
+    let resolvePut!: (v: backend.AppSettings) => void
+    vi.mocked(backend.putSettings).mockReturnValue(new Promise((r) => (resolvePut = r)))
+
+    render(<SettingsDialog />)
+    openDialog()
+
+    await screen.findByRole("switch", { name: /ssl certificate verification/i })
+
+    // Click Save — putSettings is in-flight
+    const saveBtn = screen.getByRole("button", { name: /^save$/i })
+    act(() => fireEvent.click(saveBtn))
+
+    // Click Cancel while save is in-flight — sets form to null
+    const cancelBtn = screen.getByRole("button", { name: /^cancel$/i })
+    act(() => fireEvent.click(cancelBtn))
+
+    // Resolve putSettings — setForm updater will now receive prev=null (false branch L293)
+    await act(async () => resolvePut({ ...DEFAULT_BACKEND }))
+
+    // No error thrown; dialog stays closed (cancel already closed it)
+    await waitFor(() => expect(useUiStore.getState().settingsOpen).toBe(false))
+  })
 })

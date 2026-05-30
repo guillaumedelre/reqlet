@@ -227,3 +227,12 @@ func TestWorkspacePath_Default(t *testing.T) {
 	assert.Contains(t, p, ".reqlet")
 	assert.Contains(t, p, "workspace")
 }
+
+func TestWorkspacePath_HomeDirError(t *testing.T) {
+	t.Setenv("REQLET_WORKSPACE_PATH", "")
+	// os.UserHomeDir consults $HOME on Linux; clearing it triggers an error.
+	t.Setenv("HOME", "")
+	_, err := workspacePath()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "resolve home dir")
+}

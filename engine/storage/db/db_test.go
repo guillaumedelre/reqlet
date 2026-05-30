@@ -3,12 +3,16 @@ package db
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	_ "modernc.org/sqlite"
 )
+
+var testDBCounter atomic.Int64
 
 // schema mirrors the production migrations so we can test queries independently.
 const schema = `
@@ -31,6 +35,23 @@ func newTestDB(t *testing.T) *sql.DB {
 	require.NoError(t, err)
 	_, err = db.Exec(schema)
 	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	return db
+}
+
+// newIsolatedTestDB creates a uniquely named in-memory SQLite DB so that
+// closing it in a test does not affect the shared cache used by other tests.
+func newIsolatedTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	id := testDBCounter.Add(1)
+	dsn := fmt.Sprintf("file:testdb_%d?mode=memory&cache=shared", id)
+	db, err := sql.Open("sqlite", dsn)
+	require.NoError(t, err)
+	_, err = db.Exec(schema)
+	require.NoError(t, err)
+	// No automatic cleanup — callers that close the DB explicitly must not
+	// register a second Close via Cleanup, but tests that do NOT close it
+	// should still clean up.
 	t.Cleanup(func() { _ = db.Close() })
 	return db
 }
@@ -147,4 +168,42 @@ func TestListSettings(t *testing.T) {
 	rows, err := q.ListSettings(ctx)
 	require.NoError(t, err)
 	assert.Len(t, rows, 2)
+}
+
+func TestGetHistory_NotFound(t *testing.T) {
+	ctx := context.Background()
+	q := New(newTestDB(t))
+
+	_, err := q.GetHistory(ctx, "nonexistent-id")
+	require.ErrorIs(t, err, sql.ErrNoRows)
+}
+
+func TestGetSetting_NotFound(t *testing.T) {
+	ctx := context.Background()
+	q := New(newTestDB(t))
+
+	_, err := q.GetSetting(ctx, "nonexistent-key")
+	require.ErrorIs(t, err, sql.ErrNoRows)
+}
+
+func TestListHistory_ClosedDB(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := newIsolatedTestDB(t)
+	q := New(sqlDB)
+
+	require.NoError(t, sqlDB.Close())
+
+	_, err := q.ListHistory(ctx, ListHistoryParams{Limit: 10, Offset: 0})
+	require.Error(t, err)
+}
+
+func TestListSettings_ClosedDB(t *testing.T) {
+	ctx := context.Background()
+	sqlDB := newIsolatedTestDB(t)
+	q := New(sqlDB)
+
+	require.NoError(t, sqlDB.Close())
+
+	_, err := q.ListSettings(ctx)
+	require.Error(t, err)
 }

@@ -444,3 +444,25 @@ func TestV10ToV21_MissingRequestIDInFolder(t *testing.T) {
 	require.Len(t, out.Item, 1)
 	assert.Empty(t, out.Item[0].Item)
 }
+
+// TestV20ToV21_NestedItemAuthError covers the recursive convertItemsV20 error
+// branch (line 48 in v20.go): a folder whose sub-items have invalid auth params
+// must propagate the error.
+func TestV20ToV21_NestedItemAuthError(t *testing.T) {
+	c := &parser.CollectionV20{
+		Info: parser.Info{Name: "T", Schema: parser.SchemaV20},
+		Item: []parser.ItemV20{
+			{
+				Name: "folder",
+				Item: []parser.ItemV20{
+					{
+						Name: "nested",
+						Auth: &parser.AuthV20{Type: parser.AuthTypeBasic, Basic: []byte(`42`)},
+					},
+				},
+			},
+		},
+	}
+	_, err := V20ToV21(c)
+	require.Error(t, err)
+}

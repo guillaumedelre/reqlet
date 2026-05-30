@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"os"
@@ -236,6 +237,32 @@ func TestResolveRunner_CWDRelativePath(t *testing.T) {
 	assert.Equal(t, filepath.Join("runner", "src", "index.js"), path)
 }
 
+func TestResolveRunner_RelativeToExecutable(t *testing.T) {
+	t.Setenv("REQLET_RUNNER", "")
+
+	// Determine the candidate path resolveRunner will probe.
+	exe, err := os.Executable()
+	require.NoError(t, err)
+	candidate := filepath.Join(filepath.Dir(exe), "..", "runner", "src", "index.js")
+
+	// Create the file at the candidate location so the Stat succeeds.
+	require.NoError(t, os.MkdirAll(filepath.Dir(candidate), 0o750)) //nolint:gosec
+	require.NoError(t, os.WriteFile(candidate, []byte(""), 0o600))
+	t.Cleanup(func() { _ = os.Remove(candidate) })
+
+	// Change to a directory without runner/src/index.js so the CWD fallback
+	// does not interfere.
+	emptyDir := t.TempDir()
+	orig, err2 := os.Getwd()
+	require.NoError(t, err2)
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+	require.NoError(t, os.Chdir(emptyDir))
+
+	path, err := resolveRunner("")
+	require.NoError(t, err)
+	assert.Equal(t, candidate, path)
+}
+
 // ── runCollection ─────────────────────────────────────────────────────────────
 
 func TestRunCollection_CollectionNotFound(t *testing.T) {
@@ -331,6 +358,36 @@ func TestRunCollection_RunnerNotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "runner not found")
 }
 
+func TestRunCollection_DataFileNotFound(t *testing.T) {
+	resetFlags(t)
+	t.Setenv("REQLET_RUNNER", "")
+
+	colPath := writeTestFile(t, t.TempDir(), "col.json", minimalV21)
+	flagData = "/nonexistent/data.csv"
+
+	cmd := &cobra.Command{}
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open data file")
+}
+
+func TestRunCollection_InvalidClientCert(t *testing.T) {
+	resetFlags(t)
+
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	flagRunner = writeStubRunner(t)
+	// A non-PEM cert file will cause enginehttp.NewClient to fail.
+	flagClientCert = writeTestFile(t, dir, "bad.pem", "not a valid PEM certificate")
+	flagClientKey = writeTestFile(t, dir, "bad.key", "not a valid PEM key")
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "http client")
+}
+
 // stubRunnerJS is a minimal Node.js stub that speaks the sandbox IPC protocol.
 // It responds to every "execute" message with an empty successful result.
 const stubRunnerJS = `
@@ -359,6 +416,33 @@ func writeStubRunner(t *testing.T) string {
 	path := filepath.Join(dir, "index.js")
 	require.NoError(t, os.WriteFile(path, []byte(stubRunnerJS), 0o600))
 	return path
+}
+
+// TestRunCollection_RunnerRunError exercises the r.Run() error branch in runCollection.
+// We use a context timeout shorter than the delay between requests.
+func TestRunCollection_RunnerRunError(t *testing.T) {
+	resetFlags(t)
+
+	// Build a collection with two requests so the runner uses delayMs between them.
+	col := `{
+  "info": {"name": "Delay Col", "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"},
+  "item": [
+    {"name": "r1", "request": {"method": "GET", "url": "http://127.0.0.1:1"}},
+    {"name": "r2", "request": {"method": "GET", "url": "http://127.0.0.1:1"}}
+  ]
+}`
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", col)
+	flagRunner = writeStubRunner(t)
+	flagDelayRequest = 5000 // 5 s delay between requests
+	flagTimeout = 1         // 1 s overall timeout — expires before the delay
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	// The runner returns ctx.Err() (context.DeadlineExceeded) when the delay is cut.
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 
 func TestRunCollection_EmptyCollectionSuccess(t *testing.T) {
@@ -405,4 +489,50 @@ func TestRunCollection_WithEnvVarAndGlobalVar(t *testing.T) {
 	cmd.SetOut(io.Discard)
 	err := runCollection(cmd, []string{colPath})
 	require.NoError(t, err)
+}
+
+// TestRunCollection_WithGlobalsFile covers the genv != nil iteration branch (lines 112-116).
+// It provides a valid globals file with an enabled variable and a working stub runner so that
+// execution reaches the variable-merging code.
+func TestRunCollection_WithGlobalsFile(t *testing.T) {
+	resetFlags(t)
+
+	const globalsJSON = `{
+  "name": "Globals",
+  "values": [
+    {"key": "BASE_URL", "value": "http://localhost", "enabled": true},
+    {"key": "DISABLED_KEY", "value": "ignored", "enabled": false}
+  ]
+}`
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	globalsPath := writeTestFile(t, dir, "globals.json", globalsJSON)
+	flagRunner = writeStubRunner(t)
+	flagGlobals = globalsPath
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.NoError(t, err)
+}
+
+// TestRunCollection_SandboxError covers the sandbox.NewRunner error branch (line 154).
+// It provides a valid runner path and collection, but removes "node" from PATH so that
+// sandbox.NewRunner fails when trying to start the Node.js process.
+func TestRunCollection_SandboxError(t *testing.T) {
+	resetFlags(t)
+
+	dir := t.TempDir()
+	colPath := writeTestFile(t, dir, "col.json", minimalV21)
+	// writeStubRunner creates a real file — resolveRunner will accept it, but NewRunner
+	// will fail because node is not found in the modified PATH.
+	flagRunner = writeStubRunner(t)
+	// Hide every executable from PATH so exec.Command("node", ...) fails at Start().
+	t.Setenv("PATH", "/nonexistent-bin-dir")
+
+	cmd := &cobra.Command{}
+	cmd.SetOut(io.Discard)
+	err := runCollection(cmd, []string{colPath})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "sandbox")
 }

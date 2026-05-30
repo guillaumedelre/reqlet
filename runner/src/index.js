@@ -31,24 +31,32 @@ export function respond(id, result, error) {
   process.stdout.write(JSON.stringify({ id, result, error }) + "\n");
 }
 
+// Exported for testing
+export function processChunk(buffer, chunk) {
+  buffer += chunk;
+  const lines = buffer.split("\n");
+  const remaining = lines.pop();
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    handleLine(line);
+  }
+  return remaining;
+}
+
+// Exported for testing
+export function onEnd() {
+  process.exit(0);
+}
+
 // Only start the stdin loop when run directly (not imported by tests).
 const isMain =
   process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 
 if (isMain) {
   process.stdin.setEncoding("utf8");
-
   let buffer = "";
-
   process.stdin.on("data", (chunk) => {
-    buffer += chunk;
-    const lines = buffer.split("\n");
-    buffer = lines.pop();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      handleLine(line);
-    }
+    buffer = processChunk(buffer, chunk);
   });
-
-  process.stdin.on("end", () => process.exit(0));
+  process.stdin.on("end", onEnd);
 }
