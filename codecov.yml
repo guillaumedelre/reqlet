@@ -9,42 +9,48 @@ coverage:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-engine
+          - reqlet-engine-unit
+          - reqlet-engine-functional
         paths:
           - "engine/"
       reqlet-cli:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-cli
+          - reqlet-cli-unit
+          - reqlet-cli-functional
         paths:
           - "cli/"
       reqlet-agent:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-agent
+          - reqlet-agent-unit
+          - reqlet-agent-functional
         paths:
           - "agent/"
       reqlet-web:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-web
+          - reqlet-web-unit
+          - reqlet-web-functional
         paths:
           - "gui/web/src/"
       reqlet-runner:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-runner
+          - reqlet-runner-unit
+          - reqlet-runner-functional
         paths:
           - "runner/src/"
       reqlet-hub:
         target: 80%
         threshold: 1%
         flags:
-          - reqlet-hub
+          - reqlet-hub-unit
+          - reqlet-hub-functional
         paths:
           - "hub/"
     patch:
@@ -53,29 +59,53 @@ coverage:
         threshold: 1%
 
 flags:
-  reqlet-engine:
+  reqlet-engine-unit:
     paths:
       - engine/
     carryforward: true
-  reqlet-cli:
+  reqlet-engine-functional:
+    paths:
+      - engine/
+    carryforward: true
+  reqlet-cli-unit:
     paths:
       - cli/
     carryforward: true
-  reqlet-agent:
+  reqlet-cli-functional:
+    paths:
+      - cli/
+    carryforward: true
+  reqlet-agent-unit:
     paths:
       - agent/
     carryforward: true
-  reqlet-web:
+  reqlet-agent-functional:
+    paths:
+      - agent/
+    carryforward: true
+  reqlet-hub-unit:
+    paths:
+      - hub/
+    carryforward: true
+  reqlet-hub-functional:
+    paths:
+      - hub/
+    carryforward: true
+  reqlet-web-unit:
     paths:
       - gui/web/src/
     carryforward: true
-  reqlet-runner:
+  reqlet-web-functional:
+    paths:
+      - gui/web/src/
+    carryforward: true
+  reqlet-runner-unit:
     paths:
       - runner/src/
     carryforward: true
-  reqlet-hub:
+  reqlet-runner-functional:
     paths:
-      - hub/
+      - runner/src/
     carryforward: true
 
 comment:
