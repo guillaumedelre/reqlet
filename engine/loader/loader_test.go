@@ -188,6 +188,15 @@ func TestLoadCollection_V10_ParseError(t *testing.T) {
 	require.Error(t, err)
 }
 
+// TestLoadData_CSV_ParseError covers the csv.ReadAll failure branch in loadCSV.
+// A bare '"' triggers a parse error from encoding/csv.
+func TestLoadData_CSV_ParseError(t *testing.T) {
+	// A lone double-quote is invalid CSV and causes csv.ReadAll to fail.
+	_, err := LoadData(strings.NewReader("name\n\"unterminated"), ".csv")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "parse CSV")
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 type errReader struct{}

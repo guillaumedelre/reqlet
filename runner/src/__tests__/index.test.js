@@ -4,7 +4,7 @@ import { jest, describe, it, expect, beforeEach, afterEach } from "@jest/globals
 const mockExecute = jest.fn();
 jest.unstable_mockModule("../executor.js", () => ({ execute: mockExecute }));
 
-const { handleLine, respond } = await import("../index.js");
+const { handleLine, respond, processChunk, onEnd } = await import("../index.js");
 
 describe("respond", () => {
   let output;
@@ -115,6 +115,77 @@ describe("handleLine", () => {
     );
 
     expect(mockExecute).toHaveBeenCalledWith("", "test", {});
+  });
+});
+
+describe("processChunk", () => {
+  beforeEach(() => {
+    jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+    mockExecute.mockReset();
+  });
+
+  afterEach(() => {
+    process.stdout.write.mockRestore();
+  });
+
+  it("dispatches a single complete line and returns empty remaining buffer", async () => {
+    const line = JSON.stringify({ id: "1", method: "execute", params: { script: "", event: "test", context: {} } });
+    mockExecute.mockResolvedValue({ tests: [], mutations: {} });
+
+    const remaining = processChunk("", line + "\n");
+
+    expect(remaining).toBe("");
+    // handleLine is async; wait for the microtask to settle
+    await Promise.resolve();
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips empty and whitespace-only lines", () => {
+    const remaining = processChunk("", "\n   \n\n");
+    expect(remaining).toBe("");
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
+  it("returns a partial line as remaining buffer without dispatching", () => {
+    const remaining = processChunk("", "partial");
+    expect(remaining).toBe("partial");
+    expect(mockExecute).not.toHaveBeenCalled();
+  });
+
+  it("dispatches multiple complete lines in one chunk", async () => {
+    const line = JSON.stringify({ id: "x", method: "execute", params: { script: "", event: "test", context: {} } });
+    mockExecute.mockResolvedValue({ tests: [], mutations: {} });
+
+    const remaining = processChunk("", line + "\n" + line + "\n");
+
+    expect(remaining).toBe("");
+    await Promise.resolve();
+    expect(mockExecute).toHaveBeenCalledTimes(2);
+  });
+
+  it("accumulates partial lines across two calls", async () => {
+    mockExecute.mockResolvedValue({ tests: [], mutations: {} });
+    const line = JSON.stringify({ id: "2", method: "execute", params: { script: "", event: "test", context: {} } });
+
+    // First chunk: only the first half
+    const half = line.slice(0, Math.floor(line.length / 2));
+    const buf1 = processChunk("", half);
+    expect(mockExecute).not.toHaveBeenCalled();
+
+    // Second chunk: remainder + newline
+    const remaining = processChunk(buf1, line.slice(Math.floor(line.length / 2)) + "\n");
+    expect(remaining).toBe("");
+    await Promise.resolve();
+    expect(mockExecute).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("onEnd", () => {
+  it("calls process.exit(0)", () => {
+    const exitSpy = jest.spyOn(process, "exit").mockImplementation(() => {});
+    onEnd();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+    exitSpy.mockRestore();
   });
 });
 

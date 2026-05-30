@@ -192,6 +192,42 @@ func TestDeleteEnvironment_NotExist_NoError(t *testing.T) {
 	require.NoError(t, w.DeleteEnvironment("ghost"))
 }
 
+// TestLoadCollections_ReadDirFails covers the os.ReadDir error branch in loadAll:
+// the collections directory itself has been removed after workspace creation.
+func TestLoadCollections_ReadDirFails(t *testing.T) {
+	w := newTestWorkspace(t)
+	// Remove the entire collections directory so os.ReadDir returns an error.
+	require.NoError(t, os.RemoveAll(filepath.Join(w.basePath, "collections")))
+	_, err := w.LoadCollections()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read dir")
+}
+
+// TestLoadCollections_SubdirSkipped verifies that subdirectories inside the
+// collections folder are silently skipped (e.IsDir() == true branch).
+func TestLoadCollections_SubdirSkipped(t *testing.T) {
+	w := newTestWorkspace(t)
+	// Create a real subdirectory inside collections/.
+	require.NoError(t, os.Mkdir(filepath.Join(w.basePath, "collections", "subdir"), 0o750))
+	// Also add a valid collection so we can verify normal items still load.
+	require.NoError(t, w.SaveCollection(&parser.Collection{Info: parser.Info{PostmanID: "c1"}}))
+
+	cols, err := w.LoadCollections()
+	require.NoError(t, err)
+	require.Len(t, cols, 1, "subdir must be skipped; only valid collection must be returned")
+}
+
+// TestSaveJSON_EncodeError covers the json.Encoder.Encode failure branch in
+// saveJSON: by providing a value that cannot be JSON-marshalled (a channel),
+// json.Marshal will return an error, triggering the error path at line 120.
+func TestSaveJSON_EncodeError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "out.json")
+	// A channel cannot be JSON-encoded; Encode will return a *json.UnsupportedTypeError.
+	err := saveJSON(path, make(chan int))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "workspace: encode")
+}
+
 // --- helpers ---
 
 func writeFile(path string, data []byte) error {

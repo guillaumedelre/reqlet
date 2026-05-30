@@ -741,3 +741,101 @@ func TestJUnit_OnDone_InvalidPath_WritesToStderr(t *testing.T) {
 	r.OnDone(makeRun("Col", makeIter(0)))
 	// No panic; error is logged to stderr.
 }
+
+func TestJSONReporter_OnRequest_IsNoOp(t *testing.T) {
+	r := NewJSON("-")
+	// OnRequest is a deliberate no-op: JSON reporter buffers the full run and
+	// only serialises on OnDone. Verify that calling it does not panic.
+	r.OnRequest(0, runner.RequestResult{})
+}
+
+func TestJUnitReporter_OnRequest_IsNoOp(t *testing.T) {
+	r := NewJUnit("-")
+	// OnRequest is a deliberate no-op: JUnit reporter buffers the full run and
+	// only serialises on OnDone. Verify that calling it does not panic.
+	r.OnRequest(0, runner.RequestResult{})
+}
+
+// ── CLI.OnDone — skipped request branch ──────────────────────────────────────
+
+// TestCLI_OnDone_SkippedRequest covers the req.Skipped=true branch inside
+// OnDone: skipped requests must not be counted in totalReq or failedReq.
+func TestCLI_OnDone_SkippedRequest(t *testing.T) {
+	var buf bytes.Buffer
+	r := NewCLI(&buf, true, false)
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(
+		0,
+		runner.RequestResult{Name: "Skip me", Skipped: true},
+		makeResult("Normal", []sandbox.TestResult{{Name: "T", Passed: true}},
+			makeResponse(200, "200 OK", nil, 5*time.Millisecond)),
+	)))
+	out := buf.String()
+	// Only 1 request counted (the non-skipped one).
+	assert.Contains(t, out, "1 executed")
+	assert.NotContains(t, out, "2 executed")
+}
+
+// ── responseSummary — fractional kB ─────────────────────────────────────────
+
+// TestResponseSummary_FractionalKilobytes covers the fsize != int(fsize) branch
+// (line 160 in cli.go), exercised with a body that is not a multiple of 1024.
+func TestResponseSummary_FractionalKilobytes(t *testing.T) {
+	// 1536 bytes = 1.5 kB (not an integer number of kB)
+	s := responseSummary(makeResponse(200, "200 OK", make([]byte, 1536), 25*time.Millisecond))
+	assert.Contains(t, s, "1.5 kB")
+}
+
+// ── JSON.OnDone — Encode error via failing writer ────────────────────────────
+
+// failWriter is an io.Writer that always returns an error, used to exercise
+// the enc.Encode error branch in JSON.OnDone.
+type failWriter struct{}
+
+func (failWriter) Write(_ []byte) (int, error) { return 0, errors.New("write failure") }
+
+// TestJSON_OnDone_EncodeError verifies that a write error during JSON encoding
+// does not panic and is handled gracefully (logged to stderr).
+func TestJSON_OnDone_EncodeError(t *testing.T) {
+	r := NewJSONWriter(failWriter{})
+	r.OnStart("Col")
+	// Must not panic even when every write to the underlying writer fails.
+	r.OnDone(makeRun("Col", makeIter(0)))
+}
+
+// ── JUnit.OnDone — header write error and encode error ───────────────────────
+
+// TestJUnit_OnDone_HeaderWriteError verifies that a write error on the XML
+// header line does not panic.
+func TestJUnit_OnDone_HeaderWriteError(t *testing.T) {
+	r := NewJUnitWriter(failWriter{})
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0)))
+}
+
+// TestJUnit_OnDone_EncodeError verifies that a write error during XML encoding
+// does not panic (after the header write succeeds).
+// We use a writer that fails only after N bytes to let the header through.
+type writeAfterNFailer struct {
+	written int
+	failAt  int
+}
+
+func (w *writeAfterNFailer) Write(p []byte) (int, error) {
+	if w.written >= w.failAt {
+		return 0, errors.New("write failure after n bytes")
+	}
+	n := len(p)
+	if w.written+n > w.failAt {
+		n = w.failAt - w.written
+	}
+	w.written += n
+	return n, nil
+}
+
+func TestJUnit_OnDone_EncodeError(t *testing.T) {
+	// xml.Header is ~39 bytes; let the first 60 bytes succeed, then fail.
+	r := NewJUnitWriter(&writeAfterNFailer{failAt: 60})
+	r.OnStart("Col")
+	r.OnDone(makeRun("Col", makeIter(0)))
+}

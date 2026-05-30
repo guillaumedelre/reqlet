@@ -2,14 +2,59 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/guillaumedelre/reqlet/engine/storage"
 )
+
+// mockSettingsStore is a SettingsStore that succeeds on Set but fails on List.
+type mockSettingsStore struct {
+	data    map[string]string
+	listErr error
+}
+
+func (m *mockSettingsStore) Get(_ context.Context, key string) (string, error) {
+	return m.data[key], nil
+}
+
+func (m *mockSettingsStore) Set(_ context.Context, key, value string) error {
+	if m.data == nil {
+		m.data = make(map[string]string)
+	}
+	m.data[key] = value
+	return nil
+}
+
+func (m *mockSettingsStore) List(_ context.Context) (map[string]string, error) {
+	if m.listErr != nil {
+		return nil, m.listErr
+	}
+	out := make(map[string]string, len(m.data))
+	for k, v := range m.data {
+		out[k] = v
+	}
+	return out, nil
+}
+
+// testServerWithMockSettings returns a server whose Settings store uses a mock.
+func testServerWithMockSettings(t *testing.T, mock storage.SettingsStore) *server {
+	t.Helper()
+	s := testServer(t)
+	// We need a non-nil *storage.Storage with our mock SettingsStore.
+	// Use the real Storage but swap out Settings via a thin wrapper.
+	st := newTestStorage(t)
+	st.Settings = mock
+	s.storage = st
+	return s
+}
 
 // ---------- getSettings ----------
 
@@ -220,6 +265,22 @@ func TestBuildSettings_InvalidInt_FallsBackToDefault(t *testing.T) {
 // (UseSystemProxy, RespectEnvProxy, MaxResponseSizeMB, ScriptTimeoutMs) absent,
 // the nil-pointer branches inside setBool/setInt are not taken and previously
 // stored values remain unchanged.
+// TestPutSettings_ListErrorAfterSet covers the Settings.List error branch (line 109)
+// that is unreachable via a real SQLite storage (where closing the DB also breaks Set).
+// We use a mock where Set succeeds but List always returns an error.
+func TestPutSettings_ListErrorAfterSet(t *testing.T) {
+	mock := &mockSettingsStore{listErr: errors.New("list failed")}
+	s := testServerWithMockSettings(t, mock)
+	mux := s.newMux(testFS())
+
+	body, _ := json.Marshal(map[string]any{"proxyUrl": "http://proxy:3128"})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
 func TestPutSettings_ExistingFieldsOnly_NewFieldsUntouched(t *testing.T) {
 	s, st := testServerWithStorage(t)
 	// Pre-populate a value that must survive the partial update.

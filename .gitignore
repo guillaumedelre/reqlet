@@ -40,6 +40,8 @@ agent/web/*
 # Build artifacts (binaries go to dist/, not build/)
 dist/reqlet*
 dist/reqlet-cli*
+agent/agent
+cli/reqlet-cli
 
 # OS — WSL metadata
 *:Zone.Identifier

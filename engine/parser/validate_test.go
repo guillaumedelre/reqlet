@@ -99,3 +99,23 @@ func TestValidateAgainstSchema_V20FixturePassesV20Schema(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, SchemaV20, c.Info.Schema)
 }
+
+// ── compileEmbeddedSchema — open error branch ─────────────────────────────────
+
+// TestCompileEmbeddedSchema_BadPath exercises the schemasFS.Open failure branch
+// in compileEmbeddedSchema: a path that doesn't exist in the embedded FS.
+func TestCompileEmbeddedSchema_BadPath(t *testing.T) {
+	_, err := compileEmbeddedSchema("schemas/nonexistent.json", "http://test/schema")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "open")
+}
+
+// ── mustCompileSchema — panic on bad path ─────────────────────────────────────
+
+// TestMustCompileSchema_PanicsOnBadPath verifies that mustCompileSchema panics
+// when the embedded schema file cannot be opened.
+func TestMustCompileSchema_PanicsOnBadPath(t *testing.T) {
+	require.Panics(t, func() {
+		mustCompileSchema("schemas/does_not_exist.json", "http://test/schema")
+	})
+}

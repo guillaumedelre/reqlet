@@ -6,8 +6,62 @@ on:
   pull_request:
 
 jobs:
-  reqlet-engine:
-    name: reqlet-engine
+  # ── Go: single lint/format job covering all packages ─────────────────────────
+  go-lint:
+    name: go / lint & format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Check formatting (gofumpt)
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          gofumpt -l . | tee /tmp/gofumpt.out
+          test ! -s /tmp/gofumpt.out
+
+      - name: Lint
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            -w /app \
+            golangci/golangci-lint:latest \
+            golangci-lint run ./engine/... ./cli/... ./agent/... ./hub/...
+
+  # ── reqlet-engine ─────────────────────────────────────────────────────────────
+  reqlet-engine-unit:
+    name: reqlet-engine / unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Test
+        run: |
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            ./engine/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.out
+          flags: reqlet-engine-unit
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  reqlet-engine-functional:
+    name: reqlet-engine / functional tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -27,25 +81,11 @@ jobs:
         run: npm ci
         working-directory: runner
 
-      # gofumpt -l . validates formatting for all Go files in the repo
-      - name: Check formatting
-        run: |
-          go install mvdan.cc/gofumpt@latest
-          gofumpt -l . | tee /tmp/gofumpt.out
-          test ! -s /tmp/gofumpt.out
-
-      - name: Lint
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            golangci/golangci-lint:latest \
-            golangci-lint run ./engine/...
-
       - name: Test
         run: |
           go install gotest.tools/gotestsum@latest
           gotestsum --junitfile report.xml -- \
+            -tags=functional \
             -coverprofile=coverage.out \
             -covermode=atomic \
             ./engine/...
@@ -54,12 +94,13 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: coverage.out
-          flags: reqlet-engine
+          flags: reqlet-engine-functional
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  reqlet-cli:
-    name: reqlet-cli
+  # ── reqlet-cli ────────────────────────────────────────────────────────────────
+  reqlet-cli-unit:
+    name: reqlet-cli / unit tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -68,14 +109,6 @@ jobs:
         with:
           go-version: "1.25"
           cache: true
-
-      - name: Lint
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            golangci/golangci-lint:latest \
-            golangci-lint run ./cli/...
 
       - name: Test
         run: |
@@ -90,12 +123,12 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: coverage.out
-          flags: reqlet-cli
+          flags: reqlet-cli-unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  reqlet-agent:
-    name: reqlet-agent
+  reqlet-cli-functional:
+    name: reqlet-cli / functional tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -115,13 +148,35 @@ jobs:
         run: npm ci
         working-directory: runner
 
-      - name: Lint
+      - name: Test
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            golangci/golangci-lint:latest \
-            golangci-lint run ./agent/...
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -tags=functional \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -coverpkg=./cli/... \
+            ./cli/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.out
+          flags: reqlet-cli-functional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── reqlet-agent ──────────────────────────────────────────────────────────────
+  reqlet-agent-unit:
+    name: reqlet-agent / unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
 
       - name: Test
         run: |
@@ -136,12 +191,58 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: coverage.out
-          flags: reqlet-agent
+          flags: reqlet-agent-unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  reqlet-web:
-    name: reqlet-web
+  reqlet-agent-functional:
+    name: reqlet-agent / functional tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: No functional tests yet
+        run: echo "No functional tests yet"
+
+  # ── reqlet-hub ────────────────────────────────────────────────────────────────
+  reqlet-hub-unit:
+    name: reqlet-hub / unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Test
+        run: |
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -coverpkg=./hub/... \
+            ./hub/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.out
+          flags: reqlet-hub-unit
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  reqlet-hub-functional:
+    name: reqlet-hub / functional tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: No functional tests yet
+        run: echo "No functional tests yet"
+
+  # ── reqlet-web ────────────────────────────────────────────────────────────────
+  reqlet-web-unit:
+    name: reqlet-web / unit tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -173,12 +274,21 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: gui/web/coverage/lcov.info
-          flags: reqlet-web
+          flags: reqlet-web-unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  reqlet-runner:
-    name: reqlet-runner
+  reqlet-web-functional:
+    name: reqlet-web / functional tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: No functional tests yet
+        run: echo "No functional tests yet"
+
+  # ── reqlet-runner ─────────────────────────────────────────────────────────────
+  reqlet-runner-unit:
+    name: reqlet-runner / unit tests
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -204,48 +314,19 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           files: runner/coverage/lcov.info
-          flags: reqlet-runner
+          flags: reqlet-runner-unit
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  reqlet-hub:
-    name: reqlet-hub
+  reqlet-runner-functional:
+    name: reqlet-runner / functional tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: No functional tests yet
+        run: echo "No functional tests yet"
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version: "1.25"
-          cache: true
-
-      - name: Lint
-        run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/app \
-            -w /app \
-            golangci/golangci-lint:latest \
-            golangci-lint run ./hub/...
-
-      - name: Test
-        run: |
-          go install gotest.tools/gotestsum@latest
-          gotestsum --junitfile report.xml -- \
-            -coverprofile=coverage.out \
-            -covermode=atomic \
-            -coverpkg=./hub/... \
-            ./hub/...
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v6
-        with:
-          files: coverage.out
-          flags: reqlet-hub
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-
-  # reqlet-gui Go code requires GTK/WebKitGTK and cannot be unit-tested in
-  # standard CI. Validated via Docker build only.
+  # ── reqlet-gui ────────────────────────────────────────────────────────────────
   reqlet-gui:
     name: reqlet-gui (build only)
     runs-on: ubuntu-latest
@@ -259,6 +340,7 @@ jobs:
           file: Dockerfile.gui
           push: false
 
+  # ── Docker images ─────────────────────────────────────────────────────────────
   docker:
     name: docker
     runs-on: ubuntu-latest

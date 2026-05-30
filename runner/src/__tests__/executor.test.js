@@ -94,6 +94,16 @@ describe("execute", () => {
     expect(result.tests[0].name).toBe("(script error)");
     expect(result.tests[0].passed).toBe(false);
   });
+
+  it("reports script error using String(err) when err.message is undefined", async () => {
+    // Throwing a non-Error value has no .message property, triggering the String(err) branch.
+    const script = `throw "plain string error"`;
+    const result = await execute(script, "test", emptyCtx);
+    expect(result.tests).toHaveLength(1);
+    expect(result.tests[0].name).toBe("(script error)");
+    expect(result.tests[0].passed).toBe(false);
+    expect(result.tests[0].error).toBe("plain string error");
+  });
 });
 
 describe("pm.visualizer", () => {
@@ -230,5 +240,85 @@ describe("pm.sendRequest", () => {
     await new Promise((r) => setTimeout(r, 10));
 
     expect(globalThis.fetch).toHaveBeenCalled();
+  });
+
+  it("falls back to headers property when header is undefined", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue(""),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    const script = `pm.sendRequest({
+      url: "https://example.com/api",
+      method: "GET",
+      headers: { "X-Custom": "value" },
+    }, () => {})`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://example.com/api",
+      expect.objectContaining({ headers: { "X-Custom": "value" } }),
+    );
+  });
+
+  it("uses empty object when neither header nor headers is defined", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue(""),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    const script = `pm.sendRequest({ url: "https://example.com/api", method: "GET" }, () => {})`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://example.com/api",
+      expect.objectContaining({ headers: {} }),
+    );
+  });
+
+  it("sends no body when body.mode is not raw", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue(""),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    const script = `pm.sendRequest({
+      url: "https://example.com/api",
+      method: "POST",
+      body: { mode: "formdata", formdata: [] },
+    }, () => {})`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://example.com/api",
+      expect.objectContaining({ body: undefined }),
+    );
+  });
+
+  it("defaults method to GET when method is absent from object request", async () => {
+    globalThis.fetch = jest.fn().mockResolvedValue({
+      statusText: "OK",
+      status: 200,
+      text: jest.fn().mockResolvedValue(""),
+      headers: { get: jest.fn().mockReturnValue(null) },
+    });
+
+    const script = `pm.sendRequest({ url: "https://example.com/api" }, () => {})`;
+    await execute(script, "prerequest", emptyCtx);
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "https://example.com/api",
+      expect.objectContaining({ method: "GET" }),
+    );
   });
 });

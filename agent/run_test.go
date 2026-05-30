@@ -482,6 +482,30 @@ func TestHandleRunCollection_WithTestResults(t *testing.T) {
 	assert.True(t, found, "expected a request event with non-empty test results")
 }
 
+// ---- appendAndSend ----
+
+// TestAppendAndSend_ChannelFull covers the default branch of the select in appendAndSend.
+// When the channel is at capacity, the event must still be appended to the slice
+// but the send is silently dropped.
+func TestAppendAndSend_ChannelFull(t *testing.T) {
+	entry := &runEntry{ch: make(chan runEvent, 1)} // capacity 1
+
+	evt1 := runEvent{Type: "start"}
+	evt2 := runEvent{Type: "request"}
+
+	entry.appendAndSend(evt1) // fills the channel
+	entry.appendAndSend(evt2) // channel full — default branch taken
+
+	// Both events must be in the slice.
+	entry.mu.Lock()
+	events := entry.events
+	entry.mu.Unlock()
+
+	require.Len(t, events, 2)
+	assert.Equal(t, "start", events[0].Type)
+	assert.Equal(t, "request", events[1].Type)
+}
+
 // ---- noopSandbox ----
 
 func TestNoopSandbox_ExecuteAndClose(t *testing.T) {

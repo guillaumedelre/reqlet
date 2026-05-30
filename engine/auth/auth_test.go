@@ -822,3 +822,49 @@ func TestAWSCanonicalHeaders_ExplicitHostHeader(t *testing.T) {
 	assert.Contains(t, signed, "host")
 	assert.Contains(t, canonical, "override.example.com")
 }
+
+// TestAWSCanonicalHeaders_EmptyHostFallback covers the inner branch where both
+// req.Host and req.URL.Host are empty strings: the headers["host"] entry is
+// set to "" (req.Host) and then the condition `headers["host"] == ""` sets it
+// to req.URL.Host (also ""), so the signed headers still contain "host".
+func TestAWSCanonicalHeaders_EmptyHostFallback(t *testing.T) {
+	req, err := http.NewRequestWithContext(context.Background(), "GET", "https://api.example.com", nil)
+	require.NoError(t, err)
+	// Force both Host and URL.Host to empty.
+	req.Host = ""
+	req.URL.Host = ""
+	signed, _ := awsCanonicalHeaders(req)
+	assert.Contains(t, signed, "host")
+}
+
+// ── oauth2.fetchToken — body read error ──────────────────────────────────────
+
+// errBodyReader is an io.ReadCloser whose Read always fails after the first byte.
+type errBodyReader struct{}
+
+func (errBodyReader) Read(_ []byte) (int, error) { return 0, fmt.Errorf("body read error") }
+func (errBodyReader) Close() error               { return nil }
+
+// TestOAuth2_FetchToken_ReadBodyError covers the io.ReadAll failure branch in
+// fetchToken (oauth2.go line 74). We wire a custom http.RoundTripper that
+// returns a response whose body always errors on Read.
+func TestOAuth2_FetchToken_ReadBodyError(t *testing.T) {
+	// Intercept the HTTP call at transport level.
+	origTransport := http.DefaultTransport
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       errBodyReader{},
+			Header:     make(http.Header),
+		}, nil
+	})
+	defer func() { http.DefaultTransport = origTransport }()
+
+	o := &oauth2{ //nolint:gosec // test credentials, not real secrets
+		tokenURL: "http://example.com/token",
+		clientID: "id",
+	}
+	_, err := o.fetchToken(context.Background(), variables.NewResolver())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "read token response")
+}
