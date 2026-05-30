@@ -82,8 +82,22 @@ ci: add arm64 runner to release matrix
 2. Make your changes
 3. Run checks locally before pushing:
    ```bash
-   docker compose run --rm test
+   # Go — format, lint, unit tests
+   docker compose run --rm go gofumpt -l . | tee /tmp/gofumpt.out && test ! -s /tmp/gofumpt.out
    docker compose run --rm lint
+   docker compose run --rm test
+
+   # Go — functional tests (N2, requires node)
+   docker compose run --rm test gotestsum -- -tags=functional ./engine/... ./cli/...
+
+   # Frontend
+   docker compose run --rm web npm run format:check
+   docker compose run --rm web npm run lint
+   docker compose run --rm web npm run test:ci
+
+   # Runner
+   docker compose run --rm node npm run lint
+   docker compose run --rm node npm test
    ```
 4. Open a PR against `main` — fill in the PR template
 5. All CI checks must pass and all conversations must be resolved before merging
@@ -92,7 +106,7 @@ ci: add arm64 runner to release matrix
 
 - **Go** — formatted with `gofumpt`, linted with `golangci-lint` (zero warnings tolerated)
 - **TypeScript** — strict mode, linted with ESLint
-- **Tests** — `_test.go` files alongside source, coverage ≥ 80% on `engine/`
+- **Tests** — `_test.go` files alongside source, coverage ≥ 80% on `engine/`; functional tests (N2) use `//go:build functional` and require `node` in PATH
 - **Documentation** — any change affecting user-facing behavior must update `docs/` in the same PR
 
 ## Reporting issues
