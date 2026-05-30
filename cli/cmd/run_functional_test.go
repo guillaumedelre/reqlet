@@ -1,3 +1,5 @@
+//go:build functional
+
 package cmd
 
 import (
@@ -28,16 +30,6 @@ func functionalRunnerPath(t *testing.T) string {
 	_, file, _, ok := runtime.Caller(0)
 	require.True(t, ok)
 	return filepath.Join(filepath.Dir(file), "..", "..", "runner", "src", "index.js")
-}
-
-// skipIfNoRunner skips the test when the real Node.js runner is absent.
-func skipIfNoRunner(t *testing.T) string {
-	t.Helper()
-	p := functionalRunnerPath(t)
-	if _, err := os.Stat(p); err != nil {
-		t.Skipf("real runner not found at %s", p)
-	}
-	return p
 }
 
 // countingServer returns an HTTP handler that counts each path hit and always
@@ -150,7 +142,7 @@ func runFunc(t *testing.T, colPath string) error {
 // ── functional tests ──────────────────────────────────────────────────────────
 
 func TestRunCollection_Functional_SingleGetRequest(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	var hits atomic.Int64
@@ -176,14 +168,15 @@ func TestRunCollection_Functional_SingleGetRequest(t *testing.T) {
 }
 
 func TestRunCollection_Functional_PassingPmTest(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
-	colPath := writeTestFile(t, dir, "col.json", colJSON("C",
+	colPath := writeTestFile(t, dir, "col.json", colJSON(
+		"C",
 		srv.URL+"/ok",
 		`pm.test("status is 200", () => pm.response.to.have.status(200));`,
 	))
@@ -201,7 +194,7 @@ func TestRunCollection_Functional_PassingPmTest(t *testing.T) {
 }
 
 func TestRunCollection_Functional_EnvVariable(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
@@ -221,7 +214,7 @@ func TestRunCollection_Functional_EnvVariable(t *testing.T) {
 }
 
 func TestRunCollection_Functional_EnvVarFlag(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
@@ -240,14 +233,15 @@ func TestRunCollection_Functional_EnvVarFlag(t *testing.T) {
 }
 
 func TestRunCollection_Functional_GlobalVar(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
-	colPath := writeTestFile(t, dir, "col.json", colJSON("C", "{{server}}/ok",
+	colPath := writeTestFile(t, dir, "col.json", colJSON(
+		"C", "{{server}}/ok",
 		`pm.test("global var resolved", () => { pm.expect(pm.globals.get("server")).to.eql(`+fmt.Sprintf("%q", srv.URL)+`); });`,
 	))
 	flagRunner = runnerPath
@@ -261,7 +255,7 @@ func TestRunCollection_Functional_GlobalVar(t *testing.T) {
 }
 
 func TestRunCollection_Functional_Iterations(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	var hits atomic.Int64
@@ -283,7 +277,7 @@ func TestRunCollection_Functional_Iterations(t *testing.T) {
 }
 
 func TestRunCollection_Functional_FolderFilter(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	var hitsA, hitsB atomic.Int64
@@ -316,14 +310,15 @@ func TestRunCollection_Functional_FolderFilter(t *testing.T) {
 }
 
 func TestRunCollection_Functional_JSONReport(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
-	colPath := writeTestFile(t, dir, "col.json", colJSON("Report Test", srv.URL+"/ok",
+	colPath := writeTestFile(t, dir, "col.json", colJSON(
+		"Report Test", srv.URL+"/ok",
 		`pm.test("body has ok", () => pm.expect(pm.response.json().ok).to.be.true);`,
 	))
 	flagRunner = runnerPath
@@ -342,14 +337,15 @@ func TestRunCollection_Functional_JSONReport(t *testing.T) {
 }
 
 func TestRunCollection_Functional_JUnitReport(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 	resetFlags(t)
 
 	srv := httptest.NewServer(countingServer(new(atomic.Int64)))
 	t.Cleanup(srv.Close)
 
 	dir := t.TempDir()
-	colPath := writeTestFile(t, dir, "col.json", colJSON("JUnit Col", srv.URL+"/ok",
+	colPath := writeTestFile(t, dir, "col.json", colJSON(
+		"JUnit Col", srv.URL+"/ok",
 		`pm.test("passes", () => pm.response.to.have.status(200));`,
 	))
 	flagRunner = runnerPath
@@ -373,14 +369,15 @@ func TestRunCollection_Functional_JUnitReport(t *testing.T) {
 const subprocessEnv = "REQLET_TEST_EXIT_SUBPROCESS"
 
 func TestRunCollection_Functional_FailingPmTest_ExitsWithOne(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 
 	if os.Getenv(subprocessEnv) == "1" {
 		// Subprocess: run the failing collection — runCollection calls os.Exit(1).
 		resetFlags(t)
 		srv := httptest.NewServer(countingServer(new(atomic.Int64)))
 		defer srv.Close()
-		colPath := writeTestFile(t, t.TempDir(), "col.json", colJSON("C", srv.URL+"/ok",
+		colPath := writeTestFile(t, t.TempDir(), "col.json", colJSON(
+			"C", srv.URL+"/ok",
 			`pm.test("always fails", () => { throw new Error("intentional"); });`,
 		))
 		flagRunner = runnerPath
@@ -391,7 +388,8 @@ func TestRunCollection_Functional_FailingPmTest_ExitsWithOne(t *testing.T) {
 	}
 
 	exe := os.Args[0]
-	cmd := exec.Command(exe, //nolint:gosec // exe is os.Args[0], the test binary itself
+	cmd := exec.Command(
+		exe, //nolint:gosec // exe is os.Args[0], the test binary itself
 		"-test.run=^TestRunCollection_Functional_FailingPmTest_ExitsWithOne$",
 		"-test.v",
 	)
@@ -407,7 +405,7 @@ func TestRunCollection_Functional_FailingPmTest_ExitsWithOne(t *testing.T) {
 }
 
 func TestRunCollection_Functional_Bail_StopsAfterFirstFailure(t *testing.T) {
-	runnerPath := skipIfNoRunner(t)
+	runnerPath := functionalRunnerPath(t)
 
 	if os.Getenv(subprocessEnv) == "2" {
 		// Subprocess: bail collection — first request fails, runner must stop.
@@ -442,7 +440,8 @@ func TestRunCollection_Functional_Bail_StopsAfterFirstFailure(t *testing.T) {
 	}
 
 	exe := os.Args[0]
-	cmd := exec.Command(exe, //nolint:gosec // exe is os.Args[0], the test binary itself
+	cmd := exec.Command(
+		exe, //nolint:gosec // exe is os.Args[0], the test binary itself
 		"-test.run=^TestRunCollection_Functional_Bail_StopsAfterFirstFailure$",
 		"-test.v",
 	)
