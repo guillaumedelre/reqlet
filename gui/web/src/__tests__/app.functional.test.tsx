@@ -186,7 +186,7 @@ describe("W2 — create collection via UI", () => {
       { timeout: 3000 },
     )
 
-    expect((postBody as Record<string, unknown>)?.name).toBe("Ma Collection")
+    expect((postBody as unknown as Record<string, unknown>)?.name).toBe("Ma Collection")
   })
 })
 
