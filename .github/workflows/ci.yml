@@ -200,8 +200,39 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: No functional tests yet
-        run: echo "No functional tests yet"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: runner/package-lock.json
+
+      - name: Install runner dependencies
+        run: npm ci
+        working-directory: runner
+
+      - name: Test
+        run: |
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -tags=functional \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -coverpkg=./agent/... \
+            ./agent/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.out
+          flags: reqlet-agent-functional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # ── reqlet-hub ────────────────────────────────────────────────────────────────
   reqlet-hub-unit:
@@ -237,8 +268,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: No functional tests yet
-        run: echo "No functional tests yet"
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.25"
+          cache: true
+
+      - name: Test
+        run: |
+          go install gotest.tools/gotestsum@latest
+          gotestsum --junitfile report.xml -- \
+            -tags=functional \
+            -coverprofile=coverage.out \
+            -covermode=atomic \
+            -coverpkg=./hub/... \
+            ./hub/...
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.out
+          flags: reqlet-hub-functional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # ── reqlet-web ────────────────────────────────────────────────────────────────
   reqlet-web-unit:
@@ -281,10 +333,30 @@ jobs:
   reqlet-web-functional:
     name: reqlet-web / functional tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gui/web
     steps:
       - uses: actions/checkout@v6
-      - name: No functional tests yet
-        run: echo "No functional tests yet"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: gui/web/package-lock.json
+
+      - run: npm ci
+
+      - name: Test
+        run: npx vitest run --coverage src/__tests__/app.functional.test.tsx
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: gui/web/coverage/lcov.info
+          flags: reqlet-web-functional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # ── reqlet-runner ─────────────────────────────────────────────────────────────
   reqlet-runner-unit:
@@ -321,10 +393,30 @@ jobs:
   reqlet-runner-functional:
     name: reqlet-runner / functional tests
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: runner
     steps:
       - uses: actions/checkout@v6
-      - name: No functional tests yet
-        run: echo "No functional tests yet"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: runner/package-lock.json
+
+      - run: npm ci
+
+      - name: Test
+        run: node --experimental-vm-modules node_modules/.bin/jest --testPathPattern=subprocess.functional --coverage --forceExit
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v6
+        with:
+          files: runner/coverage/lcov.info
+          flags: reqlet-runner-functional
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
   # ── reqlet-gui ────────────────────────────────────────────────────────────────
   reqlet-gui:
