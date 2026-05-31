@@ -1,5 +1,5 @@
 import { beforeAll, afterEach, afterAll, beforeEach, describe, it, expect } from "vitest"
-import { render, screen, waitFor, act } from "@testing-library/react"
+import { render, screen, waitFor, act, renderHook } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { setupServer } from "msw/node"
 import { http, HttpResponse } from "msw"
@@ -7,14 +7,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
 import { AppLayout } from "@/components/layout/app-layout"
+import { EnvironmentPane } from "@/components/layout/environment-pane"
 import { SearchModal } from "@/components/search-modal"
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut"
+import { useIsMobile } from "@/hooks/use-mobile"
 import { useTheme } from "@/hooks/use-theme"
 import { useWorkspaceSync } from "@/hooks/use-workspace-sync"
+import { getStatusClasses, formatSize, formatTime } from "@/lib/http"
+import { useRunsStore } from "@/store/runs"
 import { useTabsStore } from "@/store/tabs"
 import { useUiStore } from "@/store/ui"
 import { useWorkspaceStore } from "@/store/workspace"
-import type { Collection, Environment } from "@/types"
+import type { Collection, Environment, RunEvent, RunSummary } from "@/types"
 
 // ----- MSW default handlers -----
 
@@ -87,6 +91,24 @@ function renderApp(extraHandlers: Parameters<typeof server.use>[0][] = []) {
   )
 }
 
+// Pre-populates the React Query cache so useWorkspaceSync (staleTime: Infinity)
+// skips the fetch and directly calls setCollections/setEnvironments with the
+// provided data — no race condition against MSW handlers.
+function renderAppWithData(
+  data: { collections?: Collection[]; environments?: Environment[] } = {},
+) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  if (data.collections !== undefined) qc.setQueryData(["collections"], data.collections)
+  if (data.environments !== undefined) qc.setQueryData(["environments"], data.environments)
+  return render(
+    <QueryClientProvider client={qc}>
+      <TestAppInner />
+    </QueryClientProvider>,
+  )
+}
+
 // Reset persistent stores before each test so they don't bleed across tests.
 beforeEach(() => {
   localStorage.clear()
@@ -97,6 +119,7 @@ beforeEach(() => {
     settingsOpen: false,
   })
   useWorkspaceStore.setState({ collections: [], environments: [], globalVariables: [] })
+  useRunsStore.getState().resetRuns()
   // Reset tabs to a single blank tab.
   const initialTab = useTabsStore.getState().tabs[0]
   if (initialTab) {
@@ -600,5 +623,259 @@ describe("W10 — settings dialog PUT and store update", () => {
         expect(putBody).not.toBeNull()
       })
     }
+  })
+})
+
+// ----- W11 — EnvironmentPane rendered when an environment tab is active -----
+
+describe("W11 — EnvironmentPane rendered on environment tab", () => {
+  it("shows env name and variables column headers", () => {
+    const env: Environment = {
+      id: "env-w11",
+      name: "Production",
+      variables: [
+        {
+          id: "v1",
+          key: "API_URL",
+          initialValue: "https://api.example.com",
+          currentValue: "https://api.example.com",
+          enabled: true,
+        },
+      ],
+    }
+    // Configure stores directly — no App render needed.
+    useWorkspaceStore.setState((s) => ({ ...s, environments: [env] }))
+    useTabsStore.setState({
+      tabs: [
+        {
+          id: "tab-env-w11",
+          type: "environment",
+          title: "Production",
+          dirty: false,
+          environmentId: "env-w11",
+          request: {
+            method: "GET",
+            url: "",
+            params: [],
+            headers: [],
+            body: {
+              type: "none",
+              raw: "",
+              rawContentType: "application/json",
+              formData: [],
+              urlencoded: [],
+              graphqlQuery: "",
+              graphqlVariables: "",
+            },
+            auth: { type: "inherit" },
+            preRequestScript: "",
+            testScript: "",
+          },
+          isSending: false,
+          response: null,
+          requestSubTab: "params",
+          responseSubTab: "body",
+          collectionSubTab: "overview",
+          runOptions: { iterations: 1, delayMs: 0, bail: false },
+          runSelectedRunId: null,
+        },
+      ],
+      activeTabId: "tab-env-w11",
+      closedTabs: [],
+    })
+
+    render(<EnvironmentPane />)
+
+    expect(screen.getByText("Production")).toBeInTheDocument()
+    expect(screen.getAllByText(/Variable/i).length).toBeGreaterThan(0)
+    expect(screen.getByText("1 variables")).toBeInTheDocument()
+  })
+})
+
+// ----- W12 — GlobalsPane rendered when the globals tab is active -----
+
+describe("W12 — GlobalsPane rendered on globals tab", () => {
+  it("renders the globals pane", async () => {
+    renderApp()
+
+    await waitFor(
+      () => {
+        expect(document.querySelector("header")).toBeTruthy()
+      },
+      { timeout: 3000 },
+    )
+
+    // GlobalsPane has no external dependency — open directly.
+    act(() => {
+      useTabsStore.getState().openGlobalsTab()
+    })
+
+    // GlobalsPane renders a "Variable" column header.
+    await waitFor(
+      () => {
+        expect(screen.queryByText(/^Variable$/i)).toBeTruthy()
+      },
+      { timeout: 3000 },
+    )
+  })
+})
+
+// ----- W13 — RunsStore full lifecycle -----
+
+describe("W13 — RunsStore lifecycle", () => {
+  it("exercises startRun, appendEvent, finishRun, failRun, resetRuns", () => {
+    const store = useRunsStore.getState()
+
+    store.startRun("run-a", "col-1")
+    expect(useRunsStore.getState().runs.get("run-a")?.status).toBe("running")
+    expect(useRunsStore.getState().activeRunId).toBe("run-a")
+
+    const evt: RunEvent = { type: "request", passed: true, name: "req1" }
+    store.appendEvent("run-a", evt)
+    expect(useRunsStore.getState().runs.get("run-a")?.events).toHaveLength(1)
+
+    // appendEvent on unknown id is a no-op
+    store.appendEvent("run-missing", evt)
+    expect(useRunsStore.getState().runs.get("run-missing")).toBeUndefined()
+
+    const summary: RunSummary = {
+      runId: "run-a",
+      collectionId: "col-1",
+      startedAt: new Date().toISOString(),
+      durationMs: 10,
+      total: 1,
+      passed: 1,
+      failed: 0,
+    }
+    store.finishRun("run-a", summary)
+    expect(useRunsStore.getState().runs.get("run-a")?.status).toBe("done")
+
+    // finishRun on unknown id is a no-op
+    store.finishRun("run-missing", summary)
+
+    store.startRun("run-b", "col-2")
+    store.failRun("run-b", "network error")
+    expect(useRunsStore.getState().runs.get("run-b")?.status).toBe("error")
+
+    // failRun on unknown id is a no-op
+    store.failRun("run-missing", "err")
+
+    store.resetRuns()
+    expect(useRunsStore.getState().runs.size).toBe(0)
+    expect(useRunsStore.getState().activeRunId).toBeNull()
+  })
+})
+
+// ----- W14 — useIsMobile hook -----
+
+describe("W14 — useIsMobile hook", () => {
+  it("returns a boolean reflecting the current viewport", () => {
+    const { result } = renderHook(() => useIsMobile())
+    expect(typeof result.current).toBe("boolean")
+  })
+})
+
+// ----- W15 — http.ts pure utilities -----
+
+describe("W15 — http.ts utilities", () => {
+  it("getStatusClasses maps status ranges to correct colour classes", () => {
+    expect(getStatusClasses(200)).toContain("emerald")
+    expect(getStatusClasses(301)).toContain("blue")
+    expect(getStatusClasses(404)).toContain("orange")
+    expect(getStatusClasses(500)).toContain("rose")
+    expect(getStatusClasses(0)).toContain("muted")
+  })
+
+  it("formatSize renders B, KB, MB correctly", () => {
+    expect(formatSize(0)).toBe("0 B")
+    expect(formatSize(500)).toBe("500 B")
+    expect(formatSize(2048)).toBe("2.0 KB")
+    expect(formatSize(2 * 1024 * 1024)).toBe("2.0 MB")
+  })
+
+  it("formatTime renders ms and s correctly", () => {
+    expect(formatTime(500)).toBe("500 ms")
+    expect(formatTime(1500)).toBe("1.50 s")
+  })
+})
+
+// ----- W16 — UiStore: togglePanel, setSearchOpen -----
+
+describe("W16 — UiStore togglePanel branches", () => {
+  it("togglePanel closes the active panel when called twice with the same value", () => {
+    useUiStore.setState({ activePanel: "collections" })
+    act(() => {
+      useUiStore.getState().togglePanel("collections")
+    })
+    expect(useUiStore.getState().activePanel).toBeNull()
+
+    act(() => {
+      useUiStore.getState().togglePanel("collections")
+    })
+    expect(useUiStore.getState().activePanel).toBe("collections")
+
+    act(() => {
+      useUiStore.getState().togglePanel("environments")
+    })
+    expect(useUiStore.getState().activePanel).toBe("environments")
+  })
+
+  it("setSearchOpen and setSettingsOpen toggle the boolean flags", () => {
+    act(() => {
+      useUiStore.getState().setSearchOpen(true)
+    })
+    expect(useUiStore.getState().searchOpen).toBe(true)
+    act(() => {
+      useUiStore.getState().setSearchOpen(false)
+    })
+    expect(useUiStore.getState().searchOpen).toBe(false)
+
+    act(() => {
+      useUiStore.getState().setSettingsOpen(true)
+    })
+    expect(useUiStore.getState().settingsOpen).toBe(true)
+    act(() => {
+      useUiStore.getState().setSettingsOpen(false)
+    })
+    expect(useUiStore.getState().settingsOpen).toBe(false)
+  })
+})
+
+// ----- W17 — AppLayout: CollectionPane rendered on collection tab -----
+
+describe("W17 — AppLayout renders CollectionPane on collection tab", () => {
+  it("switches to CollectionPane when a collection tab is opened", async () => {
+    const col: Collection = {
+      id: "col-w17",
+      name: "Layout Test",
+      description: "",
+      items: [],
+      variables: [],
+      preRequestScript: "",
+      testScript: "",
+      auth: { type: "none" },
+    }
+
+    renderAppWithData({ collections: [col], environments: [] })
+
+    // useWorkspaceSync reads the pre-loaded cache and calls setCollections([col]).
+    await waitFor(() => useWorkspaceStore.getState().collections.some((c) => c.id === "col-w17"), {
+      timeout: 3000,
+    })
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 50))
+    })
+
+    act(() => {
+      useTabsStore.getState().openCollectionTab(col)
+    })
+
+    // CollectionPane shows the collection name in the breadcrumb / header.
+    await waitFor(
+      () => {
+        expect(screen.queryAllByText("Layout Test").length).toBeGreaterThan(0)
+      },
+      { timeout: 3000 },
+    )
   })
 })

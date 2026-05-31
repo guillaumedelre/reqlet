@@ -348,7 +348,7 @@ jobs:
       - run: npm ci
 
       - name: Test
-        run: npx vitest run --coverage src/__tests__/app.functional.test.tsx
+        run: npx vitest run --config vitest.functional.config.ts --coverage
 
       - name: Upload coverage
         uses: codecov/codecov-action@v6
