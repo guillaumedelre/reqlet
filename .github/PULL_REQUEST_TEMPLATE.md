@@ -12,3 +12,9 @@
 - [ ] `ci` — CI/CD changes
 - [ ] `chore` — maintenance
 
+## Checklist
+
+- [ ] Tests écrits et CI verte
+- [ ] Documentation mise à jour si le comportement change (`docs/`, godoc, `CLAUDE.md`)
+- [ ] Aucun debug (`console.log`, `fmt.Println`) laissé dans le code
+

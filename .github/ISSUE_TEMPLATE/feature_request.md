@@ -10,12 +10,19 @@ labels: enhancement
 
 ## Proposed solution
 
-<!-- How should it work? -->
+<!-- How should it work? From a user perspective -->
+
+## Implementation notes
+
+<!-- Technical approach, affected files, edge cases to handle.
+     Leave empty if you want the implementer to propose a plan. -->
+
+## Acceptance criteria
+
+<!-- How do we know this is done? One checkbox per verifiable condition. -->
+
+- [ ]
 
 ## Alternatives considered
 
 <!-- Other approaches you have thought of -->
-
-## Additional context
-
-<!-- Mockups, examples, related issues -->
