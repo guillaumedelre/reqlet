@@ -39,9 +39,9 @@ export default defineConfig({
         "src/components/layout/tab-bar.tsx",
       ],
       thresholds: {
-        lines: 70,
-        functions: 70,
-        branches: 70,
+        lines: 80,
+        functions: 80,
+        branches: 80,
       },
     },
   },
